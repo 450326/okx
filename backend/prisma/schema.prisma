@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String           @id
+  email        String           @unique
+  passwordHash String           @map("password_hash")
+  nickname     String
+  status       String           @default("active")
+  defaultMode  String           @default("simulation") @map("default_mode")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  balances     AccountBalance[]
+  positions    Position[]
+  orders       Order[]
+
+  @@map("users")
+}
+
+model AccountBalance {
+  id               String   @id
+  userId           String   @map("user_id")
+  mode             String
+  currency         String   @default("USDT")
+  walletBalance    Decimal  @default(0) @db.Decimal(30, 12) @map("wallet_balance")
+  availableBalance Decimal  @default(0) @db.Decimal(30, 12) @map("available_balance")
+  positionMargin   Decimal  @default(0) @db.Decimal(30, 12) @map("position_margin")
+  orderMargin      Decimal  @default(0) @db.Decimal(30, 12) @map("order_margin")
+  unrealizedPnl    Decimal  @default(0) @db.Decimal(30, 12) @map("unrealized_pnl")
+  realizedPnl      Decimal  @default(0) @db.Decimal(30, 12) @map("realized_pnl")
+  equity           Decimal  @default(0) @db.Decimal(30, 12)
+  version          Int      @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  user             User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, mode, currency])
+  @@map("account_balances")
+}
+
+model Position {
+  id                String   @id
+  userId            String   @map("user_id")
+  mode              String
+  venue             String
+  symbol            String
+  side              String
+  marginMode        String   @default("isolated") @map("margin_mode")
+  leverage          Int
+  qty               Decimal  @db.Decimal(30, 12)
+  entryPrice        Decimal  @db.Decimal(30, 12) @map("entry_price")
+  markPrice         Decimal  @default(0) @db.Decimal(30, 12) @map("mark_price")
+  lastPrice         Decimal  @default(0) @db.Decimal(30, 12) @map("last_price")
+  notional          Decimal  @db.Decimal(30, 12)
+  initialMargin     Decimal  @db.Decimal(30, 12) @map("initial_margin")
+  maintenanceMargin Decimal  @db.Decimal(30, 12) @map("maintenance_margin")
+  liquidationPrice  Decimal? @db.Decimal(30, 12) @map("liquidation_price")
+  isolatedMargin    Decimal  @db.Decimal(30, 12) @map("isolated_margin")
+  unrealizedPnl     Decimal  @default(0) @db.Decimal(30, 12) @map("unrealized_pnl")
+  realizedPnl       Decimal  @default(0) @db.Decimal(30, 12) @map("realized_pnl")
+  status            String   @default("open")
+  openedAt          DateTime @default(now()) @map("opened_at")
+  closedAt          DateTime? @map("closed_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  user              User     @relation(fields: [userId], references: [id])
+
+  @@map("positions")
+}
+
+model Order {
+  id                String    @id
+  userId            String    @map("user_id")
+  mode              String
+  venue             String
+  symbol            String
+  side              String
+  action            String
+  orderType         String    @map("order_type")
+  leverage          Int
+  qty               Decimal   @db.Decimal(30, 12)
+  price             Decimal?  @db.Decimal(30, 12)
+  avgFillPrice      Decimal?  @db.Decimal(30, 12) @map("avg_fill_price")
+  filledQty         Decimal   @default(0) @db.Decimal(30, 12) @map("filled_qty")
+  fee               Decimal   @default(0) @db.Decimal(30, 12)
+  status            String
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  user              User      @relation(fields: [userId], references: [id])
+
+  @@map("orders")
+}
+
+model ExchangeAccount {
+  id           String   @id
+  userId       String   @map("user_id")
+  exchange     String
+  label        String
+  apiKey       String   @map("api_key")
+  apiSecret    String   @map("api_secret")
+  passphrase   String
+  isTestnet    Boolean  @default(false) @map("is_testnet")
+  status       String   @default("active")
+  lastTestAt   DateTime? @map("last_test_at")
+  lastSyncAt   DateTime? @map("last_sync_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@map("exchange_accounts")
+}

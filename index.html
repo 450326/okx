@@ -1,0 +1,996 @@
+
+&lt;!DOCTYPE html&gt;
+&lt;html lang="zh-CN"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"&gt;
+  &lt;title&gt;模拟期货交易平台&lt;/title&gt;
+  &lt;script src="https://cdn.jsdelivr.net/npm/chart.js"&gt;&lt;/script&gt;
+  &lt;style&gt;
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    :root {
+      --bg-primary: #12141D;
+      --bg-card: #1B1E2C;
+      --bg-input: #252836;
+      --text-primary: #fff;
+      --text-secondary: #999;
+      --color-up: #00D8A6;
+      --color-down: #FF4757;
+      --color-warning: #FFCE00;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      max-width: 480px;
+      margin: 0 auto;
+      padding-bottom: 80px;
+    }
+
+    /* APP 头部 */
+    .app-header {
+      padding: 16px;
+      background: var(--bg-card);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid var(--bg-input);
+    }
+
+    .app-header h1 {
+      font-size: 18px;
+      color: var(--color-up);
+      font-weight: bold;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .theme-btn {
+      padding: 6px 12px;
+      background: var(--bg-input);
+      border: none;
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* 资产卡片 */
+    .asset-card {
+      background: linear-gradient(135deg, var(--color-up) 0%, #00B894 100%);
+      margin: 12px;
+      padding: 20px;
+      border-radius: 16px;
+    }
+
+    .asset-label {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .asset-value {
+      font-size: 32px;
+      font-weight: bold;
+      margin: 8px 0;
+    }
+
+    .asset-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    /* 品种选择 */
+    .symbol-selector {
+      margin: 12px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .symbol-btn {
+      padding: 10px 16px;
+      background: var(--bg-card);
+      border: none;
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 14px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .symbol-btn.active {
+      background: var(--color-up);
+      color: #000;
+      font-weight: bold;
+    }
+
+    /* 价格卡片 */
+    .price-card {
+      background: var(--bg-card);
+      margin: 12px;
+      padding: 16px;
+      border-radius: 16px;
+    }
+
+    .price-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .price-title {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .price-change {
+      font-size: 14px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: bold;
+    }
+
+    .price-change.up {
+      background: rgba(0, 216, 166, 0.2);
+      color: var(--color-up);
+    }
+
+    .price-change.down {
+      background: rgba(255, 71, 87, 0.2);
+      color: var(--color-down);
+    }
+
+    .price {
+      font-size: 36px;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+
+    .price-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* K线图 */
+    .chart-container {
+      background: var(--bg-card);
+      margin: 12px;
+      padding: 16px;
+      border-radius: 16px;
+    }
+
+    /* 交易区域 */
+    .trade-section {
+      margin: 12px;
+    }
+
+    .trade-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      border-radius: 12px;
+      background: var(--bg-card);
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .tab.active {
+      background: var(--color-up);
+      color: #000;
+    }
+
+    .input-group {
+      margin-bottom: 12px;
+    }
+
+    .input-group label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 14px;
+      background: var(--bg-card);
+      border: none;
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 16px;
+      outline: none;
+    }
+
+    /* 买卖按钮 */
+    .trade-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .btn-long {
+      flex: 1;
+      padding: 16px;
+      background: var(--color-up);
+      color: #000;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+    }
+
+    .btn-short {
+      flex: 1;
+      padding: 16px;
+      background: var(--color-down);
+      color: #fff;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+    }
+
+    /* 持仓卡片 */
+    .section-title {
+      padding: 0 16px;
+      margin: 20px 0 10px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .position-card {
+      background: var(--bg-card);
+      margin: 8px 12px;
+      padding: 14px;
+      border-radius: 12px;
+    }
+
+    .position-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .pos-side {
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .pos-side.long {
+      background: var(--color-up);
+      color: #000;
+    }
+
+    .pos-side.short {
+      background: var(--color-down);
+      color: #fff;
+    }
+
+    .position-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .position-detail-item {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .pnl-profit {
+      color: var(--color-up);
+      font-weight: bold;
+      font-size: 18px;
+    }
+
+    .pnl-loss {
+      color: var(--color-down);
+      font-weight: bold;
+      font-size: 18px;
+    }
+
+    .position-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .close-btn {
+      flex: 1;
+      padding: 10px;
+      background: var(--bg-input);
+      color: var(--text-primary);
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* 历史订单 */
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--bg-input);
+    }
+
+    .history-item:last-child {
+      border-bottom: none;
+    }
+
+    /* APP 底部导航 */
+    .app-tabbar {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 480px;
+      background: var(--bg-card);
+      display: flex;
+      padding: 12px 0;
+      border-top: 1px solid var(--bg-input);
+      z-index: 100;
+    }
+
+    .tabbar-item {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    .tabbar-item.active {
+      color: var(--color-up);
+    }
+
+    /* 页面切换 */
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    /* 空状态 */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-secondary);
+    }
+
+    /* 资金流水 */
+    .flow-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--bg-input);
+      font-size: 14px;
+    }
+
+    .flow-time {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* 加载动画 */
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--text-secondary);
+      border-top-color: var(--color-up);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+  &lt;!-- APP 头部 --&gt;
+  &lt;div class="app-header"&gt;
+    &lt;h1&gt;模拟期货&lt;/h1&gt;
+    &lt;div class="header-right"&gt;
+      &lt;button class="theme-btn" onclick="toggleTheme()"&gt;🌙&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- 首页 --&gt;
+  &lt;div id="page-home" class="page active"&gt;
+    &lt;!-- 资产卡片 --&gt;
+    &lt;div class="asset-card"&gt;
+      &lt;div class="asset-label"&gt;总资产&lt;/div&gt;
+      &lt;div class="asset-value" id="totalBalance"&gt;100,000.00&lt;/div&gt;
+      &lt;div class="asset-row"&gt;
+        &lt;div&gt;可用: &lt;span id="availableBalance"&gt;100,000.00&lt;/span&gt; USDT&lt;/div&gt;
+        &lt;div&gt;盈亏: &lt;span id="todayPnl"&gt;0.00&lt;/span&gt;&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- 品种选择 --&gt;
+    &lt;div class="symbol-selector" id="symbolSelector"&gt;&lt;/div&gt;
+
+    &lt;!-- 价格卡片 --&gt;
+    &lt;div class="price-card"&gt;
+      &lt;div class="price-top"&gt;
+        &lt;div class="price-title" id="currentSymbol"&gt;BTC/USDT&lt;/div&gt;
+        &lt;div class="price-change" id="priceChange"&gt;+0.00%&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class="price" id="price"&gt;--&lt;/div&gt;
+      &lt;div class="price-stats"&gt;
+        &lt;div&gt;24H最高: &lt;span id="high24h"&gt;--&lt;/span&gt;&lt;/div&gt;
+        &lt;div&gt;24H最低: &lt;span id="low24h"&gt;--&lt;/span&gt;&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class="price-stats" style="margin-top: 8px;"&gt;
+        &lt;div&gt;成交量: &lt;span id="volume24h"&gt;--&lt;/span&gt;&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- K线图 --&gt;
+    &lt;div class="chart-container"&gt;
+      &lt;canvas id="priceChart"&gt;&lt;/canvas&gt;
+    &lt;/div&gt;
+
+    &lt;!-- 交易区 --&gt;
+    &lt;div class="trade-section"&gt;
+      &lt;div class="trade-tabs"&gt;
+        &lt;div class="tab active"&gt;市价交易&lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;div class="input-group"&gt;
+        &lt;label&gt;杠杆倍数&lt;/label&gt;
+        &lt;select id="leverage"&gt;
+          &lt;option&gt;1&lt;/option&gt;
+          &lt;option&gt;5&lt;/option&gt;
+          &lt;option selected&gt;10&lt;/option&gt;
+          &lt;option&gt;20&lt;/option&gt;
+          &lt;option&gt;50&lt;/option&gt;
+          &lt;option&gt;100&lt;/option&gt;
+        &lt;/select&gt;
+      &lt;/div&gt;
+
+      &lt;div class="input-group"&gt;
+        &lt;label&gt;买入数量 (USDT)&lt;/label&gt;
+        &lt;input type="number" id="amount" value="100" min="1"&gt;
+      &lt;/div&gt;
+
+      &lt;div class="trade-buttons"&gt;
+        &lt;button class="btn-long" onclick="openLong()"&gt;做多 📈&lt;/button&gt;
+        &lt;button class="btn-short" onclick="openShort()"&gt;做空 📉&lt;/button&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- 持仓 --&gt;
+    &lt;h3 class="section-title"&gt;当前持仓&lt;/h3&gt;
+    &lt;div id="positions"&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- 持仓页 --&gt;
+  &lt;div id="page-positions" class="page"&gt;
+    &lt;h3 class="section-title"&gt;所有持仓&lt;/h3&gt;
+    &lt;div id="allPositions"&gt;&lt;/div&gt;
+    &lt;h3 class="section-title"&gt;历史订单&lt;/h3&gt;
+    &lt;div class="position-card" id="historyOrders"&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- 资金页 --&gt;
+  &lt;div id="page-assets" class="page"&gt;
+    &lt;div class="asset-card" style="margin-top: 12px;"&gt;
+      &lt;div class="asset-label"&gt;总资产&lt;/div&gt;
+      &lt;div class="asset-value" id="assetsTotal"&gt;100,000.00&lt;/div&gt;
+      &lt;div class="asset-row"&gt;
+        &lt;div&gt;可用: &lt;span id="assetsAvailable"&gt;100,000.00&lt;/span&gt; USDT&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class="asset-row" style="margin-top: 8px;"&gt;
+        &lt;div&gt;持仓占用: &lt;span id="assetsFrozen"&gt;0.00&lt;/span&gt; USDT&lt;/div&gt;
+        &lt;div&gt;未实现盈亏: &lt;span id="assetsUnrealized"&gt;0.00&lt;/span&gt;&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;h3 class="section-title"&gt;资金流水&lt;/h3&gt;
+    &lt;div class="position-card" id="fundFlow"&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- APP 底部栏 --&gt;
+  &lt;div class="app-tabbar"&gt;
+    &lt;div class="tabbar-item active" onclick="switchPage('home')"&gt;交易&lt;/div&gt;
+    &lt;div class="tabbar-item" onclick="switchPage('positions')"&gt;持仓&lt;/div&gt;
+    &lt;div class="tabbar-item" onclick="switchPage('assets')"&gt;资产&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;script&gt;
+    // ========== 全局数据 ==========
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT'];
+    let currentSymbol = 'BTCUSDT';
+    let price = 0;
+    let priceData = [];
+    let balance = {
+      total: 100000,
+      available: 100000,
+      frozen: 0,
+      unrealizedPnl: 0
+    };
+    let positions = JSON.parse(localStorage.getItem('positions')) || [];
+    let history = JSON.parse(localStorage.getItem('history')) || [];
+    let fundFlow = JSON.parse(localStorage.getItem('fundFlow')) || [];
+    const feeRate = 0.0005; // 手续费万分之五
+    let priceChart = null;
+    let isDarkTheme = true;
+    let ws = null;
+
+    // ========== 初始化 ==========
+    init();
+
+    function init() {
+      renderSymbolSelector();
+      connectWebSocket();
+      fetchTicker();
+      initChart();
+      render();
+      setInterval(fetchTicker, 3000);
+    }
+
+    // ========== WebSocket 实时行情 ==========
+    function connectWebSocket() {
+      if (ws) ws.close();
+      
+      ws = new WebSocket('wss://stream.binance.com:9443/ws/!ticker@arr');
+      
+      ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        data.forEach(ticker =&gt; {
+          if (symbols.includes(ticker.s)) {
+            updatePrice(ticker);
+          }
+        });
+      };
+
+      ws.onclose = function() {
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+
+    function updatePrice(ticker) {
+      if (ticker.s === currentSymbol) {
+        price = parseFloat(ticker.c);
+        updatePriceDisplay(ticker);
+        checkLiquidation();
+        render();
+      }
+    }
+
+    function fetchTicker() {
+      fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${currentSymbol}`)
+        .then(res =&gt; res.json())
+        .then(data =&gt; {
+          price = parseFloat(data.lastPrice);
+          updatePriceDisplay(data);
+          fetchKlines();
+          render();
+        });
+    }
+
+    function updatePriceDisplay(data) {
+      document.getElementById('price').innerText = parseFloat(data.lastPrice);
+      const change = parseFloat(data.priceChangePercent);
+      const changeEl = document.getElementById('priceChange');
+      changeEl.innerText = (change &gt;= 0 ? '+' : '') + change.toFixed(2) + '%';
+      changeEl.className = 'price-change ' + (change &gt;= 0 ? 'up' : 'down');
+      document.getElementById('high24h').innerText = data.highPrice;
+      document.getElementById('low24h').innerText = data.lowPrice;
+      document.getElementById('volume24h').innerText = parseFloat(data.volume).toFixed(2);
+      document.getElementById('currentSymbol').innerText = currentSymbol.replace('USDT', '/USDT');
+    }
+
+    function fetchKlines() {
+      fetch(`https://api.binance.com/api/v3/klines?symbol=${currentSymbol}&amp;interval=1m&amp;limit=60`)
+        .then(res =&gt; res.json())
+        .then(data =&gt; {
+          priceData = data.map(k =&gt; parseFloat(k[4]));
+          updateChart();
+        });
+    }
+
+    function initChart() {
+      const ctx = document.getElementById('priceChart').getContext('2d');
+      priceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: Array(60).fill(''),
+          datasets: [{
+            label: '价格',
+            data: [],
+            borderColor: '#00D8A6',
+            backgroundColor: 'rgba(0, 216, 166, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: { display: false }
+          }
+        }
+      });
+    }
+
+    function updateChart() {
+      if (priceChart) {
+        priceChart.data.datasets[0].data = priceData;
+        priceChart.update();
+      }
+    }
+
+    function renderSymbolSelector() {
+      const container = document.getElementById('symbolSelector');
+      container.innerHTML = symbols.map(s =&gt; 
+        `&lt;button class="symbol-btn ${s === currentSymbol ? 'active' : ''}" onclick="selectSymbol('${s}')"&gt;${s.replace('USDT', '')}&lt;/button&gt;`
+      ).join('');
+    }
+
+    function selectSymbol(symbol) {
+      currentSymbol = symbol;
+      renderSymbolSelector();
+      fetchTicker();
+    }
+
+    // ========== 页面切换 ==========
+    function switchPage(page) {
+      document.querySelectorAll('.page').forEach(p =&gt; p.classList.remove('active'));
+      document.querySelectorAll('.tabbar-item').forEach(t =&gt; t.classList.remove('active'));
+      document.getElementById(`page-${page}`).classList.add('active');
+      event.target.classList.add('active');
+      if (page === 'positions') renderAllPositions();
+      if (page === 'assets') renderAssets();
+    }
+
+    // ========== 渲染 ==========
+    function render() {
+      updateBalances();
+      renderPositions();
+      saveData();
+    }
+
+    function updateBalances() {
+      let totalUnrealized = 0;
+      let totalFrozen = 0;
+      let totalUsedMargin = 0;
+
+      positions.forEach(pos =&gt; {
+        const pnl = calculatePnl(pos);
+        totalUnrealized += pnl;
+        totalFrozen += pos.margin;
+        totalUsedMargin += pos.margin;
+      });
+
+      const realizedPnl = calculateTotalPnl();
+      
+      balance.unrealizedPnl = totalUnrealized;
+      balance.frozen = totalFrozen;
+      balance.total = 100000 + realizedPnl + totalUnrealized;
+      balance.available = 100000 + realizedPnl - totalUsedMargin;
+
+      document.getElementById('totalBalance').innerText = balance.total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      document.getElementById('availableBalance').innerText = balance.available.toFixed(2);
+      document.getElementById('todayPnl').innerText = (balance.unrealizedPnl &gt;= 0 ? '+' : '') + balance.unrealizedPnl.toFixed(2);
+    }
+
+    function calculateTotalPnl() {
+      let total = 0;
+      history.forEach(h =&gt; {
+        if (h.pnl) {
+          total += parseFloat(h.pnl);
+        }
+        if (h.fee) {
+          total -= parseFloat(h.fee);
+        }
+      });
+      return total;
+    }
+
+    function saveData() {
+      localStorage.setItem('positions', JSON.stringify(positions));
+      localStorage.setItem('history', JSON.stringify(history));
+      localStorage.setItem('fundFlow', JSON.stringify(fundFlow));
+    }
+
+    // ========== 开仓 ==========
+    function openLong() {
+      openPosition('long');
+    }
+    function openShort() {
+      openPosition('short');
+    }
+
+    function openPosition(side) {
+      const amount = Number(document.getElementById('amount').value);
+      const leverage = Number(document.getElementById('leverage').value);
+      
+      if (amount &lt;= 0 || amount &gt; balance.available) {
+        alert('余额不足');
+        return;
+      }
+
+      const fee = amount * feeRate;
+      const margin = amount;
+
+      positions.push({
+        id: Date.now().toString(),
+        symbol: currentSymbol,
+        side,
+        entryPrice: price,
+        size: amount,
+        leverage,
+        margin,
+        timestamp: Date.now()
+      });
+
+      history.push({
+        id: Date.now().toString(),
+        type: '开' + (side === 'long' ? '多' : '空'),
+        symbol: currentSymbol,
+        price: price.toFixed(2),
+        amount: amount.toFixed(2),
+        fee: fee.toFixed(2),
+        timestamp: Date.now()
+      });
+
+      fundFlow.unshift({
+        type: '开仓',
+        amount: '-' + (amount + fee).toFixed(2),
+        timestamp: Date.now()
+      });
+
+      render();
+    }
+
+    // ========== 平仓 ==========
+    function closePosition(index) {
+      const pos = positions[index];
+      const pnl = calculatePnl(pos);
+      const fee = pos.size * feeRate;
+      const total = pos.margin + pnl - fee;
+
+      history.push({
+        id: Date.now().toString(),
+        type: '平' + (pos.side === 'long' ? '多' : '空'),
+        symbol: pos.symbol,
+        pnl: pnl.toFixed(2),
+        fee: fee.toFixed(2),
+        timestamp: Date.now()
+      });
+
+      fundFlow.unshift({
+        type: '平仓',
+        amount: (pnl &gt;= 0 ? '+' : '') + total.toFixed(2),
+        timestamp: Date.now()
+      });
+
+      positions.splice(index, 1);
+      render();
+    }
+
+    function calculatePnl(pos) {
+      if (pos.side === 'long') {
+        return (price - pos.entryPrice) * pos.size * pos.leverage / pos.entryPrice;
+      } else {
+        return (pos.entryPrice - price) * pos.size * pos.leverage / pos.entryPrice;
+      }
+    }
+
+    // ========== 渲染持仓 ==========
+    function renderPositions() {
+      const el = document.getElementById('positions');
+      el.innerHTML = '';
+
+      if (positions.length === 0) {
+        el.innerHTML = '&lt;div class="empty-state"&gt;暂无持仓&lt;/div&gt;';
+        return;
+      }
+
+      positions.forEach((pos, i) =&gt; {
+        const pnl = calculatePnl(pos);
+        const pnlClass = pnl &gt;= 0 ? 'pnl-profit' : 'pnl-loss';
+
+        const div = document.createElement('div');
+        div.className = 'position-card';
+        div.innerHTML = `
+          &lt;div class="position-header"&gt;
+            &lt;div class="pos-side ${pos.side}"&gt;${pos.side === 'long' ? '做多' : '做空'}&lt;/div&gt;
+            &lt;div class="${pnlClass}"&gt;${pnl &gt;= 0 ? '+' : ''}${pnl.toFixed(2)}&lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class="position-details"&gt;
+            &lt;div class="position-detail-item"&gt;&lt;span&gt;品种&lt;/span&gt;&lt;span&gt;${pos.symbol.replace('USDT', '/USDT')}&lt;/span&gt;&lt;/div&gt;
+            &lt;div class="position-detail-item"&gt;&lt;span&gt;杠杆&lt;/span&gt;&lt;span&gt;${pos.leverage}x&lt;/span&gt;&lt;/div&gt;
+            &lt;div class="position-detail-item"&gt;&lt;span&gt;开仓价&lt;/span&gt;&lt;span&gt;${pos.entryPrice.toFixed(2)}&lt;/span&gt;&lt;/div&gt;
+            &lt;div class="position-detail-item"&gt;&lt;span&gt;数量&lt;/span&gt;&lt;span&gt;${pos.size} USDT&lt;/span&gt;&lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class="position-actions"&gt;
+            &lt;button class="close-btn" onclick="closePosition(${i})"&gt;平仓&lt;/button&gt;
+          &lt;/div&gt;
+        `;
+        el.appendChild(div);
+      });
+    }
+
+    function renderAllPositions() {
+      const el = document.getElementById('allPositions');
+      el.innerHTML = '';
+
+      if (positions.length === 0) {
+        el.innerHTML = '&lt;div class="empty-state"&gt;暂无持仓&lt;/div&gt;';
+        return;
+      }
+
+      positions.forEach((pos, i) =&gt; {
+        const pnl = calculatePnl(pos);
+        const pnlClass = pnl &gt;= 0 ? 'pnl-profit' : 'pnl-loss';
+
+        const div = document.createElement('div');
+        div.className = 'position-card';
+        div.style.margin = '8px 12px';
+        div.innerHTML = `
+          &lt;div class="position-header"&gt;
+            &lt;div class="pos-side ${pos.side}"&gt;${pos.side === 'long' ? '做多' : '做空'}&lt;/div&gt;
+            &lt;div class="${pnlClass}"&gt;${pnl &gt;= 0 ? '+' : ''}${pnl.toFixed(2)}&lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class="position-details"&gt;
+            &lt;div class="position-detail-item"&gt;&lt;span&gt;品种&lt;/span&gt;&lt;span&gt;${pos.symbol.replace('USDT', '/USDT')}&lt;/span&gt;&lt;/div&gt;
+            &lt;div class="position-detail-item"&gt;&lt;span&gt;杠杆&lt;/span&gt;&lt;span&gt;${pos.leverage}x&lt;/span&gt;&lt;/div&gt;
+            &lt;div class="position-detail-item"&gt;&lt;span&gt;开仓价&lt;/span&gt;&lt;span&gt;${pos.entryPrice.toFixed(2)}&lt;/span&gt;&lt;/div&gt;
+            &lt;div class="position-detail-item"&gt;&lt;span&gt;数量&lt;/span&gt;&lt;span&gt;${pos.size} USDT&lt;/span&gt;&lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class="position-actions"&gt;
+            &lt;button class="close-btn" onclick="closePosition(${i})"&gt;平仓&lt;/button&gt;
+          &lt;/div&gt;
+        `;
+        el.appendChild(div);
+      });
+
+      // 历史订单
+      const historyEl = document.getElementById('historyOrders');
+      historyEl.innerHTML = '';
+      if (history.length === 0) {
+        historyEl.innerHTML = '&lt;div class="empty-state"&gt;暂无历史订单&lt;/div&gt;';
+      } else {
+        history.slice(-20).reverse().forEach(h =&gt; {
+          const div = document.createElement('div');
+          div.className = 'history-item';
+          div.innerHTML = `
+            &lt;div&gt;
+              &lt;div&gt;${h.type} ${h.symbol ? h.symbol.replace('USDT', '/USDT') : ''}&lt;/div&gt;
+              &lt;div class="flow-time"&gt;${new Date(h.timestamp).toLocaleString()}&lt;/div&gt;
+            &lt;/div&gt;
+            &lt;div&gt;${h.pnl ? (parseFloat(h.pnl) &gt;= 0 ? '+' : '') + h.pnl : h.price}&lt;/div&gt;
+          `;
+          historyEl.appendChild(div);
+        });
+      }
+    }
+
+    function renderAssets() {
+      let totalUnrealized = 0;
+      let totalFrozen = 0;
+
+      positions.forEach(pos =&gt; {
+        const pnl = calculatePnl(pos);
+        totalUnrealized += pnl;
+        totalFrozen += pos.margin;
+      });
+
+      document.getElementById('assetsTotal').innerText = balance.total.toFixed(2);
+      document.getElementById('assetsAvailable').innerText = balance.available.toFixed(2);
+      document.getElementById('assetsFrozen').innerText = totalFrozen.toFixed(2);
+      document.getElementById('assetsUnrealized').innerText = (totalUnrealized &gt;= 0 ? '+' : '') + totalUnrealized.toFixed(2);
+
+      const flowEl = document.getElementById('fundFlow');
+      flowEl.innerHTML = '';
+      if (fundFlow.length === 0) {
+        flowEl.innerHTML = '&lt;div class="empty-state"&gt;暂无资金流水&lt;/div&gt;';
+      } else {
+        fundFlow.slice(0, 20).forEach(f =&gt; {
+          const div = document.createElement('div');
+          div.className = 'flow-item';
+          div.innerHTML = `
+            &lt;div&gt;
+              &lt;div&gt;${f.type}&lt;/div&gt;
+              &lt;div class="flow-time"&gt;${new Date(f.timestamp).toLocaleString()}&lt;/div&gt;
+            &lt;/div&gt;
+            &lt;div&gt;${f.amount}&lt;/div&gt;
+          `;
+          flowEl.appendChild(div);
+        });
+      }
+    }
+
+    // ========== 强平 ==========
+    function checkLiquidation() {
+      for (let i = positions.length - 1; i &gt;= 0; i--) {
+        const pos = positions[i];
+        const pnl = calculatePnl(pos);
+
+        if (pnl &lt;= -pos.margin * 0.8) {
+          positions.splice(i, 1);
+          history.push({
+            id: Date.now().toString(),
+            type: '⚠️强制平仓',
+            symbol: pos.symbol,
+            timestamp: Date.now()
+          });
+          fundFlow.unshift({
+            type: '强制平仓',
+            amount: '-' + pos.margin.toFixed(2),
+            timestamp: Date.now()
+          });
+        }
+      }
+    }
+
+    // ========== 主题切换 ==========
+    function toggleTheme() {
+      isDarkTheme = !isDarkTheme;
+      const root = document.documentElement;
+      
+      if (isDarkTheme) {
+        root.style.setProperty('--bg-primary', '#12141D');
+        root.style.setProperty('--bg-card', '#1B1E2C');
+        root.style.setProperty('--bg-input', '#252836');
+        root.style.setProperty('--text-primary', '#fff');
+        root.style.setProperty('--text-secondary', '#999');
+      } else {
+        root.style.setProperty('--bg-primary', '#FFFFFF');
+        root.style.setProperty('--bg-card', '#F5F7FA');
+        root.style.setProperty('--bg-input', '#E8EAED');
+        root.style.setProperty('--text-primary', '#111827');
+        root.style.setProperty('--text-secondary', '#6B7280');
+      }
+    }
+  &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;

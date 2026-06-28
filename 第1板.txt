@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>模拟期货 APP</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #12141D;
+      color: #fff;
+      max-width: 480px;
+      margin: 0 auto;
+      padding-bottom: 70px;
+    }
+
+    /* APP 头部 */
+    .app-header {
+      padding: 20px 16px;
+      background: #1B1E2C;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .app-header h1 {
+      font-size: 20px;
+      color: #00D8A6;
+    }
+
+    .balance {
+      font-size: 16px;
+      color: #FFCE00;
+      font-weight: bold;
+    }
+
+    /* 价格卡片 */
+    .price-card {
+      background: #1B1E2C;
+      margin: 12px;
+      padding: 16px;
+      border-radius: 16px;
+    }
+
+    .price-title {
+      font-size: 14px;
+      color: #999;
+    }
+
+    .price {
+      font-size: 28px;
+      font-weight: bold;
+      margin: 6px 0;
+      color: #00D8A6;
+    }
+
+    /* 交易区域 */
+    .trade-section {
+      margin: 12px;
+    }
+
+    .trade-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      border-radius: 12px;
+      background: #252836;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: #00D8A6;
+      color: #000;
+    }
+
+    .input-group {
+      margin-bottom: 12px;
+    }
+
+    .input-group label {
+      font-size: 13px;
+      color: #aaa;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 14px;
+      background: #252836;
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+    }
+
+    /* 买卖按钮 */
+    .trade-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .btn-long {
+      flex: 1;
+      padding: 16px;
+      background: #00D8A6;
+      color: #000;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+    }
+
+    .btn-short {
+      flex: 1;
+      padding: 16px;
+      background: #FF4757;
+      color: #fff;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+    }
+
+    /* 持仓卡片 */
+    .section-title {
+      padding: 0 16px;
+      margin: 20px 0 10px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .position-card {
+      background: #1B1E2C;
+      margin: 8px 12px;
+      padding: 14px;
+      border-radius: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pos-side {
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .long {
+      background: #00D8A6;
+      color: #000;
+    }
+
+    .short {
+      background: #FF4757;
+      color: #fff;
+    }
+
+    .pnl-profit {
+      color: #00D8A6;
+      font-weight: bold;
+    }
+
+    .pnl-loss {
+      color: #FF4757;
+      font-weight: bold;
+    }
+
+    .close-btn {
+      padding: 6px 10px;
+      background: #333;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    /* APP 底部导航 */
+    .app-tabbar {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 480px;
+      background: #1B1E2C;
+      display: flex;
+      padding: 12px 0;
+      border-top: 1px solid #333;
+    }
+
+    .tabbar-item {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+    }
+
+    .tabbar-item.active {
+      color: #00D8A6;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- APP 头部 -->
+  <div class="app-header">
+    <h1>模拟期货</h1>
+    <div class="balance" id="balance">100000.00 USDT</div>
+  </div>
+
+  <!-- 价格 -->
+  <div class="price-card">
+    <div class="price-title">BTC/USDT 永续合约</div>
+    <div class="price" id="price">50000.00</div>
+  </div>
+
+  <!-- 交易区 -->
+  <div class="trade-section">
+    <div class="trade-tabs">
+      <div class="tab active">市价交易</div>
+    </div>
+
+    <div class="input-group">
+      <label>杠杆倍数</label>
+      <select id="leverage">
+        <option>1</option>
+        <option>5</option>
+        <option selected>10</option>
+        <option>20</option>
+        <option>50</option>
+        <option>100</option>
+      </select>
+    </div>
+
+    <div class="input-group">
+      <label>买入数量 (USDT)</label>
+      <input type="number" id="amount" value="100" min="1">
+    </div>
+
+    <div class="trade-buttons">
+      <button class="btn-long" onclick="openLong()">做多 📈</button>
+      <button class="btn-short" onclick="openShort()">做空 📉</button>
+    </div>
+  </div>
+
+  <!-- 持仓 -->
+  <h3 class="section-title">当前持仓</h3>
+  <div id="positions"></div>
+
+  <!-- 历史订单 -->
+  <h3 class="section-title">历史订单</h3>
+  <div id="history"></div>
+
+  <!-- APP 底部栏 -->
+  <div class="app-tabbar">
+    <div class="tabbar-item active">交易</div>
+    <div class="tabbar-item">持仓</div>
+    <div class="tabbar-item">资产</div>
+  </div>
+
+  <script>
+    // ========== 全局数据 ==========
+    let price = 50000
+    let balance = 100000
+    let positions = JSON.parse(localStorage.getItem('positions')) || []
+    let history = JSON.parse(localStorage.getItem('history')) || []
+    const feeRate = 0.0005 // 手续费万分之五
+
+    // 渲染页面
+    function render() {
+      document.getElementById('price').innerText = price.toFixed(2)
+      document.getElementById('balance').innerText = balance.toFixed(2) + ' USDT'
+      renderPositions()
+      renderHistory()
+      saveData()
+    }
+
+    // 保存数据
+    function saveData() {
+      localStorage.setItem('positions', JSON.stringify(positions))
+      localStorage.setItem('history', JSON.stringify(history))
+    }
+
+    // 价格自动波动
+    setInterval(() => {
+      price += (Math.random() - 0.5) * 200
+      if (price < 10000) price = 10000
+      checkLiquidation()
+      render()
+    }, 1500)
+
+    // ========== 开仓 ==========
+    function openLong() {
+      openPosition('long')
+    }
+    function openShort() {
+      openPosition('short')
+    }
+
+    function openPosition(side) {
+      const amount = Number(document.getElementById('amount').value)
+      const leverage = Number(document.getElementById('leverage').value)
+      
+      if (amount <= 0 || amount > balance) {
+        alert('余额不足')
+        return
+      }
+
+      const fee = amount * feeRate
+      const value = amount * leverage
+      const margin = amount
+
+      balance -= (amount + fee)
+
+      positions.push({
+        side,
+        entry: price,
+        amount,
+        leverage,
+        value,
+        margin,
+        time: new Date().toLocaleString()
+      })
+
+      history.push({
+        type: '开' + side,
+        price: price.toFixed(2),
+        amount: amount.toFixed(2),
+        time: new Date().toLocaleString()
+      })
+
+      render()
+    }
+
+    // ========== 平仓 ==========
+    function closePosition(index) {
+      const pos = positions[index]
+      const pnl = pos.side === 'long' 
+        ? (price - pos.entry) * pos.value / pos.entry
+        : (pos.entry - price) * pos.value / pos.entry
+
+      const fee = pos.amount * feeRate
+      const total = pos.margin + pnl - fee
+      balance += total
+
+      history.push({
+        type: '平' + pos.side,
+        pnl: pnl.toFixed(2),
+        time: new Date().toLocaleString()
+      })
+
+      positions.splice(index, 1)
+      render()
+    }
+
+    // ========== 渲染持仓 ==========
+    function renderPositions() {
+      const el = document.getElementById('positions')
+      el.innerHTML = ''
+
+      positions.forEach((pos, i) => {
+        const pnl = pos.side === 'long'
+          ? (price - pos.entry) * pos.value / price
+          : (pos.entry - price) * pos.value / price
+          
+        const pnlClass = pnl >= 0 ? 'pnl-profit' : 'pnl-loss'
+
+        const div = document.createElement('div')
+        div.className = 'position-card'
+        div.innerHTML = `
+          <div>
+            <div class="pos-side ${pos.side}">${pos.side === 'long' ? '做多' : '做空'}</div>
+            <div style="margin-top:6px;font-size:12px;color:#999">开仓: ${pos.entry.toFixed(2)}</div>
+          </div>
+          <div class="${pnlClass}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</div>
+          <button class="close-btn" onclick="closePosition(${i})">平仓</button>
+        `
+        el.appendChild(div)
+      })
+    }
+
+    // ========== 历史订单 ==========
+    function renderHistory() {
+      const el = document.getElementById('history')
+      el.innerHTML = ''
+      history.slice(-8).forEach(h => {
+        const div = document.createElement('div')
+        div.className = 'position-card'
+        div.style.fontSize = '13px'
+        div.innerHTML = `
+          <div>${h.type}</div>
+          <div>${h.pnl ? h.pnl : h.price}</div>
+        `
+        el.appendChild(div)
+      })
+    }
+
+    // ========== 强平 ==========
+    function checkLiquidation() {
+      for (let i = positions.length - 1; i >= 0; i--) {
+        const pos = positions[i]
+        const pnl = pos.side === 'long'
+          ? (price - pos.entry) * pos.value / pos.entry
+          : (pos.entry - price) * pos.value / pos.entry
+
+        if (pnl <= -pos.margin * 0.8) {
+          balance -= pos.margin * 0.8
+          positions.splice(i, 1)
+          history.push({ type: '⚠️强制平仓', time: new Date().toLocaleString() })
+        }
+      }
+    }
+
+    render()
+  </script>
+</body>
+</html>
