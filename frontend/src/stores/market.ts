@@ -40,6 +40,7 @@ export const useMarketStore = defineStore('market', () => {
   let socket: Socket | null = null;
   let currentWsSymbol = '';
   let currentWsInterval = '';
+  let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   function connectWs(sym: string, interval: string) {
     if (socket) disconnectWs();
@@ -47,14 +48,23 @@ export const useMarketStore = defineStore('market', () => {
     currentWsSymbol = sym;
     currentWsInterval = interval;
 
-    socket = io('http://localhost:3000/market', { transports: ['websocket'] });
+    socket = io('http://localhost:3000/market', {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+    });
 
     socket.on('connect', () => {
-      socket!.emit('subscribe', { exchange: exchange.value, channel: 'tickers', symbol: sym });
-      socket!.emit('subscribe', { exchange: exchange.value, channel: 'books', symbol: sym });
-      socket!.emit('subscribe', { exchange: exchange.value, channel: 'kline', symbol: sym, interval });
-      socket!.emit('subscribe', { exchange: exchange.value, channel: 'trades', symbol: sym });
+      if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+      }
+      doSubscribe();
     });
+
+    socket.on('connect_error', () => {});
 
     socket.on('tickers', (msg: { data: TickerItem }) => {
       if (msg.data) {
@@ -95,7 +105,19 @@ export const useMarketStore = defineStore('market', () => {
     socket.on('disconnect', () => {});
   }
 
+  function doSubscribe() {
+    if (!socket?.connected) return;
+    socket.emit('subscribe', { exchange: exchange.value, channel: 'tickers', symbol: currentWsSymbol });
+    socket.emit('subscribe', { exchange: exchange.value, channel: 'books', symbol: currentWsSymbol });
+    socket.emit('subscribe', { exchange: exchange.value, channel: 'kline', symbol: currentWsSymbol, interval: currentWsInterval });
+    socket.emit('subscribe', { exchange: exchange.value, channel: 'trades', symbol: currentWsSymbol });
+  }
+
   function disconnectWs() {
+    if (wsReconnectTimer) {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = null;
+    }
     if (!socket) return;
 
     socket.emit('unsubscribe', { exchange: exchange.value, channel: 'tickers', symbol: currentWsSymbol });

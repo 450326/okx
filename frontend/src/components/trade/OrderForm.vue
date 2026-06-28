@@ -101,6 +101,7 @@ import type { OrderPayload, OrderPreviewPayload } from '../../api/types';
 
 const props = defineProps<{
   symbol: string;
+  klinePrice?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -130,6 +131,17 @@ watch(
   () => props.symbol,
   () => {
     localMessage.value = '';
+  },
+);
+
+watch(
+  () => props.klinePrice,
+  (price) => {
+    if (typeof price === 'number' && price > 0) {
+      form.price = price.toFixed(2);
+      form.orderType = 'limit';
+      localMessage.value = `已从K线获取价格 ${form.price}，使用限价单`;
+    }
   },
 );
 

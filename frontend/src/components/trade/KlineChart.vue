@@ -9,8 +9,9 @@
         <button
           v-for="item in intervals"
           :key="item.value"
-          :class="['interval-btn', { active: item.value === modelValue }]"
-          @click="$emit('update:modelValue', item.value)"
+          :class="['interval-btn', { active: item.value === modelValue, disabled: item.disabled }]"
+          :disabled="item.disabled"
+          @click="item.disabled ? undefined : $emit('update:modelValue', item.value)"
         >
           {{ item.label }}
         </button>
@@ -22,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData, type Time } from 'lightweight-charts';
 import type { KlineItem } from '../../api/types';
 
@@ -34,8 +35,9 @@ const props = defineProps<{
   modelValue: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'update:modelValue': [value: string];
+  'clickPrice': [price: number];
 }>();
 
 const chartContainer = ref<HTMLElement | null>(null);
@@ -43,15 +45,19 @@ let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<'Candlestick'> | null = null;
 let volumeSeries: ISeriesApi<'Histogram'> | null = null;
 
-const intervals = [
-  { label: '1分', value: '1m' },
-  { label: '5分', value: '5m' },
-  { label: '15分', value: '15m' },
-  { label: '30分', value: '30m' },
-  { label: '1H', value: '1H' },
-  { label: '4H', value: '4H' },
-  { label: '1天', value: '1D' },
-];
+const intervals = computed(() => [
+  { label: '1秒', value: '1s', disabled: props.exchange === 'binance' },
+  { label: '30秒', value: '30s', disabled: props.exchange === 'binance' },
+  { label: '1分', value: '1m', disabled: false },
+  { label: '5分', value: '5m', disabled: false },
+  { label: '15分', value: '15m', disabled: false },
+  { label: '30分', value: '30m', disabled: false },
+  { label: '1H', value: '1H', disabled: false },
+  { label: '4H', value: '4H', disabled: false },
+  { label: '1天', value: '1D', disabled: false },
+]);
+
+const isSecondsInterval = computed(() => props.modelValue === '1s' || props.modelValue === '30s');
 
 function buildCandleData(items: KlineItem[]): CandlestickData[] {
   return items.map((k) => ({
@@ -95,7 +101,7 @@ function initChart() {
     timeScale: {
       borderColor: isDark ? '#2a3140' : '#d7deea',
       timeVisible: true,
-      secondsVisible: false,
+      secondsVisible: isSecondsInterval.value,
     },
     width: container.clientWidth,
     height: 460,
@@ -127,6 +133,18 @@ function initChart() {
     }
   });
 
+  chart.subscribeClick((param) => {
+    if (!param.point || !candleSeries) return;
+    const price = param.seriesPrices?.get(candleSeries);
+    if (typeof price === 'number') {
+      emit('clickPrice', price);
+    } else if (typeof price === 'object' && price !== null) {
+      const p = price as { close?: number; value?: number };
+      if (typeof p.close === 'number') emit('clickPrice', p.close);
+      else if (typeof p.value === 'number') emit('clickPrice', p.value);
+    }
+  });
+
   updateChartData();
 }
 
@@ -145,11 +163,25 @@ function handleResize() {
   }
 }
 
+function applyTimeScaleOptions() {
+  if (chart) {
+    chart.applyOptions({
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: isSecondsInterval.value,
+      },
+    });
+  }
+}
+
 watch(() => props.klines, () => { nextTick(updateChartData); }, { deep: false });
 
 watch(
   () => [props.symbol, props.modelValue],
-  () => { chart?.timeScale().fitContent(); },
+  () => {
+    nextTick(applyTimeScaleOptions);
+    chart?.timeScale().fitContent();
+  },
 );
 
 onMounted(() => {
@@ -195,6 +227,7 @@ onBeforeUnmount(() => {
   background: var(--bg-soft);
   padding: 3px;
   border-radius: 10px;
+  flex-wrap: wrap;
 }
 
 .interval-btn {
@@ -209,7 +242,7 @@ onBeforeUnmount(() => {
   transition: all 0.15s ease;
 }
 
-.interval-btn:hover {
+.interval-btn:hover:not(.disabled) {
   color: var(--text-primary);
 }
 
@@ -217,6 +250,11 @@ onBeforeUnmount(() => {
   background: var(--bg-card);
   color: var(--text-primary);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.interval-btn.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .chart-container {

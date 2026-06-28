@@ -78,15 +78,16 @@
         </div>
       </section>
 
-      <OrderForm :symbol="currentSymbol" @submitted="handleOrderSubmitted" />
+      <OrderForm :symbol="currentSymbol" :kline-price="klineClickPrice" @submitted="handleOrderSubmitted" />
     </section>
 
     <KlineChart
       :klines="marketStore.klines"
       :loading="marketStore.chartLoading"
       :symbol="currentSymbol"
-      v-model="klineInterval"
       :exchange="marketStore.exchange"
+      v-model="klineInterval"
+      @click-price="handleKlineClickPrice"
     />
 
     <section class="trade-panel-grid">
@@ -194,6 +195,7 @@ const orderStore = useOrderStore();
 const positionStore = usePositionStore();
 
 const klineInterval = ref('5m');
+const klineClickPrice = ref<number | null>(null);
 const currentSymbol = computed(() => props.symbol || 'BTC-USDT-SWAP');
 const currentTicker = computed(() => marketStore.tickerMap[currentSymbol.value] || null);
 const currentPosition = computed(() => positionStore.positions[0] || null);
@@ -237,6 +239,10 @@ async function loadTradePageData() {
 
 function initWs() {
   marketStore.connectWs(currentSymbol.value, klineInterval.value);
+}
+
+function handleKlineClickPrice(price: number) {
+  klineClickPrice.value = price;
 }
 
 async function switchExchange(exch: 'okx' | 'binance') {

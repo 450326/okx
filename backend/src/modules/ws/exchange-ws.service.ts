@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import WebSocket from 'ws';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
 interface ConnectionInfo {
   ws: WebSocket;
@@ -14,7 +17,17 @@ interface ConnectionInfo {
 
 @Injectable()
 export class ExchangeWsService {
+  private readonly logger = new Logger(ExchangeWsService.name);
   private connections = new Map<string, ConnectionInfo>();
+  private proxyAgent: any = null;
+
+  constructor() {
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+    if (proxyUrl) {
+      this.proxyAgent = new HttpsProxyAgent(proxyUrl);
+      this.logger.log(`使用代理: ${proxyUrl}`);
+    }
+  }
 
   subscribe(exchange: string, channel: string, symbol: string, callback: (data: any) => void): void {
     const key = `${exchange}:${channel}:${symbol}`;
@@ -27,7 +40,7 @@ export class ExchangeWsService {
     }
 
     const wsUrl = this.getWsUrl(exchange);
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, { agent: this.proxyAgent ?? undefined });
     const conn: ConnectionInfo = {
       ws,
       refCount: 1,
@@ -39,9 +52,11 @@ export class ExchangeWsService {
     };
 
     this.connections.set(key, conn);
+    this.logger.log(`WS 连接: ${exchange} ${channel} ${symbol}`);
 
     this.attachHandlers(conn);
     ws.on('open', () => {
+      this.logger.log(`WS 已连接: ${exchange} ${channel} ${symbol}`);
       this.sendSubscribe(ws, exchange, channel, symbol);
     });
   }
@@ -50,7 +65,6 @@ export class ExchangeWsService {
     const key = `${exchange}:${channel}:${symbol}`;
     const conn = this.connections.get(key);
     if (!conn) return;
-
     conn.callbacks.delete(callback);
   }
 
@@ -75,15 +89,19 @@ export class ExchangeWsService {
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code: number, reason: Buffer) => {
+      this.logger.warn(`WS 断开: ${conn.exchange} ${conn.channel} ${conn.symbol} code=${code} reason=${reason?.toString()}`);
       if (!conn.closed) {
         conn.reconnectTimer = setTimeout(() => {
+          this.logger.log(`WS 重连: ${conn.exchange} ${conn.channel} ${conn.symbol}`);
           this.reconnect(conn);
         }, 3000);
       }
     });
 
-    ws.on('error', () => {});
+    ws.on('error', (err: Error) => {
+      this.logger.error(`WS 错误: ${conn.exchange} ${conn.channel} ${conn.symbol} - ${err.message}`);
+    });
   }
 
   private closeConnection(key: string): void {
@@ -96,13 +114,14 @@ export class ExchangeWsService {
     }
     conn.ws.close();
     this.connections.delete(key);
+    this.logger.log(`WS 关闭: ${conn.exchange} ${conn.channel} ${conn.symbol}`);
   }
 
   private reconnect(conn: ConnectionInfo): void {
     if (conn.closed) return;
 
     const wsUrl = this.getWsUrl(conn.exchange);
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, { agent: this.proxyAgent ?? undefined });
     conn.ws = ws;
 
     this.attachHandlers(conn);
@@ -123,11 +142,14 @@ export class ExchangeWsService {
 
   private sendSubscribe(ws: WebSocket, exchange: string, channel: string, symbol: string): void {
     if (exchange === 'okx') {
-      const normalizedChannel = channel.replace(/^candle(\d+)h$/, (_, n) => `candle${n}H`);
-      ws.send(JSON.stringify({
+      const normalizedChannel = channel
+        .replace(/^candle(\d+)h$/, (_, n) => `candle${n}H`)
+        .replace(/^candle(\d+)d$/, (_, n) => `candle${n}D`);
+      const msg = JSON.stringify({
         op: 'subscribe',
         args: [{ channel: normalizedChannel, instId: symbol }],
-      }));
+      });
+      ws.send(msg);
     } else if (exchange === 'binance') {
       const bsym = this.toBinanceSymbol(symbol);
       let streamSuffix: string;
@@ -145,18 +167,19 @@ export class ExchangeWsService {
         streamSuffix = `@${channel}`;
       }
 
-      ws.send(JSON.stringify({
+      const msg = JSON.stringify({
         method: 'SUBSCRIBE',
         params: [`${bsym}${streamSuffix}`],
         id: 1,
-      }));
+      });
+      ws.send(msg);
     }
   }
 
   private parseMessage(exchange: string, channel: string, raw: WebSocket.Data): any {
     let msg: any;
     try {
-      const str = typeof raw === 'string' ? raw : (raw as Buffer).toString();
+      const str = raw instanceof Buffer ? raw.toString() : (raw as string);
       msg = JSON.parse(str);
     } catch {
       return null;
@@ -272,10 +295,7 @@ export class ExchangeWsService {
     if (msg.e === 'kline' && channel.startsWith('candle')) {
       const k = msg.k;
       if (!k) return null;
-      const rawSymbol = msg.s || '';
-      const symbol = this.fromBinanceSymbol(rawSymbol);
       return {
-        symbol,
         openTime: k.t,
         open: k.o,
         high: k.h,
@@ -286,10 +306,7 @@ export class ExchangeWsService {
     }
 
     if (msg.e === 'trade' && channel === 'trades') {
-      const rawSymbol = msg.s || '';
-      const symbol = this.fromBinanceSymbol(rawSymbol);
       return [{
-        symbol,
         price: msg.p,
         qty: msg.q,
         side: msg.m ? 'sell' : 'buy',

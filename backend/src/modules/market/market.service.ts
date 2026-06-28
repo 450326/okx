@@ -5,6 +5,8 @@ const OKX_BASE = 'https://www.okx.com/api/v5';
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
 
 const OKX_INTERVAL_MAP: Record<string, string> = {
+  '1s': '1s',
+  '30s': '30s',
   '1m': '1m',
   '5m': '5m',
   '15m': '15m',
