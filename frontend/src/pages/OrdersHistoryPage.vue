@@ -22,7 +22,7 @@
           <tr v-for="item in orderStore.historyOrders" :key="item.orderId">
             <td>{{ item.orderId }}</td>
             <td>{{ item.symbol }}</td>
-            <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? '开多' : '开空' }}</td>
+            <td :class="item.side === 'long' ? 'up' : 'down'">{{ formatDirection(item) }}</td>
             <td>{{ item.orderType }}</td>
             <td>{{ item.price || '-' }}</td>
             <td>{{ item.avgFillPrice || '-' }}</td>
@@ -41,9 +41,20 @@
 import { watch } from 'vue';
 import { useModeStore } from '../stores/mode';
 import { useOrderStore } from '../stores/orders';
+import type { OrderItem } from '../api/types';
 
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
+
+function formatDirection(item: OrderItem): string {
+  if (item.action === 'open') {
+    return item.side === 'long' ? '开多' : '开空';
+  }
+  if (item.action === 'close') {
+    return item.side === 'long' ? '平多' : '平空';
+  }
+  return item.side === 'long' ? '多' : '空';
+}
 
 async function loadPageData() {
   await orderStore.fetchHistory(modeStore.mode);

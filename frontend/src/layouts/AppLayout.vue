@@ -104,7 +104,6 @@ const unrealizedPnlClass = computed(() => getTrendClass(assetSnapshot.value?.unr
 const globalError = computed(() => authStore.error || modeStore.error || assetStore.error || exchangeStore.error);
 const nextModeLabel = computed(() => (modeStore.mode === 'simulation' ? '真实交易' : '模拟交易'));
 const modeConfirmTitle = computed(() => `切换到${nextModeLabel.value}`);
-// Live mode requires a bound exchange account, while switching back to simulation stays unrestricted.
 const modeConfirmEnabled = computed(() => modeStore.mode === 'live' || exchangeStore.hasActiveAccount);
 const modeConfirmDescription = computed(() =>
   modeStore.mode === 'simulation'
@@ -120,7 +119,6 @@ const modeConfirmWarning = computed(() =>
 );
 
 async function loadGlobalData() {
-  // Layout owns the shared header data so child pages can stay focused on page-specific requests.
   await Promise.all([authStore.fetchMe(), modeStore.fetchMode(), exchangeStore.fetchAccounts()]);
   await assetStore.fetchAssets(modeStore.mode);
 }

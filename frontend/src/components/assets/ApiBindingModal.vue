@@ -76,7 +76,6 @@ watch(
       return;
     }
 
-    // Reset stale secrets every time the modal opens to reduce accidental reuse.
     form.exchange = 'okx';
     form.label = '';
     form.apiKey = '';

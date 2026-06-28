@@ -40,26 +40,10 @@ export class ExchangeWsService {
 
     this.connections.set(key, conn);
 
+    this.attachHandlers(conn);
     ws.on('open', () => {
       this.sendSubscribe(ws, exchange, channel, symbol);
     });
-
-    ws.on('message', (data: WebSocket.Data) => {
-      const parsed = this.parseMessage(exchange, channel, data);
-      if (parsed !== null) {
-        conn.callbacks.forEach((cb) => cb(parsed));
-      }
-    });
-
-    ws.on('close', () => {
-      if (!conn.closed) {
-        conn.reconnectTimer = setTimeout(() => {
-          this.reconnect(key);
-        }, 3000);
-      }
-    });
-
-    ws.on('error', () => {});
   }
 
   removeCallback(exchange: string, channel: string, symbol: string, callback: (data: any) => void): void {
@@ -81,6 +65,27 @@ export class ExchangeWsService {
     }
   }
 
+  private attachHandlers(conn: ConnectionInfo): void {
+    const { ws } = conn;
+
+    ws.on('message', (data: WebSocket.Data) => {
+      const parsed = this.parseMessage(conn.exchange, conn.channel, data);
+      if (parsed !== null) {
+        conn.callbacks.forEach((cb) => cb(parsed));
+      }
+    });
+
+    ws.on('close', () => {
+      if (!conn.closed) {
+        conn.reconnectTimer = setTimeout(() => {
+          this.reconnect(conn);
+        }, 3000);
+      }
+    });
+
+    ws.on('error', () => {});
+  }
+
   private closeConnection(key: string): void {
     const conn = this.connections.get(key);
     if (!conn) return;
@@ -93,34 +98,17 @@ export class ExchangeWsService {
     this.connections.delete(key);
   }
 
-  private reconnect(key: string): void {
-    const conn = this.connections.get(key);
-    if (!conn || conn.closed) return;
+  private reconnect(conn: ConnectionInfo): void {
+    if (conn.closed) return;
 
     const wsUrl = this.getWsUrl(conn.exchange);
     const ws = new WebSocket(wsUrl);
     conn.ws = ws;
 
+    this.attachHandlers(conn);
     ws.on('open', () => {
       this.sendSubscribe(ws, conn.exchange, conn.channel, conn.symbol);
     });
-
-    ws.on('message', (data: WebSocket.Data) => {
-      const parsed = this.parseMessage(conn.exchange, conn.channel, data);
-      if (parsed !== null) {
-        conn.callbacks.forEach((cb) => cb(parsed));
-      }
-    });
-
-    ws.on('close', () => {
-      if (!conn.closed) {
-        conn.reconnectTimer = setTimeout(() => {
-          this.reconnect(key);
-        }, 3000);
-      }
-    });
-
-    ws.on('error', () => {});
   }
 
   private getWsUrl(exchange: string): string {

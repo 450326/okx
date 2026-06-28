@@ -129,7 +129,6 @@ const shortActionText = computed(() => (form.action === 'open' ? '开空' : '平
 watch(
   () => props.symbol,
   () => {
-    // Clear transient hints when switching contracts to avoid mixing states across symbols.
     localMessage.value = '';
   },
 );

@@ -36,7 +36,6 @@ export const useExchangeStore = defineStore('exchange', () => {
 
     try {
       const account = await exchangeApi.createAccount(payload);
-      // Keep the newest binding visible immediately so the modal feels responsive after save.
       accounts.value = [account, ...accounts.value.filter((item) => item.id !== account.id)];
       statusMessage.value = 'API 账户绑定成功';
       return account;

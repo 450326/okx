@@ -9,7 +9,6 @@ export const useThemeStore = defineStore('theme', () => {
 
   function applyTheme(nextTheme: Theme) {
     theme.value = nextTheme;
-    // Theme tokens are driven by the root dataset so all pages follow one switch.
     document.documentElement.dataset.theme = nextTheme;
     localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
   }

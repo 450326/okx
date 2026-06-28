@@ -13,7 +13,6 @@ http.interceptors.request.use((config) => {
   const accessToken = localStorage.getItem('accessToken');
 
   if (accessToken) {
-    // Keep auth handling centralized so page code only focuses on business data.
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
 
