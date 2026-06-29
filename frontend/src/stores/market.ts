@@ -20,7 +20,7 @@ function normalizeDepth(levels: [string, string][], reverse = false): DepthLevel
 }
 
 export const useMarketStore = defineStore('market', () => {
-  const exchange = ref<'okx' | 'binance' | 'uniswap'>('okx');
+  const exchange = ref<'okx' | 'binance' | 'uniswap' | 'polymarket'>('okx');
   const symbols = ref<MarketSymbol[]>([]);
   const tickers = ref<TickerItem[]>([]);
   const depthBids = ref<DepthLevel[]>([]);
@@ -128,7 +128,7 @@ export const useMarketStore = defineStore('market', () => {
     socket = null;
   }
 
-  function setExchange(exch: 'okx' | 'binance' | 'uniswap') {
+  function setExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket') {
     exchange.value = exch;
   }
 

@@ -4,15 +4,18 @@
       <section class="card hero-market-card">
         <div class="hero-head">
           <div>
-            <div class="hero-eyebrow">交易工作台</div>
+            <div class="hero-eyebrow">{{ isPolymarket ? '预测市场' : '交易工作台' }}</div>
             <div class="hero-symbol-line">
-              <h1 class="hero-symbol">{{ currentBaseSymbol }}</h1>
+              <h1 class="hero-symbol">{{ isPolymarket ? 'YES' : currentBaseSymbol }}</h1>
               <span class="hero-quote">/ {{ currentQuoteSymbol }}</span>
               <span :class="['hero-change', getTrendClass(currentTicker?.priceChangePercent24h)]">
-                {{ formatPercent(currentTicker?.priceChangePercent24h) }}
+                {{ isPolymarket ? formatProb(currentTicker?.lastPrice) : formatPercent(currentTicker?.priceChangePercent24h) }}
               </span>
             </div>
-            <div class="hero-mode-text">当前模式：{{ modeStore.modeLabel }}</div>
+            <div v-if="isPolymarket && currentTicker?.question" class="hero-question">
+              {{ currentTicker.question }}
+            </div>
+            <div class="hero-mode-text">{{ isPolymarket ? '概率市场' : `当前模式：${modeStore.modeLabel}` }}</div>
           </div>
 
           <div class="symbol-switches">
@@ -34,6 +37,12 @@
             >
               Uniswap
             </button>
+            <button
+              :class="['exchange-chip', { active: marketStore.exchange === 'polymarket' }]"
+              @click="switchExchange('polymarket')"
+            >
+              Polymarket
+            </button>
             <RouterLink
               v-for="item in symbolShortcuts"
               :key="item.symbol"
@@ -46,11 +55,11 @@
         </div>
 
         <div class="hero-price-block">
-          <div class="price-large">{{ currentTicker?.lastPrice || '--' }}</div>
+          <div class="price-large">{{ isPolymarket ? formatProb(currentTicker?.lastPrice) : (currentTicker?.lastPrice || '--') }}</div>
           <div class="price-sub">
             {{ exchangeLabel }}
-            · 卖一 {{ currentTicker?.askPrice || '--' }}
-            · 买一 {{ currentTicker?.bidPrice || '--' }}
+            · {{ isPolymarket ? `买价 ${formatProb(currentTicker?.bidPrice)}` : `卖一 ${currentTicker?.askPrice || '--'}` }}
+            · {{ isPolymarket ? `卖价 ${formatProb(currentTicker?.askPrice)}` : `买一 ${currentTicker?.bidPrice || '--'}` }}
           </div>
 
           <div class="range-strip">
@@ -65,12 +74,12 @@
 
           <div class="hero-stat-grid">
             <div class="hero-stat">
-              <span>买一</span>
-              <strong>{{ currentTicker?.bidPrice || '--' }}</strong>
+              <span>{{ isPolymarket ? '买价' : '买一' }}</span>
+              <strong>{{ isPolymarket ? formatProb(currentTicker?.bidPrice) : (currentTicker?.bidPrice || '--') }}</strong>
             </div>
             <div class="hero-stat">
-              <span>卖一</span>
-              <strong>{{ currentTicker?.askPrice || '--' }}</strong>
+              <span>{{ isPolymarket ? '卖价' : '卖一' }}</span>
+              <strong>{{ isPolymarket ? formatProb(currentTicker?.askPrice) : (currentTicker?.askPrice || '--') }}</strong>
             </div>
             <div class="hero-stat">
               <span>24H 成交量</span>
@@ -216,12 +225,17 @@ const currentBaseSymbol = computed(() => {
   if (s.includes('-')) return s.split('-')[0];
   return s.replace('USDT', '');
 });
-const currentQuoteSymbol = computed(() => 'USDT');
+const currentQuoteSymbol = computed(() => {
+  if (marketStore.exchange === 'polymarket') return 'USDC';
+  return 'USDT';
+});
 const exchangeLabel = computed(() => {
   if (marketStore.exchange === 'okx') return 'OKX';
   if (marketStore.exchange === 'binance') return 'Binance';
-  return 'Uniswap V3';
+  if (marketStore.exchange === 'uniswap') return 'Uniswap V3';
+  return 'Polymarket';
 });
+const isPolymarket = computed(() => marketStore.exchange === 'polymarket');
 const symbolShortcuts = computed(() => marketStore.symbols.slice(0, 5));
 const relatedTickers = computed(() => {
   const source = marketStore.tickers.filter((item) => item.symbol !== currentSymbol.value);
@@ -243,6 +257,12 @@ function formatTradeTime(value: number) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+function formatProb(price: string | undefined | null): string {
+  if (!price) return '--';
+  const pct = Number(price) * 100;
+  return `${pct.toFixed(1)}%`;
+}
+
 async function loadTradePageData() {
   await Promise.all([
     marketStore.fetchSymbols(),
@@ -262,7 +282,7 @@ function handleKlineClickPrice(price: number) {
   klineClickPrice.value = price;
 }
 
-async function switchExchange(exch: 'okx' | 'binance' | 'uniswap') {
+async function switchExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket') {
   marketStore.setExchange(exch);
   await loadTradePageData();
 }
@@ -362,6 +382,15 @@ onBeforeUnmount(() => {
 .hero-mode-text {
   margin-top: 10px;
   color: var(--text-secondary);
+}
+
+.hero-question {
+  margin-top: 10px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  max-width: 480px;
 }
 
 .symbol-switches {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { DexService } from './dex.service';
+import { PolymarketService } from './polymarket.service';
 
 const OKX_BASE = 'https://www.okx.com/api/v5';
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
@@ -98,11 +99,24 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
     { symbol: 'DOGE-USDT', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 1, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
     { symbol: 'XRP-USDT', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 1, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
   ],
+  polymarket: [
+    { symbol: 'BTC-150K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
+    { symbol: 'ETH-5K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
+    { symbol: 'SOL-500-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
+    { symbol: 'BTC-110K-JUN28', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
+    { symbol: 'ETH-4K-JUN28', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
+    { symbol: 'FED-CUT-OCT2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
+    { symbol: 'BTC-200K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
+    { symbol: 'SPX-7000-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
+  ],
 };
 
 @Injectable()
 export class MarketService {
-  constructor(private readonly dexService: DexService) {}
+  constructor(
+    private readonly dexService: DexService,
+    private readonly polymarketService: PolymarketService,
+  ) {}
 
   private async getOkx<T>(path: string, params?: Record<string, string>): Promise<{ code: string; data: T[] } | null> {
     try {
@@ -138,11 +152,17 @@ export class MarketService {
     }
   }
 
-  getSymbols(exchange: string = 'okx') {
+  async getSymbols(exchange: string = 'okx') {
+    if (exchange === 'polymarket') {
+      return this.polymarketService.getSymbols();
+    }
     return SYMBOLS_BY_EXCHANGE[exchange] || SYMBOLS_BY_EXCHANGE['okx'];
   }
 
   async getTickers(symbols?: string[], exchange: string = 'okx') {
+    if (exchange === 'polymarket') {
+      return this.polymarketService.getTickers(symbols);
+    }
     if (exchange === 'binance') {
       return this.getBinanceTickers(symbols);
     }
@@ -207,6 +227,9 @@ export class MarketService {
   }
 
   async getKlines(symbol: string, interval: string, exchange: string = 'okx') {
+    if (exchange === 'polymarket') {
+      return this.polymarketService.getKlines(symbol, interval);
+    }
     if (exchange === 'binance') {
       return this.getBinanceKlines(symbol, interval);
     }
@@ -254,6 +277,9 @@ export class MarketService {
   }
 
   async getDepth(symbol: string, limit = 20, exchange: string = 'okx') {
+    if (exchange === 'polymarket') {
+      return this.polymarketService.getDepth(symbol);
+    }
     if (exchange === 'binance') {
       return this.getBinanceDepth(symbol, limit);
     }
@@ -289,6 +315,9 @@ export class MarketService {
   }
 
   async getTrades(symbol: string, exchange: string = 'okx') {
+    if (exchange === 'polymarket') {
+      return this.polymarketService.getTrades(symbol);
+    }
     if (exchange === 'binance') {
       return this.getBinanceTrades(symbol);
     }

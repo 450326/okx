@@ -7,8 +7,9 @@ export class MarketController {
   constructor(private readonly marketService: MarketService) {}
 
   @Get('symbols')
-  getSymbols(@Query('exchange') exchange = 'okx') {
-    return ok({ list: this.marketService.getSymbols(exchange) });
+  async getSymbols(@Query('exchange') exchange = 'okx') {
+    const list = await this.marketService.getSymbols(exchange);
+    return ok({ list });
   }
 
   @Get('tickers')

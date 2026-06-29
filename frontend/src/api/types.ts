@@ -61,6 +61,8 @@ export interface MarketSymbol {
   minQty: string;
   pricePrecision: number;
   qtyPrecision: number;
+  question?: string;
+  polymarketId?: string;
 }
 
 export interface MarketSymbolsResponse {
@@ -78,6 +80,8 @@ export interface TickerItem {
   low24h: string;
   volume24h: string;
   priceChangePercent24h: string;
+  question?: string;
+  polymarketId?: string;
 }
 
 export interface TickerListResponse {
