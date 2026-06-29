@@ -197,20 +197,22 @@ export class DexService {
 
       const p = data.pool;
       const currentTick = Number(p.tick);
-      const currentPrice = this.tickToPrice(currentTick, Number(p.token0.decimals), Number(p.token1.decimals));
+      const decimals0 = Number(p.token0.decimals);
+      const decimals1 = Number(p.token1.decimals);
+      const currentPrice = this.tickToPrice(currentTick, decimals0, decimals1);
       const liquidity = Number(p.liquidity);
 
       const bids: [string, string][] = [];
       const asks: [string, string][] = [];
+      const baseQty = liquidity / (currentPrice * 1000) / 20;
 
       for (let i = 0; i < 20; i++) {
-        const tickDown = currentTick - (i + 1) * 10;
-        const tickUp = currentTick + (i + 1) * 10;
-        const bidPrice = this.tickToPrice(tickDown, Number(p.token0.decimals), Number(p.token1.decimals));
-        const askPrice = this.tickToPrice(tickUp, Number(p.token0.decimals), Number(p.token1.decimals));
-        const baseQty = liquidity / (currentPrice * 1000) / 20;
-        bids.push([bidPrice.toFixed(6), Math.max(0.01, baseQty * (1 + i * 0.1)).toFixed(4)]);
-        asks.push([askPrice.toFixed(6), Math.max(0.01, baseQty * (1 + i * 0.1)).toFixed(4)]);
+        const step = (i + 1) * 10;
+        const bidPrice = this.tickToPrice(currentTick - step, decimals0, decimals1);
+        const askPrice = this.tickToPrice(currentTick + step, decimals0, decimals1);
+        const size = Math.max(0.01, baseQty * (1 + i * 0.1));
+        bids.push([bidPrice.toFixed(6), size.toFixed(4)]);
+        asks.push([askPrice.toFixed(6), size.toFixed(4)]);
       }
 
       return {

@@ -17,7 +17,7 @@ export const usePositionStore = defineStore('positions', () => {
       positions.value = data.list;
       return positions.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取持仓失败';
+      error.value = (err as Error).message || '获取持仓失败';
       positions.value = [];
       return [];
     } finally {

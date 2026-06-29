@@ -26,7 +26,8 @@ export const useOrderStore = defineStore('orders', () => {
       openOrders.value = data.list;
       return openOrders.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取当前委托失败';
+      const msg = (err as any)?.message;
+      error.value = msg || '获取当前委托失败';
       openOrders.value = [];
       return [];
     } finally {
@@ -43,7 +44,8 @@ export const useOrderStore = defineStore('orders', () => {
       historyOrders.value = data.list;
       return historyOrders.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取历史订单失败';
+      const msg = (err as any)?.message;
+      error.value = msg || '获取历史订单失败';
       historyOrders.value = [];
       return [];
     } finally {
@@ -59,7 +61,8 @@ export const useOrderStore = defineStore('orders', () => {
       preview.value = await orderApi.preview(payload);
       return preview.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '试算失败';
+      const msg = (err as any)?.message;
+      error.value = msg || '试算失败';
       return null;
     } finally {
       submitting.value = false;
@@ -74,7 +77,8 @@ export const useOrderStore = defineStore('orders', () => {
       const result = await orderApi.create(payload);
       return result;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '下单失败';
+      const msg = (err as any)?.message;
+      error.value = msg || '下单失败';
       return null;
     } finally {
       submitting.value = false;

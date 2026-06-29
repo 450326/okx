@@ -160,16 +160,12 @@ export class MarketService {
   }
 
   async getTickers(symbols?: string[], exchange: string = 'okx') {
-    if (exchange === 'polymarket') {
-      return this.polymarketService.getTickers(symbols);
+    switch (exchange) {
+      case 'polymarket': return this.polymarketService.getTickers(symbols);
+      case 'binance':    return this.getBinanceTickers(symbols);
+      case 'uniswap':    return this.dexService.getTickers(symbols);
+      default:           return this.getOkxTickers(symbols);
     }
-    if (exchange === 'binance') {
-      return this.getBinanceTickers(symbols);
-    }
-    if (exchange === 'uniswap') {
-      return this.dexService.getTickers(symbols);
-    }
-    return this.getOkxTickers(symbols);
   }
 
   private async getOkxTickers(symbols?: string[]) {
@@ -227,16 +223,16 @@ export class MarketService {
   }
 
   async getKlines(symbol: string, interval: string, exchange: string = 'okx') {
+    if (exchange === 'okx') {
+      return this.getOkxKlines(symbol, interval);
+    }
     if (exchange === 'polymarket') {
       return this.polymarketService.getKlines(symbol, interval);
     }
     if (exchange === 'binance') {
       return this.getBinanceKlines(symbol, interval);
     }
-    if (exchange === 'uniswap') {
-      return this.dexService.getKlines(symbol, interval);
-    }
-    return this.getOkxKlines(symbol, interval);
+    return this.dexService.getKlines(symbol, interval);
   }
 
   private async getOkxKlines(symbol: string, interval: string) {
@@ -277,14 +273,10 @@ export class MarketService {
   }
 
   async getDepth(symbol: string, limit = 20, exchange: string = 'okx') {
-    if (exchange === 'polymarket') {
-      return this.polymarketService.getDepth(symbol);
-    }
-    if (exchange === 'binance') {
-      return this.getBinanceDepth(symbol, limit);
-    }
-    if (exchange === 'uniswap') {
-      return this.dexService.getDepth(symbol);
+    switch (exchange) {
+      case 'polymarket': return this.polymarketService.getDepth(symbol);
+      case 'binance':    return this.getBinanceDepth(symbol, limit);
+      case 'uniswap':    return this.dexService.getDepth(symbol);
     }
     return this.getOkxDepth(symbol, limit);
   }
@@ -315,14 +307,14 @@ export class MarketService {
   }
 
   async getTrades(symbol: string, exchange: string = 'okx') {
+    if (exchange === 'uniswap') {
+      return this.dexService.getTrades(symbol);
+    }
     if (exchange === 'polymarket') {
       return this.polymarketService.getTrades(symbol);
     }
     if (exchange === 'binance') {
       return this.getBinanceTrades(symbol);
-    }
-    if (exchange === 'uniswap') {
-      return this.dexService.getTrades(symbol);
     }
     return this.getOkxTrades(symbol);
   }

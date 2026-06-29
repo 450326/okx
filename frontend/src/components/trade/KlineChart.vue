@@ -135,13 +135,12 @@ function initChart() {
 
   chart.subscribeClick((param) => {
     if (!param.point || !candleSeries) return;
-    const price = param.seriesPrices?.get(candleSeries);
-    if (typeof price === 'number') {
-      emit('clickPrice', price);
-    } else if (typeof price === 'object' && price !== null) {
-      const p = price as { close?: number; value?: number };
-      if (typeof p.close === 'number') emit('clickPrice', p.close);
-      else if (typeof p.value === 'number') emit('clickPrice', p.value);
+    const data = param.seriesData?.get(candleSeries);
+    if (data) {
+      const candle = data as CandlestickData;
+      if (candle.close !== undefined) {
+        emit('clickPrice', candle.close);
+      }
     }
   });
 

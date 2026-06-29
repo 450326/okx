@@ -21,7 +21,7 @@ export const useExchangeStore = defineStore('exchange', () => {
       accounts.value = data.list;
       return accounts.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取 API 绑定信息失败';
+      error.value = (err as any)?.message || '获取 API 绑定信息失败';
       accounts.value = [];
       return [];
     } finally {
@@ -40,7 +40,7 @@ export const useExchangeStore = defineStore('exchange', () => {
       statusMessage.value = 'API 账户绑定成功';
       return account;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '绑定 API 账户失败';
+      error.value = (err as any)?.message || '绑定 API 账户失败';
       return null;
     } finally {
       saving.value = false;
@@ -61,7 +61,7 @@ export const useExchangeStore = defineStore('exchange', () => {
       statusMessage.value = result.connected ? 'API 连接测试成功' : 'API 连接测试失败';
       return result.connected;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '测试 API 连接失败';
+      error.value = (err as any)?.message || '测试 API 连接失败';
       return false;
     } finally {
       saving.value = false;
@@ -78,7 +78,7 @@ export const useExchangeStore = defineStore('exchange', () => {
       statusMessage.value = 'API 账户已删除';
       return true;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '删除 API 账户失败';
+      error.value = (err as any)?.message || '删除 API 账户失败';
       return false;
     } finally {
       saving.value = false;

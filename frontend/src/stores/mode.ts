@@ -19,7 +19,7 @@ export const useModeStore = defineStore('mode', () => {
       mode.value = data.mode;
       return mode.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取模式失败';
+      error.value = (err as Error)?.message ?? '获取模式失败';
       return mode.value;
     } finally {
       loading.value = false;
@@ -35,7 +35,7 @@ export const useModeStore = defineStore('mode', () => {
       mode.value = data.mode;
       return true;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '切换模式失败';
+      error.value = (err as Error)?.message ?? '切换模式失败';
       return false;
     } finally {
       loading.value = false;

@@ -18,7 +18,7 @@ export const useAssetStore = defineStore('assets', () => {
       snapshot.value = await accountApi.getAssets(mode);
       return snapshot.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取资产失败';
+      error.value = (err as Error)?.message || '获取资产失败';
       return null;
     } finally {
       loading.value = false;
@@ -34,7 +34,7 @@ export const useAssetStore = defineStore('assets', () => {
       ledger.value = data.list;
       return ledger.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取流水失败';
+      error.value = (err as Error)?.message || '获取流水失败';
       return [];
     } finally {
       ledgerLoading.value = false;
@@ -48,7 +48,7 @@ export const useAssetStore = defineStore('assets', () => {
       await accountApi.resetSimulation();
       return true;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '重置模拟账户失败';
+      error.value = (err as Error)?.message || '重置模拟账户失败';
       return false;
     }
   }

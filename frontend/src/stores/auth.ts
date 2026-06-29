@@ -20,7 +20,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = result.user;
       return result.user;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '登录失败';
+      error.value = String((err as any)?.message || '登录失败');
       throw err;
     } finally {
       loading.value = false;
@@ -37,7 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = result.user;
       return result.user;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '生物识别登录失败';
+      error.value = String((err as any)?.message || '生物识别登录失败');
       throw err;
     } finally {
       loading.value = false;
@@ -57,7 +57,8 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = await authApi.me();
       return user.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取用户信息失败';
+      const msg = (err as Error).message;
+      error.value = msg || '获取用户信息失败';
       user.value = null;
       return null;
     } finally {

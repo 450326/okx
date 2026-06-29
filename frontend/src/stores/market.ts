@@ -141,7 +141,7 @@ export const useMarketStore = defineStore('market', () => {
       symbols.value = data.list;
       return symbols.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取品种失败';
+      error.value = (err as Error)?.message || '获取品种失败';
       return [];
     } finally {
       loading.value = false;
@@ -166,7 +166,7 @@ export const useMarketStore = defineStore('market', () => {
 
       return tickers.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取行情失败';
+      error.value = (err as Error)?.message || '获取行情失败';
       return [];
     } finally {
       loading.value = false;
@@ -183,7 +183,7 @@ export const useMarketStore = defineStore('market', () => {
       depthAsks.value = normalizeDepth(data.asks, true);
       return { bids: depthBids.value, asks: depthAsks.value };
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取盘口失败';
+      error.value = (err as Error)?.message || '获取盘口失败';
       depthBids.value = [];
       depthAsks.value = [];
       return { bids: depthBids.value, asks: depthAsks.value };
@@ -201,7 +201,7 @@ export const useMarketStore = defineStore('market', () => {
       klines.value = data.list;
       return klines.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取K线失败';
+      error.value = (err as Error)?.message || '获取K线失败';
       klines.value = [];
       return [];
     } finally {
@@ -218,7 +218,7 @@ export const useMarketStore = defineStore('market', () => {
       recentTrades.value = data.list;
       return recentTrades.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取最近成交失败';
+      error.value = (err as Error)?.message || '获取最近成交失败';
       recentTrades.value = [];
       return [];
     } finally {
