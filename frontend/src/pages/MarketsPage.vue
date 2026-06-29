@@ -1,7 +1,9 @@
 <template>
+  <!-- 行情页容器 -->
   <div class="page">
     <h1 class="page-title">行情页</h1>
 
+    <!-- 筛选与搜索区 -->
     <section class="card">
       <div class="form-grid">
         <div class="field">
@@ -26,6 +28,7 @@
       </div>
     </section>
 
+    <!-- 可交易合约列表 -->
     <section class="card">
       <h2 class="section-title">可交易合约</h2>
       <table class="table">
@@ -60,17 +63,26 @@
 </template>
 
 <script setup lang="ts">
+// Vue 响应式工具与生命周期
 import { computed, onMounted, ref } from 'vue';
+// Vue Router 导航组件
 import { RouterLink } from 'vue-router';
+// 行情状态管理
 import { useMarketStore } from '../stores/market';
+// 数值格式化与涨跌颜色工具函数
 import { formatPercent, getTrendClass } from '../utils/format';
 
+// 行情 Store 实例
 const marketStore = useMarketStore();
 
+// 搜索关键词
 const keyword = ref('');
+// 分类筛选（全部 / 主流 / 自选）
 const category = ref<'all' | 'main' | 'favorite'>('all');
+// 排序方式（涨跌幅 / 成交量）
 const sortKey = ref<'priceChange' | 'volume'>('priceChange');
 
+// 经过筛选与排序后的合约行数据
 const rows = computed(() => {
   const merged = marketStore.symbols.map((symbol) => ({
     ...symbol,
@@ -98,10 +110,12 @@ const rows = computed(() => {
   });
 });
 
+// 加载行情页面数据
 async function loadPageData() {
   await Promise.all([marketStore.fetchSymbols(), marketStore.fetchTickers()]);
 }
 
+// 页面挂载时加载数据
 onMounted(() => {
   void loadPageData();
 });

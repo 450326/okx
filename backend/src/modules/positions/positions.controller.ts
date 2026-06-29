@@ -1,8 +1,12 @@
+// 引入 NestJS 控制器相关装饰器
 import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+// 引入统一响应成功方法
 import { ok } from '../../common/api-response';
 
+// 持仓管理控制器
 @Controller('positions')
 export class PositionsController {
+  // 获取当前持仓列表
   @Get()
   getPositions(@Query('mode') mode = 'simulation', @Query('symbol') symbol?: string) {
     const list = [
@@ -52,6 +56,7 @@ export class PositionsController {
     });
   }
 
+  // 更新持仓风控参数（止盈止损）
   @Put(':id/risk')
   updateRisk(@Param('id') id: string, @Body() body: Record<string, unknown>) {
     return ok({
@@ -60,6 +65,7 @@ export class PositionsController {
     });
   }
 
+  // 平仓指定持仓
   @Post(':id/close')
   closePosition(@Param('id') id: string, @Body() body: Record<string, unknown>) {
     return ok({

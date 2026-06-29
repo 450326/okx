@@ -1,8 +1,11 @@
 <template>
+  <!-- 资金页面容器 -->
   <div class="page">
     <h1 class="page-title">资金页</h1>
 
+    <!-- 资产总览 + 模式工具 -->
     <section class="grid-2">
+      <!-- 资产总览卡片 -->
       <div class="card">
         <h2 class="section-title">资产总览</h2>
         <div class="grid-2">
@@ -25,6 +28,7 @@
         </div>
       </div>
 
+      <!-- 模式工具卡片 -->
       <div class="card">
         <h2 class="section-title">模式工具</h2>
         <div class="panel-actions">
@@ -45,6 +49,7 @@
       </div>
     </section>
 
+    <!-- API 绑定信息表格 -->
     <section class="card">
       <div class="section-head">
         <h2 class="section-title">API 绑定信息</h2>
@@ -85,6 +90,7 @@
       <div v-if="!exchangeStore.accounts.length" class="empty-state">暂未绑定任何 API 账户</div>
     </section>
 
+    <!-- 资金流水表格 -->
     <section class="card">
       <h2 class="section-title">资金流水</h2>
       <table class="table">
@@ -111,6 +117,7 @@
     </section>
   </div>
 
+  <!-- 重置模拟账户确认弹窗 -->
   <ConfirmModal
     :open="resetConfirmOpen"
     title="重置模拟账户"
@@ -122,6 +129,7 @@
     @confirm="handleResetSimulation()"
   />
 
+  <!-- 绑定 OKX 账户弹窗 -->
   <ApiBindingModal
     :open="bindingModalOpen"
     :saving="exchangeStore.saving"
@@ -131,25 +139,38 @@
 </template>
 
 <script setup lang="ts">
+// Vue 响应式工具与侦听器
 import { ref, watch } from 'vue';
+// API 绑定弹窗组件
 import ApiBindingModal from '../components/assets/ApiBindingModal.vue';
+// 通用确认弹窗组件
 import ConfirmModal from '../components/common/ConfirmModal.vue';
+// 资产状态管理
 import { useAssetStore } from '../stores/assets';
+// 交易所 API 绑定管理
 import { useExchangeStore } from '../stores/exchange';
+// 交易模式管理
 import { useModeStore } from '../stores/mode';
+// API 类型定义
 import type { ExchangeAccount, ExchangeAccountPayload } from '../api/types';
+// 数值格式化与涨跌颜色工具函数
 import { formatSignedValue, getTrendClass } from '../utils/format';
 
+// 各 Store 实例
 const assetStore = useAssetStore();
 const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
+// 绑定 OKX 账户弹窗是否打开
 const bindingModalOpen = ref(false);
+// 重置模拟账户确认弹窗是否打开
 const resetConfirmOpen = ref(false);
 
+// 格式化时间显示
 function formatDisplayTime(value: string) {
   return new Date(value).toLocaleString();
 }
 
+// 加载资金页数据
 async function loadPageData() {
   await Promise.all([
     assetStore.fetchAssets(modeStore.mode),
@@ -158,6 +179,7 @@ async function loadPageData() {
   ]);
 }
 
+// 重置模拟账户
 async function handleResetSimulation() {
   const success = await assetStore.resetSimulation();
 
@@ -167,10 +189,12 @@ async function handleResetSimulation() {
   }
 }
 
+// 测试 API 连接
 async function handleTestConnection() {
   await exchangeStore.testFirstAccount();
 }
 
+// 绑定 OKX 账户
 async function handleBindAccount(payload: ExchangeAccountPayload) {
   const result = await exchangeStore.createAccount(payload);
 
@@ -180,11 +204,13 @@ async function handleBindAccount(payload: ExchangeAccountPayload) {
   }
 }
 
+// 删除绑定的 API 账户
 async function handleDeleteAccount(account: ExchangeAccount) {
   if (!confirm(`确定要删除 API 账户「${account.label}」吗？`)) return;
   await exchangeStore.deleteAccount(account.id);
 }
 
+// 监听交易模式变化重新加载数据
 watch(
   () => modeStore.mode,
   () => {
@@ -195,6 +221,7 @@ watch(
 </script>
 
 <style scoped>
+/* 面板标题行 */
 .section-head {
   display: flex;
   align-items: center;
@@ -202,6 +229,7 @@ watch(
   gap: 12px;
 }
 
+/* 小型危险按钮 */
 .danger-btn-sm {
   border: none;
   border-radius: 8px;

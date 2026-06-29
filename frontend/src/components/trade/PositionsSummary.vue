@@ -1,7 +1,10 @@
 <template>
+  <!-- 当前持仓摘要卡片 -->
   <section class="card">
     <h2 class="section-title">当前持仓摘要</h2>
+    <!-- 持仓数据表格 -->
     <table class="table">
+      <!-- 表头：品种 / 方向 / 数量 / 未实现盈亏 -->
       <thead>
         <tr>
           <th>品种</th>
@@ -10,6 +13,7 @@
           <th>未实现盈亏</th>
         </tr>
       </thead>
+      <!-- 表体：持仓列表 -->
       <tbody>
         <tr v-for="item in positions" :key="item.id">
           <td>{{ item.symbol }}</td>
@@ -19,12 +23,16 @@
         </tr>
       </tbody>
     </table>
+    <!-- 无持仓时显示空状态 -->
     <div v-if="!positions.length" class="empty-state">暂无持仓数据</div>
   </section>
 
+  <!-- 当前委托摘要卡片 -->
   <section class="card">
     <h2 class="section-title">当前委托摘要</h2>
+    <!-- 委托数据表格 -->
     <table class="table">
+      <!-- 表头：订单号 / 类型 / 价格 / 数量 / 状态 -->
       <thead>
         <tr>
           <th>订单号</th>
@@ -34,6 +42,7 @@
           <th>状态</th>
         </tr>
       </thead>
+      <!-- 表体：委托列表 -->
       <tbody>
         <tr v-for="item in openOrders" :key="item.orderId">
           <td>{{ item.orderId }}</td>
@@ -44,14 +53,18 @@
         </tr>
       </tbody>
     </table>
+    <!-- 无委托时显示空状态 -->
     <div v-if="!openOrders.length" class="empty-state">暂无委托数据</div>
   </section>
 </template>
 
 <script setup lang="ts">
+// 导入持仓和订单数据类型
 import type { OrderItem, PositionItem } from '../../api/types';
+// 导入格式化工具函数
 import { formatSignedValue, getTrendClass } from '../../utils/format';
 
+// 定义 props：持仓列表和当前委托列表
 defineProps<{
   positions: PositionItem[];
   openOrders: OrderItem[];

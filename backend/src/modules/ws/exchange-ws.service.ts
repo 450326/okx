@@ -1,9 +1,12 @@
+// 引入 NestJS 可注入和服务日志装饰器
 import { Injectable, Logger } from '@nestjs/common';
+// 引入 WebSocket 库
 import WebSocket from 'ws';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
+// WebSocket 连接信息接口
 interface ConnectionInfo {
   ws: WebSocket;
   refCount: number;
@@ -15,13 +18,17 @@ interface ConnectionInfo {
   reconnectTimer?: NodeJS.Timeout;
 }
 
+// 交易所 WebSocket 数据推送服务
 @Injectable()
 export class ExchangeWsService {
   private readonly logger = new Logger(ExchangeWsService.name);
+  // 连接池管理（key: exchange:channel:symbol）
   private connections = new Map<string, ConnectionInfo>();
+  // HTTP 代理实例
   private proxyAgent: any = null;
 
   constructor() {
+    // 初始化代理配置
     const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
     if (proxyUrl) {
       this.proxyAgent = new HttpsProxyAgent(proxyUrl);
@@ -29,16 +36,19 @@ export class ExchangeWsService {
     }
   }
 
+  // 订阅行情数据，支持引用计数管理多个订阅者
   subscribe(exchange: string, channel: string, symbol: string, callback: (data: any) => void): void {
     const key = `${exchange}:${channel}:${symbol}`;
     const existing = this.connections.get(key);
 
+    // 如果已存在相同订阅，增加引用计数并添加回调
     if (existing) {
       existing.refCount++;
       existing.callbacks.add(callback);
       return;
     }
 
+    // 创建新的 WebSocket 连接
     const wsUrl = this.getWsUrl(exchange);
     const ws = new WebSocket(wsUrl, { agent: this.proxyAgent ?? undefined });
     const conn: ConnectionInfo = {
@@ -54,6 +64,7 @@ export class ExchangeWsService {
     this.connections.set(key, conn);
     this.logger.log(`WS 连接: ${exchange} ${channel} ${symbol}`);
 
+    // 绑定事件处理器并订阅数据
     this.attachHandlers(conn);
     ws.on('open', () => {
       this.logger.log(`WS 已连接: ${exchange} ${channel} ${symbol}`);
@@ -61,6 +72,7 @@ export class ExchangeWsService {
     });
   }
 
+  // 移除指定订阅回调
   removeCallback(exchange: string, channel: string, symbol: string, callback: (data: any) => void): void {
     const key = `${exchange}:${channel}:${symbol}`;
     const conn = this.connections.get(key);
@@ -68,6 +80,7 @@ export class ExchangeWsService {
     conn.callbacks.delete(callback);
   }
 
+  // 取消订阅，引用计数归零时关闭连接
   unsubscribe(exchange: string, channel: string, symbol: string): void {
     const key = `${exchange}:${channel}:${symbol}`;
     const conn = this.connections.get(key);
@@ -79,9 +92,11 @@ export class ExchangeWsService {
     }
   }
 
+  // 绑定 WebSocket 事件处理器
   private attachHandlers(conn: ConnectionInfo): void {
     const { ws } = conn;
 
+    // 处理收到的消息，解析后分发到各回调
     ws.on('message', (data: WebSocket.Data) => {
       const parsed = this.parseMessage(conn.exchange, conn.channel, data);
       if (parsed !== null) {
@@ -89,6 +104,7 @@ export class ExchangeWsService {
       }
     });
 
+    // 连接断开时自动重连
     ws.on('close', (code: number, reason: Buffer) => {
       this.logger.warn(`WS 断开: ${conn.exchange} ${conn.channel} ${conn.symbol} code=${code} reason=${reason?.toString()}`);
       if (!conn.closed) {
@@ -99,16 +115,19 @@ export class ExchangeWsService {
       }
     });
 
+    // 记录错误日志
     ws.on('error', (err: Error) => {
       this.logger.error(`WS 错误: ${conn.exchange} ${conn.channel} ${conn.symbol} - ${err.message}`);
     });
   }
 
+  // 关闭并清理连接
   private closeConnection(key: string): void {
     const conn = this.connections.get(key);
     if (!conn) return;
 
     conn.closed = true;
+    // 清除重连定时器
     if (conn.reconnectTimer) {
       clearTimeout(conn.reconnectTimer);
     }
@@ -117,6 +136,7 @@ export class ExchangeWsService {
     this.logger.log(`WS 关闭: ${conn.exchange} ${conn.channel} ${conn.symbol}`);
   }
 
+  // 重新建立 WebSocket 连接
   private reconnect(conn: ConnectionInfo): void {
     if (conn.closed) return;
 
@@ -130,18 +150,22 @@ export class ExchangeWsService {
     });
   }
 
+  // 获取交易所 WebSocket 地址
   private getWsUrl(exchange: string): string {
     return exchange === 'binance'
       ? 'wss://fstream.binance.com/ws'
       : 'wss://ws.okx.com:8443/ws/v5/public';
   }
 
+  // 将通用交易对符号转换为 Binance 格式
   private toBinanceSymbol(symbol: string): string {
     return symbol.replace(/-/g, '').replace('SWAP', '').toLowerCase();
   }
 
+  // 发送订阅消息到交易所
   private sendSubscribe(ws: WebSocket, exchange: string, channel: string, symbol: string): void {
     if (exchange === 'okx') {
+      // OKX 订阅协议
       const normalizedChannel = channel
         .replace(/^candle(\d+)h$/, (_, n) => `candle${n}H`)
         .replace(/^candle(\d+)d$/, (_, n) => `candle${n}D`);
@@ -151,6 +175,7 @@ export class ExchangeWsService {
       });
       ws.send(msg);
     } else if (exchange === 'binance') {
+      // Binance 订阅协议
       const bsym = this.toBinanceSymbol(symbol);
       let streamSuffix: string;
 
@@ -176,6 +201,7 @@ export class ExchangeWsService {
     }
   }
 
+  // 解析 WebSocket 原始消息
   private parseMessage(exchange: string, channel: string, raw: WebSocket.Data): any {
     let msg: any;
     try {
@@ -196,11 +222,14 @@ export class ExchangeWsService {
     return null;
   }
 
+  // 解析 OKX 交易所的消息
   private parseOkxMessage(channel: string, msg: any): any {
+    // 过滤事件类消息
     if (msg.event === 'error' || msg.event === 'subscribe' || msg.event === 'unsubscribe') {
       return null;
     }
 
+    // 解析 ticker 行情数据
     if (channel === 'tickers') {
       if (!msg.data?.[0]) return null;
       const d = msg.data[0];
@@ -222,6 +251,7 @@ export class ExchangeWsService {
       };
     }
 
+    // 解析订单簿深度数据
     if (channel === 'books') {
       if (!msg.data?.[0]) return null;
       const d = msg.data[0];
@@ -232,6 +262,7 @@ export class ExchangeWsService {
       };
     }
 
+    // 解析 K 线数据
     if (channel.startsWith('candle')) {
       if (!msg.data?.[0]) return null;
       const d = msg.data[0];
@@ -245,6 +276,7 @@ export class ExchangeWsService {
       };
     }
 
+    // 解析成交数据
     if (channel === 'trades') {
       if (!msg.data?.length) return null;
       return msg.data.map((t: any) => ({
@@ -258,9 +290,11 @@ export class ExchangeWsService {
     return null;
   }
 
+  // 解析 Binance 交易所的消息
   private parseBinanceMessage(channel: string, msg: any): any {
     if (!msg.e) return null;
 
+    // 解析 24 小时 ticker 数据
     if (msg.e === '24hrTicker' && channel === 'tickers') {
       const last = msg.c || '0';
       const open = msg.o || last;
@@ -282,6 +316,7 @@ export class ExchangeWsService {
       };
     }
 
+    // 解析订单簿增量更新
     if (msg.e === 'depthUpdate' && channel === 'books') {
       const rawSymbol = msg.s || '';
       const symbol = this.fromBinanceSymbol(rawSymbol);
@@ -292,6 +327,7 @@ export class ExchangeWsService {
       };
     }
 
+    // 解析 K 线数据
     if (msg.e === 'kline' && channel.startsWith('candle')) {
       const k = msg.k;
       if (!k) return null;
@@ -305,6 +341,7 @@ export class ExchangeWsService {
       };
     }
 
+    // 解析成交数据
     if (msg.e === 'trade' && channel === 'trades') {
       return [{
         price: msg.p,
@@ -317,6 +354,7 @@ export class ExchangeWsService {
     return null;
   }
 
+  // 将 Binance 交易对符号转换为通用格式
   private fromBinanceSymbol(binanceSymbol: string): string {
     let base = binanceSymbol;
     if (base.endsWith('USDT')) {

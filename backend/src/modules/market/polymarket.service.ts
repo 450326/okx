@@ -1,9 +1,14 @@
+// 引入 NestJS 可注入和服务日志装饰器
 import { Injectable, Logger } from '@nestjs/common';
+// 引入 HTTP 请求库
 import axios from 'axios';
 
+// Polymarket Gamma API 基础地址
 const GAMMA_API = 'https://gamma-api.polymarket.com';
+// Polymarket CLOB API 基础地址
 const CLOB_API = 'https://clob.polymarket.com';
 
+// Polymarket 市场数据结构
 interface PolymarketMarket {
   id: string;
   question: string;
@@ -31,22 +36,26 @@ interface PolymarketMarket {
   closedTime: string;
 }
 
+// Polymarket 价格历史事件接口
 interface PolymarketPriceEvent {
   t: number;
   p: number;
   s: number;
 }
 
+// CLOB 订单簿深度单条数据
 interface CLOBBookLevel {
   price: string;
   size: string;
 }
 
+// CLOB 订单簿返回数据
 interface CLOBBookResponse {
   bids: CLOBBookLevel[];
   asks: CLOBBookLevel[];
 }
 
+// Polymarket 成交记录接口
 interface PolymarketTrade {
   id: string;
   market: string;
@@ -60,18 +69,24 @@ interface PolymarketTrade {
   outcomePrices: string;
 }
 
+// Polymarket 预测市场数据服务
 @Injectable()
 export class PolymarketService {
   private readonly logger = new Logger(PolymarketService.name);
+  // 缓存的市场列表
   private marketList: PolymarketMarket[] = [];
+  // 上次缓存更新时间戳
   private lastFetch = 0;
+  // 缓存有效期（30 秒）
   private readonly CACHE_TTL = 30000;
 
+  // 确保市场列表缓存有效，过期则重新拉取
   private async ensureCache(): Promise<void> {
     const now = Date.now();
     if (this.marketList.length > 0 && now - this.lastFetch < this.CACHE_TTL) return;
 
     try {
+      // 从 Gamma API 拉取活跃市场
       const res = await axios.get<PolymarketMarket[]>(`${GAMMA_API}/markets`, {
         params: { active: true, closed: false, limit: 50, order: 'volume_24hr', ascending: false },
         timeout: 10000,
@@ -82,6 +97,7 @@ export class PolymarketService {
         return;
       }
 
+      // 更新缓存
       this.marketList = res.data;
       this.lastFetch = now;
       this.logger.log(`Polymarket 缓存更新: ${res.data.length} 个活跃市场`);
@@ -90,12 +106,14 @@ export class PolymarketService {
     }
   }
 
+  // 根据 symbol 查找对应市场
   private findMarket(symbol: string): PolymarketMarket | undefined {
     return this.marketList.find(
       (m) => m.id === symbol || m.slug === symbol || m.conditionId === symbol,
     );
   }
 
+  // 获取所有交易品种列表
   async getSymbols(): Promise<any[]> {
     await this.ensureCache();
     return this.marketList.map((m) => ({
@@ -113,14 +131,17 @@ export class PolymarketService {
     }));
   }
 
+  // 获取行情 ticker 数据
   async getTickers(symbols?: string[]): Promise<any[]> {
     await this.ensureCache();
 
+    // 如果指定了交易对则过滤
     const markets = symbols?.length
       ? this.marketList.filter((m) => symbols.includes(m.id))
       : this.marketList;
 
     return markets.map((m) => {
+      // 解析 YES 代币价格
       let yesPrice = 0.5;
       let outcomes: string[] = ['Yes', 'No'];
       try {
@@ -133,6 +154,7 @@ export class PolymarketService {
         yesPrice = m.lastTradePrice ?? 0.5;
       }
 
+      // 计算 NO 代币价格和买卖盘口
       const noPrice = 1 - yesPrice;
       const spread = 0.002;
       const bid = Math.max(0.001, yesPrice - spread);
@@ -164,6 +186,7 @@ export class PolymarketService {
     });
   }
 
+  // 获取 K 线数据
   async getKlines(symbol: string, _interval: string): Promise<any[]> {
     await this.ensureCache();
 
@@ -173,6 +196,7 @@ export class PolymarketService {
     const basePrice = market.lastTradePrice ?? 0.5;
 
     try {
+      // 从 Gamma API 获取价格历史
       const res = await axios.get<PolymarketPriceEvent[]>(`${GAMMA_API}/prices-history`, {
         params: { market: market.id, aggregation: 86400 },
         timeout: 8000,
@@ -180,6 +204,7 @@ export class PolymarketService {
 
       if (!res.data?.length) return [];
 
+      // 映射为 K 线格式，取最近 100 条
       return res.data.slice(-100).map((p) => ({
         openTime: p.t * 1000,
         open: String(p.p.toFixed(3)),
@@ -193,12 +218,14 @@ export class PolymarketService {
     }
   }
 
+  // 获取订单簿深度数据
   async getDepth(symbol: string): Promise<{ symbol: string; bids: [string, string][]; asks: [string, string][] } | null> {
     await this.ensureCache();
 
     const market = this.findMarket(symbol);
     if (!market) return null;
 
+    // 优先使用 CLOB 订单簿
     if (market.enableOrderBook && market.clobTokenIds) {
       let tokenId = '';
       try {
@@ -224,16 +251,18 @@ export class PolymarketService {
             return { symbol, bids: bids.slice(0, 20), asks: asks.slice(0, 20) };
           }
         } catch {
-          // CLOB API可能不可用，回退到模拟深度
+          // CLOB API 可能不可用，回退到模拟深度
         }
       }
     }
 
+    // 回退方案：基于流动性和价格生成模拟深度
     const price = market.lastTradePrice ?? 0.5;
     const bids: [string, string][] = [];
     const asks: [string, string][] = [];
     const baseLiquidity = market.liquidityNum || market.liquidity || 50000;
 
+    // 生成 20 档深度数据
     for (let i = 1; i <= 20; i++) {
       const levelSpread = i * 0.002;
       const bidPx = Math.max(0.001, price - levelSpread);
@@ -246,6 +275,7 @@ export class PolymarketService {
     return { symbol, bids, asks };
   }
 
+  // 获取最新成交记录
   async getTrades(symbol: string): Promise<any[]> {
     await this.ensureCache();
 
@@ -253,6 +283,7 @@ export class PolymarketService {
     if (!market) return [];
 
     try {
+      // 从 Gamma API 获取成交记录
       const res = await axios.get<PolymarketTrade[]>(`${GAMMA_API}/trades`, {
         params: { market: market.id, limit: 50 },
         timeout: 8000,

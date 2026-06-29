@@ -1,7 +1,9 @@
 <template>
+  <!-- 持仓页面容器 -->
   <div class="page">
     <h1 class="page-title">持仓页</h1>
 
+    <!-- 当前持仓表格 -->
     <section class="card">
       <h2 class="section-title">当前持仓</h2>
       <table class="table">
@@ -33,6 +35,7 @@
       <div v-if="!positionStore.positions.length" class="empty-state">暂无持仓数据</div>
     </section>
 
+    <!-- 当前委托表格 -->
     <section class="card">
       <h2 class="section-title">当前委托</h2>
       <table class="table">
@@ -65,16 +68,23 @@
 </template>
 
 <script setup lang="ts">
+// Vue 侦听器
 import { watch } from 'vue';
+// 交易模式管理
 import { useModeStore } from '../stores/mode';
+// 订单状态管理
 import { useOrderStore } from '../stores/orders';
+// 持仓状态管理
 import { usePositionStore } from '../stores/positions';
+// 数值格式化与涨跌颜色工具函数
 import { formatSignedValue, getTrendClass } from '../utils/format';
 
+// 各 Store 实例
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
 
+// 加载持仓与委托数据
 async function loadPageData() {
   await Promise.all([
     positionStore.fetchPositions(modeStore.mode),
@@ -82,6 +92,7 @@ async function loadPageData() {
   ]);
 }
 
+// 监听交易模式变化重新加载数据
 watch(
   () => modeStore.mode,
   () => {

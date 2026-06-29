@@ -1,11 +1,18 @@
+// 引入 NestJS 可注入装饰器
 import { Injectable } from '@nestjs/common';
+// 引入 HTTP 请求库
 import axios from 'axios';
+// 引入去中心化交易所服务
 import { DexService } from './dex.service';
+// 引入 Polymarket 预测市场服务
 import { PolymarketService } from './polymarket.service';
 
+// OKX 交易所 API 基础地址
 const OKX_BASE = 'https://www.okx.com/api/v5';
+// Binance 交易所 API 基础地址
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
 
+// OKX K 线周期映射表
 const OKX_INTERVAL_MAP: Record<string, string> = {
   '1s': '1s',
   '30s': '30s',
@@ -18,6 +25,7 @@ const OKX_INTERVAL_MAP: Record<string, string> = {
   '1d': '1D',
 };
 
+// OKX 行情 ticker 数据接口
 interface OkxTicker {
   instId: string;
   last: string;
@@ -29,6 +37,7 @@ interface OkxTicker {
   vol24h: string;
 }
 
+// OKX 成交数据接口
 interface OkxTrade {
   instId: string;
   tradeId: string;
@@ -38,6 +47,7 @@ interface OkxTrade {
   ts: string;
 }
 
+// Binance 行情 ticker 数据接口
 interface BinanceTicker {
   symbol: string;
   lastPrice: string;
@@ -51,6 +61,7 @@ interface BinanceTicker {
   openPrice: string;
 }
 
+// Binance 成交数据接口
 interface BinanceTrade {
   id: number;
   price: string;
@@ -61,12 +72,14 @@ interface BinanceTrade {
   isBestMatch: boolean;
 }
 
+// Binance 深度数据接口
 interface BinanceDepth {
   lastUpdateId: number;
   bids: string[][];
   asks: string[][];
 }
 
+// 已知交易品种的信息结构
 type KnownSymbol = {
   symbol: string;
   baseCoin: string;
@@ -77,7 +90,9 @@ type KnownSymbol = {
   qtyPrecision: number;
 };
 
+// 各交易所支持的交易品种列表
 const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
+  // OKX 永续合约交易对
   okx: [
     { symbol: 'BTC-USDT-SWAP', baseCoin: 'BTC', quoteCoin: 'USDT', maxLeverage: 50, minQty: '0.001', pricePrecision: 1, qtyPrecision: 3 },
     { symbol: 'ETH-USDT-SWAP', baseCoin: 'ETH', quoteCoin: 'USDT', maxLeverage: 50, minQty: '0.01', pricePrecision: 2, qtyPrecision: 2 },
@@ -85,6 +100,7 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
     { symbol: 'DOGE-USDT-SWAP', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 25, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
     { symbol: 'XRP-USDT-SWAP', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 25, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
   ],
+  // Binance 永续合约交易对
   binance: [
     { symbol: 'BTCUSDT', baseCoin: 'BTC', quoteCoin: 'USDT', maxLeverage: 125, minQty: '0.001', pricePrecision: 1, qtyPrecision: 3 },
     { symbol: 'ETHUSDT', baseCoin: 'ETH', quoteCoin: 'USDT', maxLeverage: 75, minQty: '0.01', pricePrecision: 2, qtyPrecision: 2 },
@@ -92,6 +108,7 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
     { symbol: 'DOGEUSDT', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 50, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
     { symbol: 'XRPUSDT', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 50, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
   ],
+  // Uniswap 去中心化交易对
   uniswap: [
     { symbol: 'ETH-USDT', baseCoin: 'ETH', quoteCoin: 'USDT', maxLeverage: 1, minQty: '0.001', pricePrecision: 2, qtyPrecision: 4 },
     { symbol: 'BTC-USDT', baseCoin: 'BTC', quoteCoin: 'USDT', maxLeverage: 1, minQty: '0.0001', pricePrecision: 2, qtyPrecision: 6 },
@@ -99,6 +116,7 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
     { symbol: 'DOGE-USDT', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 1, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
     { symbol: 'XRP-USDT', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 1, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
   ],
+  // Polymarket 预测市场交易对
   polymarket: [
     { symbol: 'BTC-150K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
     { symbol: 'ETH-5K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
@@ -111,13 +129,17 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
   ],
 };
 
+// 行情数据服务，聚合多交易所和多协议数据
 @Injectable()
 export class MarketService {
   constructor(
+    // 注入去中心化交易所服务
     private readonly dexService: DexService,
+    // 注入 Polymarket 预测市场服务
     private readonly polymarketService: PolymarketService,
   ) {}
 
+  // 通用 OKX API GET 请求封装
   private async getOkx<T>(path: string, params?: Record<string, string>): Promise<{ code: string; data: T[] } | null> {
     try {
       const res = await axios.get<{ code: string; data: T[] }>(`${OKX_BASE}${path}`, {
@@ -130,16 +152,19 @@ export class MarketService {
     }
   }
 
+  // 获取 OKX 单条数据（返回第一条）
   private async fetchOkx<T>(path: string, params?: Record<string, string>): Promise<T | null> {
     const body = await this.getOkx<T>(path, params);
     return body && body.code === '0' && body.data?.length ? body.data[0] : null;
   }
 
+  // 获取 OKX 数据列表
   private async fetchOkxList<T>(path: string, params?: Record<string, string>): Promise<T[]> {
     const body = await this.getOkx<T>(path, params);
     return body && body.code === '0' ? body.data : [];
   }
 
+  // 通用 Binance API GET 请求封装
   private async getBinance<T>(path: string, params?: Record<string, string | number>): Promise<T | null> {
     try {
       const res = await axios.get<T>(`${BINANCE_BASE}${path}`, {
@@ -152,13 +177,16 @@ export class MarketService {
     }
   }
 
+  // 获取指定交易所支持的交易品种列表
   async getSymbols(exchange: string = 'okx') {
+    // Polymarket 走独立服务获取
     if (exchange === 'polymarket') {
       return this.polymarketService.getSymbols();
     }
     return SYMBOLS_BY_EXCHANGE[exchange] || SYMBOLS_BY_EXCHANGE['okx'];
   }
 
+  // 获取行情 ticker 数据，支持多交易所
   async getTickers(symbols?: string[], exchange: string = 'okx') {
     switch (exchange) {
       case 'polymarket': return this.polymarketService.getTickers(symbols);
@@ -168,14 +196,18 @@ export class MarketService {
     }
   }
 
+  // 获取 OKX 交易所 ticker 数据
   private async getOkxTickers(symbols?: string[]) {
+    // 获取所有 SWAP 合约 ticker
     const all = await this.fetchOkxList<OkxTicker>('/market/tickers', { instType: 'SWAP' });
+    // 如果指定了交易对则过滤
     const tickers = symbols?.length
       ? all.filter((t) => symbols.includes(t.instId))
       : all;
 
     if (!tickers.length) return [];
 
+    // 映射为标准 ticker 格式
     return tickers.map((t) => {
       const last = t.last || '0';
       const open = t.open24h || last;
@@ -197,10 +229,13 @@ export class MarketService {
     });
   }
 
+  // 获取 Binance 交易所 ticker 数据
   private async getBinanceTickers(symbols?: string[]) {
+    // 获取 24 小时 ticker 列表
     const all = await this.getBinance<BinanceTicker[]>('/ticker/24hr');
     if (!all) return [];
 
+    // 只保留已知交易对
     const knownSymbols = SYMBOLS_BY_EXCHANGE['binance'].map((s) => s.symbol);
     const filtered = symbols?.length
       ? all.filter((t) => symbols.includes(t.symbol))
@@ -222,6 +257,7 @@ export class MarketService {
     }));
   }
 
+  // 获取 K 线数据，支持多交易所
   async getKlines(symbol: string, interval: string, exchange: string = 'okx') {
     if (exchange === 'okx') {
       return this.getOkxKlines(symbol, interval);
@@ -235,6 +271,7 @@ export class MarketService {
     return this.dexService.getKlines(symbol, interval);
   }
 
+  // 获取 OKX K 线数据
   private async getOkxKlines(symbol: string, interval: string) {
     const bar = OKX_INTERVAL_MAP[interval] || interval;
     const raw = await this.fetchOkxList<string[]>('/market/candles', {
@@ -254,6 +291,7 @@ export class MarketService {
     }));
   }
 
+  // 获取 Binance K 线数据
   private async getBinanceKlines(symbol: string, interval: string) {
     const raw = await this.getBinance<string[][]>('/klines', {
       symbol,
@@ -272,6 +310,7 @@ export class MarketService {
     }));
   }
 
+  // 获取深度数据，支持多交易所
   async getDepth(symbol: string, limit = 20, exchange: string = 'okx') {
     switch (exchange) {
       case 'polymarket': return this.polymarketService.getDepth(symbol);
@@ -281,6 +320,7 @@ export class MarketService {
     return this.getOkxDepth(symbol, limit);
   }
 
+  // 获取 OKX 深度数据
   private async getOkxDepth(symbol: string, limit: number) {
     const raw = await this.fetchOkx<{ asks: string[]; bids: string[] }>(
       '/market/books',
@@ -295,6 +335,7 @@ export class MarketService {
     };
   }
 
+  // 获取 Binance 深度数据
   private async getBinanceDepth(symbol: string, limit: number) {
     const raw = await this.getBinance<BinanceDepth>('/depth', { symbol, limit });
     if (!raw) return null;
@@ -306,6 +347,7 @@ export class MarketService {
     };
   }
 
+  // 获取成交数据，支持多交易所
   async getTrades(symbol: string, exchange: string = 'okx') {
     if (exchange === 'uniswap') {
       return this.dexService.getTrades(symbol);
@@ -319,6 +361,7 @@ export class MarketService {
     return this.getOkxTrades(symbol);
   }
 
+  // 获取 OKX 成交数据
   private async getOkxTrades(symbol: string) {
     const trades = await this.fetchOkxList<OkxTrade>('/market/trades', {
       instId: symbol,
@@ -334,6 +377,7 @@ export class MarketService {
     }));
   }
 
+  // 获取 Binance 成交数据
   private async getBinanceTrades(symbol: string) {
     const trades = await this.getBinance<BinanceTrade[]>('/trades', { symbol, limit: 50 });
     if (!trades) return [];

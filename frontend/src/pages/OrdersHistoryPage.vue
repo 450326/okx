@@ -1,7 +1,9 @@
 <template>
+  <!-- 历史订单页面容器 -->
   <div class="page">
     <h1 class="page-title">历史订单页</h1>
 
+    <!-- 历史委托表格 -->
     <section class="card">
       <h2 class="section-title">历史委托</h2>
       <table class="table">
@@ -38,14 +40,20 @@
 </template>
 
 <script setup lang="ts">
+// Vue 侦听器
 import { watch } from 'vue';
+// 交易模式管理
 import { useModeStore } from '../stores/mode';
+// 订单状态管理
 import { useOrderStore } from '../stores/orders';
+// 订单类型定义
 import type { OrderItem } from '../api/types';
 
+// 各 Store 实例
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 
+// 格式化订单方向文字（开多/开空/平多/平空）
 function formatDirection(item: OrderItem): string {
   if (item.action === 'open') {
     return item.side === 'long' ? '开多' : '开空';
@@ -56,10 +64,12 @@ function formatDirection(item: OrderItem): string {
   return item.side === 'long' ? '多' : '空';
 }
 
+// 加载历史订单数据
 async function loadPageData() {
   await orderStore.fetchHistory(modeStore.mode);
 }
 
+// 监听交易模式变化重新加载数据
 watch(
   () => modeStore.mode,
   () => {

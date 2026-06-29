@@ -1,17 +1,29 @@
+// 导入 Vue 响应式 API
 import { computed, ref } from 'vue';
+// 导入 Pinia 状态管理
 import { defineStore } from 'pinia';
+// 导入交易所 API
 import { exchangeApi } from '../api/services';
+// 导入交易所账户类型
 import type { ExchangeAccount, ExchangeAccountPayload } from '../api/types';
 
+// 交易所 API 账户状态 store
 export const useExchangeStore = defineStore('exchange', () => {
+  // API 账户列表
   const accounts = ref<ExchangeAccount[]>([]);
+  // 加载状态
   const loading = ref(false);
+  // 保存/操作中状态
   const saving = ref(false);
+  // 错误信息
   const error = ref('');
+  // 状态提示消息
   const statusMessage = ref('');
 
+  // 是否存在已激活的 API 账户
   const hasActiveAccount = computed(() => accounts.value.some((item) => item.status === 'active'));
 
+  // 获取所有绑定的 API 账户
   async function fetchAccounts() {
     loading.value = true;
     error.value = '';
@@ -29,6 +41,7 @@ export const useExchangeStore = defineStore('exchange', () => {
     }
   }
 
+  // 创建/绑定新的 API 账户
   async function createAccount(payload: ExchangeAccountPayload) {
     saving.value = true;
     error.value = '';
@@ -47,6 +60,7 @@ export const useExchangeStore = defineStore('exchange', () => {
     }
   }
 
+  // 测试第一个 API 账户的连接
   async function testFirstAccount() {
     const firstAccount = accounts.value[0];
     if (!firstAccount) {
@@ -68,6 +82,7 @@ export const useExchangeStore = defineStore('exchange', () => {
     }
   }
 
+  // 删除指定的 API 账户
   async function deleteAccount(id: string) {
     saving.value = true;
     error.value = '';
@@ -85,6 +100,7 @@ export const useExchangeStore = defineStore('exchange', () => {
     }
   }
 
+  // 导出 store 状态与方法
   return {
     accounts, loading, saving, error, statusMessage,
     hasActiveAccount,

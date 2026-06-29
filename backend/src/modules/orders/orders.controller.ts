@@ -1,8 +1,12 @@
+// 引入 NestJS 控制器相关装饰器
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+// 引入统一响应成功方法
 import { ok } from '../../common/api-response';
 
+// 订单管理控制器
 @Controller('orders')
 export class OrdersController {
+  // 订单预览/预估接口
   @Post('preview')
   preview(@Body() body: { symbol: string; leverage: number; qty: string }) {
     return ok({
@@ -15,6 +19,7 @@ export class OrdersController {
     });
   }
 
+  // 创建新订单
   @Post()
   createOrder(@Body() body: Record<string, unknown>) {
     return ok({
@@ -24,6 +29,7 @@ export class OrdersController {
     });
   }
 
+  // 获取当前未成交的挂单列表
   @Get('open')
   getOpenOrders(@Query('mode') mode = 'simulation', @Query('symbol') symbol?: string) {
     const list = [
@@ -55,6 +61,7 @@ export class OrdersController {
     });
   }
 
+  // 获取历史订单列表
   @Get('history')
   getOrderHistory(@Query('mode') mode = 'simulation', @Query('symbol') symbol?: string) {
     const list = [
@@ -89,6 +96,7 @@ export class OrdersController {
     });
   }
 
+  // 获取订单成交明细
   @Get('fills')
   getFills(@Query('mode') mode = 'simulation') {
     return ok({
@@ -107,6 +115,7 @@ export class OrdersController {
     });
   }
 
+  // 撤销指定订单
   @Post(':id/cancel')
   cancelOrder(@Param('id') id: string) {
     return ok({

@@ -1,15 +1,26 @@
+// 导入 Vue 响应式 API
 import { computed, ref } from 'vue';
+// 导入 Pinia 状态管理
 import { defineStore } from 'pinia';
+// 导入认证 API
 import { authApi } from '../api/services';
+// 导入用户信息类型
 import type { UserProfile } from '../api/types';
 
+// 认证状态 store
 export const useAuthStore = defineStore('auth', () => {
+  // 当前登录用户信息
   const user = ref<UserProfile | null>(null);
+  // 加载状态
   const loading = ref(false);
+  // 错误信息
   const error = ref('');
+  // 是否已登录
   const isAuthenticated = computed(() => Boolean(user.value));
+  // 登录状态中文标签
   const authLabel = computed(() => (user.value ? `已登录: ${user.value.nickname}` : '未登录'));
 
+  // 邮箱密码登录
   async function login(email: string, password: string) {
     loading.value = true;
     error.value = '';
@@ -27,6 +38,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 生物识别登录
   async function loginWithBiometric() {
     loading.value = true;
     error.value = '';
@@ -44,11 +56,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 退出登录：清除 token 及用户信息
   function logout() {
     localStorage.removeItem('accessToken');
     user.value = null;
   }
 
+  // 获取当前登录用户信息
   async function fetchMe() {
     loading.value = true;
     error.value = '';
@@ -66,6 +80,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 导出 store 状态与方法
   return {
     user,
     loading,

@@ -1,8 +1,12 @@
 <template>
+  <!-- 首页容器 -->
   <div class="page home-page">
+    <!-- 移动端外壳 -->
     <section class="mobile-shell">
+      <!-- 移动端顶部栏 -->
       <header class="mobile-topbar">
         <button class="icon-btn">◧</button>
+        <!-- 模式切换 -->
         <div class="mode-switch">
           <button class="mode-pill active">交易所</button>
           <button class="mode-pill">Web3</button>
@@ -13,11 +17,13 @@
         </div>
       </header>
 
+      <!-- 搜索栏（热搜） -->
       <div class="search-bar">
         <span class="search-icon">⌕</span>
         <span class="search-text">🔥 {{ trendingSymbol }} 当前热搜</span>
       </div>
 
+      <!-- 总资产卡片 -->
       <section class="hero-card">
         <div class="hero-copy">
           <div class="hero-label">
@@ -37,6 +43,7 @@
           </div>
         </div>
 
+        <!-- 资产走势柱状图 -->
         <div class="hero-chart">
           <div
             v-for="(height, index) in heroBars"
@@ -47,12 +54,14 @@
         </div>
       </section>
 
+      <!-- 快捷操作区 -->
       <section class="quick-actions">
         <button class="action-btn action-primary">链上充币</button>
         <button class="action-btn action-primary">C2C 买币</button>
         <button class="action-btn action-secondary">划转资金</button>
       </section>
 
+      <!-- 活动推广卡片 -->
       <section class="promo-card">
         <div class="promo-cover">
           <span class="promo-square"></span>
@@ -66,6 +75,7 @@
         <div class="promo-index">1/8</div>
       </section>
 
+      <!-- 行情排行榜切换标签 -->
       <section class="market-tabs">
         <button v-for="tab in rankingTabs" :key="tab" :class="['tab-chip', { active: tab === '热门榜' }]">
           {{ tab }}
@@ -73,11 +83,13 @@
         <button class="tab-arrow">›</button>
       </section>
 
+      <!-- 现货 / 合约切换 -->
       <section class="spot-switch">
         <button class="spot-pill active">现货</button>
         <button class="spot-pill">合约</button>
       </section>
 
+      <!-- 热门市场列表 -->
       <section class="market-list">
         <RouterLink v-for="item in featuredMarkets" :key="item.symbol" :to="`/trade/${item.symbol}`" class="market-row">
           <div class="market-meta">
@@ -99,6 +111,7 @@
         </RouterLink>
       </section>
 
+      <!-- 仓位快照 -->
       <section class="holdings-strip">
         <div class="strip-title">仓位快照</div>
         <div v-if="recentPositions.length" class="holdings-list">
@@ -110,6 +123,7 @@
         <div v-else class="status-text">暂无持仓数据</div>
       </section>
 
+      <!-- 底部导航栏 -->
       <footer class="bottom-dock">
         <RouterLink to="/" class="dock-item active">
           <span class="dock-icon">▦</span>
@@ -134,7 +148,9 @@
       </footer>
     </section>
 
+    <!-- 辅助信息区域（桌面端） -->
     <section class="support-grid">
+      <!-- 最近订单 -->
       <div class="card">
         <div class="section-head">
           <h2 class="section-title">最近订单</h2>
@@ -162,6 +178,7 @@
         </table>
       </div>
 
+      <!-- 账户摘要 -->
       <div class="card">
         <h2 class="section-title">账户摘要</h2>
         <div class="summary-grid">
@@ -188,28 +205,44 @@
 </template>
 
 <script setup lang="ts">
+// Vue 响应式工具与侦听器
 import { computed, watch } from 'vue';
+// Vue Router 导航组件
 import { RouterLink } from 'vue-router';
+// 资产状态管理
 import { useAssetStore } from '../stores/assets';
+// 行情状态管理
 import { useMarketStore } from '../stores/market';
+// 交易模式管理
 import { useModeStore } from '../stores/mode';
+// 订单状态管理
 import { useOrderStore } from '../stores/orders';
+// 持仓状态管理
 import { usePositionStore } from '../stores/positions';
+// 数值格式化与涨跌颜色工具函数
 import { formatPercent, formatSignedValue, getTrendClass } from '../utils/format';
 
+// 各 Store 实例
 const assetStore = useAssetStore();
 const marketStore = useMarketStore();
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
 
+// 排行榜标签列表
 const rankingTabs = ['自选', '热门榜', '新币榜', 'TradFi', 'DEX'];
+// 资产走势柱状图高度数据（百分比）
 const heroBars = [22, 35, 33, 48, 65, 71, 78, 74, 76, 73, 72, 86];
 
+// 热门市场（取前 5 条）
 const featuredMarkets = computed(() => marketStore.tickers.slice(0, 5));
+// 最近持仓（取前 4 条）
 const recentPositions = computed(() => positionStore.positions.slice(0, 4));
+// 历史订单（取前 5 条）
 const recentOrders = computed(() => orderStore.historyOrders.slice(0, 5));
+// 当前热搜品种
 const trendingSymbol = computed(() => featuredMarkets.value[3]?.symbol.split('-')[0] || 'ZEC');
+// 年化收益率
 const yieldPercent = computed(() => {
   const equity = Number(assetStore.snapshot?.equity || 0);
   const unrealized = Number(assetStore.snapshot?.unrealizedPnl || 0);
@@ -217,11 +250,13 @@ const yieldPercent = computed(() => {
   return formatPercent(percent);
 });
 
+// 拆分品种符号为基础币与计价币
 function splitSymbol(symbol: string) {
   const [base = symbol, quote = 'USDT'] = symbol.split('-');
   return { base, quote };
 }
 
+// 格式化成交量（紧凑显示）
 function formatVolumeCompact(value?: string) {
   const amount = Number(value || 0);
 
@@ -236,6 +271,7 @@ function formatVolumeCompact(value?: string) {
   return `₮${amount.toFixed(2)}`;
 }
 
+// 格式化成交易额
 function formatTurnover(value?: string) {
   const amount = Number(value || 0) * 18.85;
 
@@ -250,10 +286,12 @@ function formatTurnover(value?: string) {
   return `₮${amount.toFixed(0)}`;
 }
 
+// 品种图标首字母
 function coinLabel(symbol: string) {
   return splitSymbol(symbol).base.slice(0, 1);
 }
 
+// 品种图标色调
 function coinTone(symbol: string) {
   const base = splitSymbol(symbol).base;
 
@@ -272,6 +310,7 @@ function coinTone(symbol: string) {
   return 'coin-alt';
 }
 
+// 加载首页数据
 async function loadPageData() {
   await Promise.all([
     assetStore.fetchAssets(modeStore.mode),
@@ -281,6 +320,7 @@ async function loadPageData() {
   ]);
 }
 
+// 监听交易模式变化重新加载数据
 watch(
   () => modeStore.mode,
   () => {
@@ -291,10 +331,12 @@ watch(
 </script>
 
 <style scoped>
+/* 首页内容间距 */
 .home-page {
   gap: 20px;
 }
 
+/* 移动端外壳容器 */
 .mobile-shell {
   width: min(100%, 760px);
   margin: 0 auto;
@@ -307,6 +349,7 @@ watch(
   box-shadow: 0 30px 60px rgba(2, 6, 12, 0.42);
 }
 
+/* 弹性布局公用 */
 .mobile-topbar,
 .topbar-actions,
 .mode-switch,
@@ -320,12 +363,14 @@ watch(
   gap: 12px;
 }
 
+/* 两端对齐公用 */
 .mobile-topbar,
 .section-head {
   align-items: center;
   justify-content: space-between;
 }
 
+/* 无边框按钮公用 */
 .icon-btn,
 .mode-pill,
 .tab-chip,
@@ -335,6 +380,7 @@ watch(
   cursor: pointer;
 }
 
+/* 圆形图标按钮 */
 .icon-btn {
   width: 44px;
   height: 44px;
@@ -344,12 +390,14 @@ watch(
   font-size: 18px;
 }
 
+/* 模式切换按钮组 */
 .mode-switch {
   padding: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* 模式胶囊按钮 */
 .mode-pill {
   padding: 10px 20px;
   border-radius: 999px;
@@ -358,6 +406,7 @@ watch(
   font-weight: 700;
 }
 
+/* 激活态胶囊按钮 */
 .mode-pill.active,
 .tab-chip.active,
 .spot-pill.active {
@@ -365,6 +414,7 @@ watch(
   color: var(--text-primary);
 }
 
+/* 搜索栏 */
 .search-bar {
   display: flex;
   align-items: center;
@@ -375,15 +425,18 @@ watch(
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* 搜索图标 */
 .search-icon {
   font-size: 22px;
 }
 
+/* 热搜文本 */
 .search-text {
   color: var(--text-secondary);
   font-size: 18px;
 }
 
+/* 资产卡片：文字 + 柱状图 */
 .hero-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 160px;
@@ -392,6 +445,7 @@ watch(
   align-items: end;
 }
 
+/* 总资产标签行 */
 .hero-label {
   display: inline-flex;
   align-items: center;
@@ -400,6 +454,7 @@ watch(
   font-size: 15px;
 }
 
+/* 资产显隐圆点 */
 .eye-dot {
   width: 18px;
   height: 18px;
@@ -407,6 +462,7 @@ watch(
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+/* 总资产余额数字 */
 .hero-balance {
   margin-top: 14px;
   font-size: clamp(42px, 7vw, 72px);
@@ -414,11 +470,13 @@ watch(
   line-height: 0.96;
 }
 
+/* USDT 单位 */
 .hero-balance span {
   font-size: 0.38em;
   font-weight: 700;
 }
 
+/* 年收益行 */
 .hero-yield {
   margin-top: 18px;
   color: var(--text-secondary);
@@ -430,6 +488,7 @@ watch(
   font-weight: 700;
 }
 
+/* 柱状图区域 */
 .hero-chart {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -439,16 +498,19 @@ watch(
   padding: 18px 0 8px;
 }
 
+/* 单根柱条 */
 .hero-bar {
   border-radius: 999px 999px 6px 6px;
   background: linear-gradient(180deg, #63ff98 0%, #1dd15f 100%);
   box-shadow: 0 0 18px rgba(64, 255, 148, 0.34);
 }
 
+/* 快捷操作按钮行 */
 .quick-actions {
   margin-top: 26px;
 }
 
+/* 操作按钮通用 */
 .action-btn {
   flex: 1;
   min-height: 58px;
@@ -458,16 +520,19 @@ watch(
   font-weight: 800;
 }
 
+/* 主操作按钮 */
 .action-primary {
   background: #bbff27;
   color: #0d1205;
 }
 
+/* 次操作按钮 */
 .action-secondary {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
 
+/* 推广卡片 */
 .promo-card {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr) auto;
@@ -479,6 +544,7 @@ watch(
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* 推广封面 */
 .promo-cover {
   position: relative;
   height: 92px;
@@ -487,6 +553,7 @@ watch(
   overflow: hidden;
 }
 
+/* 推广方块装饰 */
 .promo-square {
   position: absolute;
   left: 12px;
@@ -502,6 +569,7 @@ watch(
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* VS 文字 */
 .promo-vs {
   position: absolute;
   right: 10px;
@@ -511,12 +579,14 @@ watch(
   color: rgba(255, 255, 255, 0.22);
 }
 
+/* 推广标题 */
 .promo-title {
   color: #f6a02d;
   font-size: 18px;
   font-weight: 700;
 }
 
+/* 推广描述 */
 .promo-desc {
   margin-top: 8px;
   color: #eef2f7;
@@ -524,17 +594,20 @@ watch(
   line-height: 1.55;
 }
 
+/* 推广序号 */
 .promo-index {
   align-self: start;
   color: var(--text-secondary);
   font-size: 18px;
 }
 
+/* 行情标签栏 */
 .market-tabs {
   margin-top: 28px;
   flex-wrap: wrap;
 }
 
+/* 标签芯片 */
 .tab-chip,
 .tab-arrow,
 .spot-pill {
@@ -545,20 +618,24 @@ watch(
   font-size: 16px;
 }
 
+/* 标签箭头 */
 .tab-arrow {
   padding-inline: 12px;
 }
 
+/* 现货/合约切换 */
 .spot-switch {
   margin-top: 16px;
 }
 
+/* 市场列表 */
 .market-list {
   display: grid;
   gap: 14px;
   margin-top: 18px;
 }
 
+/* 市场行 */
 .market-row {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(110px, 0.8fr) 120px;
@@ -567,6 +644,7 @@ watch(
   padding: 10px 0;
 }
 
+/* 弹性居中公用 */
 .market-meta,
 .market-symbol,
 .holding-pill,
@@ -579,6 +657,7 @@ watch(
   gap: 14px;
 }
 
+/* 币种头像 */
 .coin-avatar {
   width: 46px;
   height: 46px;
@@ -589,22 +668,27 @@ watch(
   color: #fff;
 }
 
+/* BTC 渐变色 */
 .coin-btc {
   background: linear-gradient(135deg, #ffb14c, #e98b18);
 }
 
+/* ETH 渐变色 */
 .coin-eth {
   background: linear-gradient(135deg, #7f9cff, #4b64f1);
 }
 
+/* SOL 渐变色 */
 .coin-sol {
   background: linear-gradient(135deg, #60ffd1, #6b4cff);
 }
 
+/* 其他币种 */
 .coin-alt {
   background: linear-gradient(135deg, #e4e7ee, #646b7a);
 }
 
+/* 市场符号 */
 .market-symbol {
   gap: 6px;
   font-size: 20px;
@@ -617,18 +701,21 @@ watch(
   color: var(--text-secondary);
 }
 
+/* 辅助信息字号 */
 .market-sub,
 .market-turnover {
   margin-top: 6px;
   font-size: 15px;
 }
 
+/* 市场价格列 */
 .market-price {
   text-align: right;
   font-size: 18px;
   font-weight: 700;
 }
 
+/* 涨跌幅标签 */
 .market-change {
   justify-self: end;
   min-width: 116px;
@@ -639,32 +726,38 @@ watch(
   font-weight: 800;
 }
 
+/* 涨 */
 .market-change.up {
   background: rgba(18, 195, 102, 0.92);
   color: #effff5;
 }
 
+/* 跌 */
 .market-change.down {
   background: rgba(246, 70, 93, 0.9);
   color: #fff3f5;
 }
 
+/* 持仓快照栏 */
 .holdings-strip {
   margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* 栏目标题 */
 .strip-title {
   margin-bottom: 12px;
   color: var(--text-secondary);
   font-size: 14px;
 }
 
+/* 持仓列表 */
 .holdings-list {
   flex-wrap: wrap;
 }
 
+/* 持仓胶囊 */
 .holding-pill {
   gap: 10px;
   padding: 10px 14px;
@@ -672,6 +765,7 @@ watch(
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* 底部导航栏 */
 .bottom-dock {
   justify-content: space-between;
   margin-top: 28px;
@@ -679,6 +773,7 @@ watch(
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* 底部导航项 */
 .dock-item {
   flex-direction: column;
   gap: 8px;
@@ -686,18 +781,22 @@ watch(
   font-size: 14px;
 }
 
+/* 激活态导航 */
 .dock-item.active {
   color: #bbff27;
 }
 
+/* 导航图标 */
 .dock-icon {
   font-size: 21px;
 }
 
+/* 主交易按钮上浮 */
 .dock-main {
   transform: translateY(-16px);
 }
 
+/* 主交易按钮圆形图标 */
 .dock-main-icon {
   display: grid;
   place-items: center;
@@ -710,16 +809,19 @@ watch(
   font-weight: 900;
 }
 
+/* 辅助信息网格（桌面） */
 .support-grid {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
   gap: 16px;
 }
 
+/* 摘要网格 */
 .summary-grid {
   flex-wrap: wrap;
 }
 
+/* 摘要项卡片 */
 .summary-item {
   flex: 1 1 calc(50% - 12px);
   min-width: 180px;
@@ -728,18 +830,21 @@ watch(
   background: var(--bg-soft);
 }
 
+/* 摘要标签 */
 .summary-item span {
   display: block;
   color: var(--text-secondary);
   font-size: 13px;
 }
 
+/* 摘要数值 */
 .summary-item strong {
   display: block;
   margin-top: 10px;
   font-size: 18px;
 }
 
+/* 窄屏自适应 */
 @media (max-width: 960px) {
   .mobile-shell {
     padding: 16px;
