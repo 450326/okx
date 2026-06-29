@@ -46,14 +46,14 @@ let candleSeries: ISeriesApi<'Candlestick'> | null = null;
 let volumeSeries: ISeriesApi<'Histogram'> | null = null;
 
 const intervals = computed(() => [
-  { label: '1秒', value: '1s', disabled: props.exchange === 'binance' },
-  { label: '30秒', value: '30s', disabled: props.exchange === 'binance' },
+  { label: '1秒', value: '1s', disabled: props.exchange === 'binance' || props.exchange === 'uniswap' },
+  { label: '30秒', value: '30s', disabled: props.exchange === 'binance' || props.exchange === 'uniswap' },
   { label: '1分', value: '1m', disabled: false },
   { label: '5分', value: '5m', disabled: false },
   { label: '15分', value: '15m', disabled: false },
   { label: '30分', value: '30m', disabled: false },
   { label: '1H', value: '1H', disabled: false },
-  { label: '4H', value: '4H', disabled: false },
+  { label: '4H', value: '4H', disabled: props.exchange === 'uniswap' },
   { label: '1天', value: '1D', disabled: false },
 ]);
 

@@ -28,6 +28,12 @@
             >
               Binance
             </button>
+            <button
+              :class="['exchange-chip', { active: marketStore.exchange === 'uniswap' }]"
+              @click="switchExchange('uniswap')"
+            >
+              Uniswap
+            </button>
             <RouterLink
               v-for="item in symbolShortcuts"
               :key="item.symbol"
@@ -42,7 +48,7 @@
         <div class="hero-price-block">
           <div class="price-large">{{ currentTicker?.lastPrice || '--' }}</div>
           <div class="price-sub">
-            {{ marketStore.exchange === 'okx' ? 'OKX' : 'Binance' }}
+            {{ exchangeLabel }}
             · 卖一 {{ currentTicker?.askPrice || '--' }}
             · 买一 {{ currentTicker?.bidPrice || '--' }}
           </div>
@@ -122,7 +128,7 @@
       <section class="card">
         <div class="panel-head">
           <h2 class="section-title">市场热度</h2>
-          <span class="status-text">{{ marketStore.exchange === 'okx' ? 'OKX' : 'Binance' }}</span>
+          <span class="status-text">{{ exchangeLabel }}</span>
         </div>
 
         <RouterLink v-for="item in relatedTickers" :key="item.symbol" :to="`/trade/${item.symbol}`" class="watch-row">
@@ -196,7 +202,13 @@ const positionStore = usePositionStore();
 
 const klineInterval = ref('5m');
 const klineClickPrice = ref<number | null>(null);
-const currentSymbol = computed(() => props.symbol || 'BTC-USDT-SWAP');
+const currentSymbol = computed(() => {
+  const raw = props.symbol || 'BTC-USDT-SWAP';
+  if (marketStore.exchange === 'uniswap') {
+    return raw.replace('-SWAP', '');
+  }
+  return raw;
+});
 const currentTicker = computed(() => marketStore.tickerMap[currentSymbol.value] || null);
 const currentPosition = computed(() => positionStore.positions[0] || null);
 const currentBaseSymbol = computed(() => {
@@ -205,6 +217,11 @@ const currentBaseSymbol = computed(() => {
   return s.replace('USDT', '');
 });
 const currentQuoteSymbol = computed(() => 'USDT');
+const exchangeLabel = computed(() => {
+  if (marketStore.exchange === 'okx') return 'OKX';
+  if (marketStore.exchange === 'binance') return 'Binance';
+  return 'Uniswap V3';
+});
 const symbolShortcuts = computed(() => marketStore.symbols.slice(0, 5));
 const relatedTickers = computed(() => {
   const source = marketStore.tickers.filter((item) => item.symbol !== currentSymbol.value);
@@ -245,7 +262,7 @@ function handleKlineClickPrice(price: number) {
   klineClickPrice.value = price;
 }
 
-async function switchExchange(exch: 'okx' | 'binance') {
+async function switchExchange(exch: 'okx' | 'binance' | 'uniswap') {
   marketStore.setExchange(exch);
   await loadTradePageData();
 }

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
+import { DexService } from './dex.service';
 
 const OKX_BASE = 'https://www.okx.com/api/v5';
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
@@ -90,10 +91,19 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
     { symbol: 'DOGEUSDT', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 50, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
     { symbol: 'XRPUSDT', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 50, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
   ],
+  uniswap: [
+    { symbol: 'ETH-USDT', baseCoin: 'ETH', quoteCoin: 'USDT', maxLeverage: 1, minQty: '0.001', pricePrecision: 2, qtyPrecision: 4 },
+    { symbol: 'BTC-USDT', baseCoin: 'BTC', quoteCoin: 'USDT', maxLeverage: 1, minQty: '0.0001', pricePrecision: 2, qtyPrecision: 6 },
+    { symbol: 'SOL-USDT', baseCoin: 'SOL', quoteCoin: 'USDT', maxLeverage: 1, minQty: '0.01', pricePrecision: 2, qtyPrecision: 2 },
+    { symbol: 'DOGE-USDT', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 1, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
+    { symbol: 'XRP-USDT', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 1, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
+  ],
 };
 
 @Injectable()
 export class MarketService {
+  constructor(private readonly dexService: DexService) {}
+
   private async getOkx<T>(path: string, params?: Record<string, string>): Promise<{ code: string; data: T[] } | null> {
     try {
       const res = await axios.get<{ code: string; data: T[] }>(`${OKX_BASE}${path}`, {
@@ -135,6 +145,9 @@ export class MarketService {
   async getTickers(symbols?: string[], exchange: string = 'okx') {
     if (exchange === 'binance') {
       return this.getBinanceTickers(symbols);
+    }
+    if (exchange === 'uniswap') {
+      return this.dexService.getTickers(symbols);
     }
     return this.getOkxTickers(symbols);
   }
@@ -197,6 +210,9 @@ export class MarketService {
     if (exchange === 'binance') {
       return this.getBinanceKlines(symbol, interval);
     }
+    if (exchange === 'uniswap') {
+      return this.dexService.getKlines(symbol, interval);
+    }
     return this.getOkxKlines(symbol, interval);
   }
 
@@ -241,6 +257,9 @@ export class MarketService {
     if (exchange === 'binance') {
       return this.getBinanceDepth(symbol, limit);
     }
+    if (exchange === 'uniswap') {
+      return this.dexService.getDepth(symbol);
+    }
     return this.getOkxDepth(symbol, limit);
   }
 
@@ -272,6 +291,9 @@ export class MarketService {
   async getTrades(symbol: string, exchange: string = 'okx') {
     if (exchange === 'binance') {
       return this.getBinanceTrades(symbol);
+    }
+    if (exchange === 'uniswap') {
+      return this.dexService.getTrades(symbol);
     }
     return this.getOkxTrades(symbol);
   }
