@@ -17,6 +17,12 @@ export interface UserProfile {
   defaultMode: TradeMode;
 }
 
+export interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: UserProfile;
+}
+
 export interface AccountModeResponse {
   mode: TradeMode;
 }

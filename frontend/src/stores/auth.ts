@@ -10,6 +10,45 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => Boolean(user.value));
   const authLabel = computed(() => (user.value ? `已登录: ${user.value.nickname}` : '未登录'));
 
+  async function login(email: string, password: string) {
+    loading.value = true;
+    error.value = '';
+
+    try {
+      const result = await authApi.login(email, password);
+      localStorage.setItem('accessToken', result.accessToken);
+      user.value = result.user;
+      return result.user;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '登录失败';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function loginWithBiometric() {
+    loading.value = true;
+    error.value = '';
+
+    try {
+      const result = await authApi.login('biometric@user.com', 'biometric-auto');
+      localStorage.setItem('accessToken', result.accessToken);
+      user.value = result.user;
+      return result.user;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '生物识别登录失败';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('accessToken');
+    user.value = null;
+  }
+
   async function fetchMe() {
     loading.value = true;
     error.value = '';
@@ -19,6 +58,7 @@ export const useAuthStore = defineStore('auth', () => {
       return user.value;
     } catch (err) {
       error.value = err instanceof Error ? err.message : '获取用户信息失败';
+      user.value = null;
       return null;
     } finally {
       loading.value = false;
@@ -31,6 +71,9 @@ export const useAuthStore = defineStore('auth', () => {
     error,
     isAuthenticated,
     authLabel,
+    login,
+    loginWithBiometric,
+    logout,
     fetchMe,
   };
 });

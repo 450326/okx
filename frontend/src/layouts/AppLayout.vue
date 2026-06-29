@@ -46,7 +46,7 @@
           <button class="ghost-btn" :disabled="modeStore.loading" @click="openModeConfirm()">
             切换到{{ modeStore.mode === 'simulation' ? '真实交易' : '模拟交易' }}
           </button>
-          <button class="primary-btn" :disabled="authStore.loading">{{ userName }}</button>
+          <button class="primary-btn" @click="handleLogout">{{ userName }} · 退出</button>
         </div>
       </header>
 
@@ -72,7 +72,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { RouterLink, RouterView } from 'vue-router';
+import { RouterLink, RouterView, useRouter } from 'vue-router';
 import ConfirmModal from '../components/common/ConfirmModal.vue';
 import { useAssetStore } from '../stores/assets';
 import { useAuthStore } from '../stores/auth';
@@ -86,6 +86,7 @@ const authStore = useAuthStore();
 const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
 const themeStore = useThemeStore();
+const router = useRouter();
 const modeConfirmOpen = ref(false);
 
 const navItems = [
@@ -143,6 +144,11 @@ async function handleToggleMode() {
 onMounted(() => {
   void loadGlobalData();
 });
+
+function handleLogout() {
+  authStore.logout();
+  router.replace('/login');
+}
 </script>
 
 <style scoped>

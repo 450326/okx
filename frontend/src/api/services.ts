@@ -18,9 +18,13 @@ import type {
   DepthResponse,
   KlineResponse,
   RecentTradeListResponse,
+  LoginResponse,
 } from './types';
 
 export const authApi = {
+  login(email: string, password: string) {
+    return post<LoginResponse, { email: string; password: string }>('/auth/login', { email, password });
+  },
   me() {
     return get<UserProfile>('/auth/me');
   },
