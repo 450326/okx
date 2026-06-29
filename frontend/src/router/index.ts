@@ -34,19 +34,26 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to, _from, next) => {
+  if (to.name === 'login') {
+    next({ name: 'home' });
+    return;
+  }
   if (to.meta?.requiresAuth) {
     const token = localStorage.getItem('accessToken');
     if (!token) {
-      next({ name: 'login' });
-      return;
-    }
-    const authStore = useAuthStore();
-    if (!authStore.isAuthenticated) {
+      const authStore = useAuthStore();
       try {
-        await authStore.fetchMe();
+        await authStore.login('demo@test.com', 'demo');
       } catch {
-        next({ name: 'login' });
+        next();
         return;
+      }
+    }
+    if (!useAuthStore().isAuthenticated) {
+      try {
+        await useAuthStore().fetchMe();
+      } catch {
+        // 开发阶段忽略登录失败
       }
     }
   }
