@@ -42,16 +42,11 @@
             </span>
           </div>
         </div>
+      </section>
 
-        <!-- 资产走势柱状图 -->
-        <div class="hero-chart">
-          <div
-            v-for="(height, index) in heroBars"
-            :key="`bar-${index}`"
-            class="hero-bar"
-            :style="{ height: `${height}%` }"
-          ></div>
-        </div>
+      <!-- 资金曲线图 -->
+      <section class="card equity-curve-card">
+        <EquityChart v-model:mode="modeStore.mode" range="30d" />
       </section>
 
       <!-- 快捷操作区 -->
@@ -219,6 +214,8 @@ import { useModeStore } from '../stores/mode';
 import { useOrderStore } from '../stores/orders';
 // 持仓状态管理
 import { usePositionStore } from '../stores/positions';
+// 资金曲线图组件
+import EquityChart from '../components/trade/EquityChart.vue';
 // 数值格式化与涨跌颜色工具函数
 import { formatPercent, formatSignedValue, getTrendClass } from '../utils/format';
 
@@ -231,8 +228,6 @@ const positionStore = usePositionStore();
 
 // 排行榜标签列表
 const rankingTabs = ['自选', '热门榜', '新币榜', 'TradFi', 'DEX'];
-// 资产走势柱状图高度数据（百分比）
-const heroBars = [22, 35, 33, 48, 65, 71, 78, 74, 76, 73, 72, 86];
 
 // 热门市场（取前 5 条）
 const featuredMarkets = computed(() => marketStore.tickers.slice(0, 5));
@@ -436,13 +431,9 @@ watch(
   font-size: 18px;
 }
 
-/* 资产卡片：文字 + 柱状图 */
+/* 资产卡片 */
 .hero-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 160px;
-  gap: 16px;
   margin-top: 26px;
-  align-items: end;
 }
 
 /* 总资产标签行 */
@@ -488,23 +479,6 @@ watch(
   font-weight: 700;
 }
 
-/* 柱状图区域 */
-.hero-chart {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  align-items: end;
-  gap: 5px;
-  min-height: 120px;
-  padding: 18px 0 8px;
-}
-
-/* 单根柱条 */
-.hero-bar {
-  border-radius: 999px 999px 6px 6px;
-  background: linear-gradient(180deg, #63ff98 0%, #1dd15f 100%);
-  box-shadow: 0 0 18px rgba(64, 255, 148, 0.34);
-}
-
 /* 快捷操作按钮行 */
 .quick-actions {
   margin-top: 26px;
@@ -542,6 +516,12 @@ watch(
   padding: 18px;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.06);
+}
+
+/* 资金曲线卡片 */
+.equity-curve-card {
+  margin-top: 24px;
+  padding: 24px;
 }
 
 /* 推广封面 */

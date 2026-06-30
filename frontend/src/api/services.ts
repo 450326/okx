@@ -4,6 +4,7 @@ import { del, get, post, put } from './http';
 import type {
   AccountModeResponse,
   AssetSnapshot,
+  EquityHistoryResponse,
   LedgerListResponse,
   MarketSymbolsResponse,
   ExchangeAccount,
@@ -50,6 +51,10 @@ export const accountApi = {
     return get<AssetSnapshot>('/account/assets', { mode });
   },
   // 获取账本流水
+  getEquityHistory(mode: TradeMode, range: string) {
+    return get<EquityHistoryResponse>('/account/equity-history', { mode, range });
+  },
+
   getLedger(mode: TradeMode) {
     return get<LedgerListResponse>('/account/ledger', { mode });
   },

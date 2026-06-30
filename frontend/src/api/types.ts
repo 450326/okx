@@ -28,6 +28,17 @@ export interface LoginResponse {
   user: UserProfile;     // 用户信息
 }
 
+export interface EquityPoint {
+  ts: number;
+  equity: number;
+}
+
+export interface EquityHistoryResponse {
+  mode: TradeMode;
+  range: string;
+  points: EquityPoint[];
+}
+
 // 账户模式响应
 export interface AccountModeResponse {
   mode: TradeMode;  // 当前交易模式
