@@ -5,14 +5,7 @@
     <section class="mobile-shell">
       <!-- 移动端顶部栏 -->
       <header class="mobile-topbar">
-        <button class="icon-btn">◧</button>
-        <!-- 模式切换 -->
-        <div class="mode-switch">
-          <button class="mode-pill active">交易所</button>
-          <button class="mode-pill">Web3</button>
-        </div>
         <div class="topbar-actions">
-          <button class="icon-btn">礼</button>
           <button class="icon-btn">扫</button>
         </div>
       </header>
@@ -20,24 +13,23 @@
       <!-- 搜索栏（热搜） -->
       <div class="search-bar">
         <span class="search-icon">⌕</span>
-        <span class="search-text">🔥 {{ trendingSymbol }} 当前热搜</span>
+        <span class="search-text">🔥 {{ trendingSymbol }} {{ $t('home.hotSearch') }}</span>
       </div>
 
       <!-- 总资产卡片 -->
       <section class="hero-card">
         <div class="hero-copy">
           <div class="hero-label">
-            总资产估值
+            {{ $t('home.totalAssets') }}
             <span class="eye-dot"></span>
           </div>
           <div class="hero-balance">
-            {{ assetStore.snapshot?.equity || '--' }}
-            <span>USDT</span>
+            {{ formatCurrency(assetStore.snapshot?.equity) }}
           </div>
           <div class="hero-yield">
-            一年收益
+            {{ $t('home.yearlyReturn') }}
             <span :class="getTrendClass(assetStore.snapshot?.unrealizedPnl)">
-              {{ formatSignedValue(assetStore.snapshot?.unrealizedPnl) }}
+              {{ formatSignedCurrency(assetStore.snapshot?.unrealizedPnl) }}
               ({{ yieldPercent }})
             </span>
           </div>
@@ -51,23 +43,9 @@
 
       <!-- 快捷操作区 -->
       <section class="quick-actions">
-        <button class="action-btn action-primary">链上充币</button>
-        <button class="action-btn action-primary">C2C 买币</button>
-        <button class="action-btn action-secondary">划转资金</button>
-      </section>
-
-      <!-- 活动推广卡片 -->
-      <section class="promo-card">
-        <div class="promo-cover">
-          <span class="promo-square"></span>
-          <span class="promo-square secondary"></span>
-          <span class="promo-vs">VS</span>
-        </div>
-        <div class="promo-content">
-          <div class="promo-title">加码 150 万个 OFC</div>
-          <div class="promo-desc">预测 6.16 西班牙 vs 佛得角比赛结果，即刻参与瓜分奖励</div>
-        </div>
-        <div class="promo-index">1/8</div>
+        <button class="action-btn action-primary">{{ $t('home.onChainDeposit') }}</button>
+        <button class="action-btn action-primary">{{ $t('home.c2cBuy') }}</button>
+        <button class="action-btn action-secondary">{{ $t('home.transfer') }}</button>
       </section>
 
       <!-- 行情排行榜切换标签 -->
@@ -108,14 +86,14 @@
 
       <!-- 仓位快照 -->
       <section class="holdings-strip">
-        <div class="strip-title">仓位快照</div>
+        <div class="strip-title">{{ $t('home.positionsSnapshot') }}</div>
         <div v-if="recentPositions.length" class="holdings-list">
           <div v-for="item in recentPositions" :key="item.id" class="holding-pill">
             <span>{{ item.symbol }}</span>
             <strong :class="getTrendClass(item.unrealizedPnl)">{{ formatSignedValue(item.unrealizedPnl) }}</strong>
           </div>
         </div>
-        <div v-else class="status-text">暂无持仓数据</div>
+        <div v-else class="status-text">{{ $t('home.noPositionData') }}</div>
       </section>
 
       <!-- 底部导航栏 -->
@@ -148,8 +126,8 @@
       <!-- 最近订单 -->
       <div class="card">
         <div class="section-head">
-          <h2 class="section-title">最近订单</h2>
-          <RouterLink class="ghost-btn" to="/orders/history">查看全部</RouterLink>
+          <h2 class="section-title">{{ $t('home.recentOrders') }}</h2>
+          <RouterLink class="ghost-btn" to="/orders/history">{{ $t('common.all') }}</RouterLink>
         </div>
         <table class="table">
           <thead>
@@ -175,23 +153,23 @@
 
       <!-- 账户摘要 -->
       <div class="card">
-        <h2 class="section-title">账户摘要</h2>
+        <h2 class="section-title">{{ $t('home.accountSummary') }}</h2>
         <div class="summary-grid">
           <div class="summary-item">
-            <span>当前模式</span>
+            <span>{{ $t('home.currentMode') }}</span>
             <strong>{{ modeStore.modeLabel }}</strong>
           </div>
           <div class="summary-item">
-            <span>可用余额</span>
-            <strong>{{ assetStore.snapshot?.availableBalance || '--' }} USDT</strong>
+            <span>{{ $t('home.availableBalance') }}</span>
+            <strong>{{ formatCurrency(assetStore.snapshot?.availableBalance) }}</strong>
           </div>
           <div class="summary-item">
-            <span>最近下单</span>
-            <strong>{{ recentOrders[0]?.symbol || '暂无' }}</strong>
+            <span>{{ $t('home.lastOrder') }}</span>
+            <strong>{{ recentOrders[0]?.symbol || $t('common.noData') }}</strong>
           </div>
           <div class="summary-item">
-            <span>活跃仓位</span>
-            <strong>{{ recentPositions.length }} 个</strong>
+            <span>{{ $t('home.activePositionsCount') }}</span>
+            <strong>{{ recentPositions.length }} {{ $t('trade.activePositions') }}</strong>
           </div>
         </div>
       </div>
@@ -216,8 +194,10 @@ import { useOrderStore } from '../stores/orders';
 import { usePositionStore } from '../stores/positions';
 // 资金曲线图组件
 import EquityChart from '../components/trade/EquityChart.vue';
+// 国际化
+import { $t } from '../utils/i18n';
 // 数值格式化与涨跌颜色工具函数
-import { formatPercent, formatSignedValue, getTrendClass } from '../utils/format';
+import { formatPercent, formatSignedValue, formatSignedCurrency, formatCurrency, formatCompactVolume, getTrendClass } from '../utils/format';
 
 // 各 Store 实例
 const assetStore = useAssetStore();
@@ -506,79 +486,10 @@ watch(
   color: var(--text-primary);
 }
 
-/* 推广卡片 */
-.promo-card {
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) auto;
-  gap: 18px;
-  align-items: center;
-  margin-top: 24px;
-  padding: 18px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
 /* 资金曲线卡片 */
 .equity-curve-card {
   margin-top: 24px;
   padding: 24px;
-}
-
-/* 推广封面 */
-.promo-cover {
-  position: relative;
-  height: 92px;
-  border-radius: 18px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
-  overflow: hidden;
-}
-
-/* 推广方块装饰 */
-.promo-square {
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  width: 28px;
-  height: 28px;
-  background: #bbff27;
-}
-
-.promo-square.secondary {
-  left: 36px;
-  top: 36px;
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* VS 文字 */
-.promo-vs {
-  position: absolute;
-  right: 10px;
-  bottom: 8px;
-  font-size: 44px;
-  font-weight: 900;
-  color: rgba(255, 255, 255, 0.22);
-}
-
-/* 推广标题 */
-.promo-title {
-  color: #f6a02d;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-/* 推广描述 */
-.promo-desc {
-  margin-top: 8px;
-  color: #eef2f7;
-  font-size: 17px;
-  line-height: 1.55;
-}
-
-/* 推广序号 */
-.promo-index {
-  align-self: start;
-  color: var(--text-secondary);
-  font-size: 18px;
 }
 
 /* 行情标签栏 */
@@ -845,14 +756,6 @@ watch(
 
   .quick-actions {
     flex-direction: column;
-  }
-
-  .promo-card {
-    grid-template-columns: 72px 1fr;
-  }
-
-  .promo-index {
-    display: none;
   }
 }
 </style>

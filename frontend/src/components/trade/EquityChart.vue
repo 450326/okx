@@ -1,7 +1,7 @@
 <template>
   <div class="equity-chart-wrapper">
     <div class="equity-head">
-      <h2 class="section-title">资金曲线</h2>
+      <h2 class="section-title">{{ $t('equity.equityCurve') }}</h2>
       <div class="equity-tabs">
         <button
           v-for="r in ranges"
@@ -9,7 +9,7 @@
           :class="['range-chip', { active: activeRange === r.key }]"
           @click="switchRange(r.key)"
         >
-          {{ r.label }}
+          {{ $t(r.labelKey) }}
         </button>
       </div>
       <div class="equity-mode-tabs">
@@ -17,38 +17,38 @@
           :class="['mode-chip', { active: activeMode === 'simulation' }]"
           @click="switchMode('simulation')"
         >
-          模拟盘
+          {{ $t('equity.simulation') }}
         </button>
         <button
           :class="['mode-chip', { active: activeMode === 'live' }]"
           @click="switchMode('live')"
         >
-          实盘
+          {{ $t('equity.live') }}
         </button>
       </div>
     </div>
 
     <div class="equity-stats">
       <div class="eq-stat">
-        <span>起始权益</span>
+        <span>{{ $t('equity.startEquity') }}</span>
         <strong>{{ formatEquity(startEquity) }}</strong>
       </div>
       <div class="eq-stat">
-        <span>当前权益</span>
+        <span>{{ $t('equity.currentEquity') }}</span>
         <strong>{{ formatEquity(endEquity) }}</strong>
       </div>
       <div class="eq-stat">
-        <span>收益</span>
+        <span>{{ $t('equity.return') }}</span>
         <strong :class="getTrendClass(returnAmount)">{{ formatSignedValue(returnAmount) }}</strong>
       </div>
       <div class="eq-stat">
-        <span>收益率</span>
+        <span>{{ $t('equity.returnRate') }}</span>
         <strong :class="getTrendClass(returnPct)">{{ returnPct >= 0 ? '+' : '' }}{{ returnPct.toFixed(2) }}%</strong>
       </div>
     </div>
 
     <div v-if="!points.length" class="chart-empty">
-      <div class="empty-text">暂无数据 — 请连接到实盘交易所</div>
+      <div class="empty-text">{{ $t('equity.noLiveData') }}</div>
     </div>
     <div v-else ref="chartContainer" class="chart-container"></div>
   </div>
@@ -59,6 +59,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { createChart, LineSeries, type IChartApi, type ISeriesApi, type LineData, type Time, ColorType } from 'lightweight-charts';
 import { accountApi } from '../../api/services';
 import { formatSignedValue, getTrendClass } from '../../utils/format';
+import { $t } from '../../utils/i18n';
 import type { EquityPoint } from '../../api/types';
 
 const props = withDefaults(defineProps<{
@@ -75,11 +76,11 @@ const emit = defineEmits<{
 }>();
 
 const ranges = [
-  { key: '1d', label: '1天' },
-  { key: '7d', label: '7天' },
-  { key: '30d', label: '30天' },
-  { key: '90d', label: '90天' },
-  { key: '1y', label: '1年' },
+  { key: '1d', labelKey: 'equity.day1' },
+  { key: '7d', labelKey: 'equity.day7' },
+  { key: '30d', labelKey: 'equity.day30' },
+  { key: '90d', labelKey: 'equity.day90' },
+  { key: '1y', labelKey: 'equity.year1' },
 ];
 
 const activeRange = ref(props.range);

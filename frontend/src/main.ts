@@ -8,6 +8,10 @@ import App from './App.vue';
 import router from './router';
 // 引入主题 Store
 import { useThemeStore } from './stores/theme';
+// 引入 i18n Store
+import { useI18nStore } from './i18n/store';
+// 引入货币 Store
+import { useCurrencyStore } from './stores/currency';
 // 引入全局样式
 import './styles/global.css';
 
@@ -23,5 +27,9 @@ app.use(router);
 
 // 初始化主题配置
 useThemeStore(pinia).initializeTheme();
+// 初始化语言设置
+useI18nStore(pinia).initLocale();
+// 初始化计价单位
+useCurrencyStore(pinia).initQuote();
 // 挂载应用
 app.mount('#app');

@@ -8,7 +8,7 @@
         <div class="hero-head">
           <div>
             <!-- 工作台标题 -->
-            <div class="hero-eyebrow">{{ isPolymarket ? '预测市场' : '交易工作台' }}</div>
+            <div class="hero-eyebrow">{{ isPolymarket ? $t('trade.predictionMarket') : $t('trade.workbench') }}</div>
             <!-- 品种名称及涨跌幅 -->
             <div class="hero-symbol-line">
               <h1 class="hero-symbol">{{ isPolymarket ? 'YES' : currentBaseSymbol }}</h1>
@@ -21,7 +21,7 @@
             <div v-if="isPolymarket && currentTicker?.question" class="hero-question">
               {{ currentTicker.question }}
             </div>
-            <div class="hero-mode-text">{{ isPolymarket ? '概率市场' : `当前模式：${modeStore.modeLabel}` }}</div>
+            <div class="hero-mode-text">{{ isPolymarket ? $t('trade.probabilityMarket') : `${$t('trade.currentMode')}：${modeStore.modeLabel}` }}</div>
           </div>
 
           <!-- 交易所 / 品种切换 -->
@@ -66,8 +66,8 @@
           <div class="price-large">{{ isPolymarket ? formatProb(currentTicker?.lastPrice) : (currentTicker?.lastPrice || '--') }}</div>
           <div class="price-sub">
             {{ exchangeLabel }}
-            · {{ isPolymarket ? `买价 ${formatProb(currentTicker?.bidPrice)}` : `卖一 ${currentTicker?.askPrice || '--'}` }}
-            · {{ isPolymarket ? `卖价 ${formatProb(currentTicker?.askPrice)}` : `买一 ${currentTicker?.bidPrice || '--'}` }}
+            · {{ isPolymarket ? `${$t('trade.bidPrice')} ${formatProb(currentTicker?.bidPrice)}` : `${$t('trade.ask')} ${currentTicker?.askPrice || '--'}` }}
+            · {{ isPolymarket ? `${$t('trade.askPrice')} ${formatProb(currentTicker?.askPrice)}` : `${$t('trade.bid')} ${currentTicker?.bidPrice || '--'}` }}
           </div>
 
           <!-- 24H 价格区间进度条 -->
@@ -84,19 +84,19 @@
           <!-- 四格统计数据 -->
           <div class="hero-stat-grid">
             <div class="hero-stat">
-              <span>{{ isPolymarket ? '买价' : '买一' }}</span>
+              <span>{{ isPolymarket ? $t('trade.bidPrice') : $t('trade.bid') }}</span>
               <strong>{{ isPolymarket ? formatProb(currentTicker?.bidPrice) : (currentTicker?.bidPrice || '--') }}</strong>
             </div>
             <div class="hero-stat">
-              <span>{{ isPolymarket ? '卖价' : '卖一' }}</span>
+              <span>{{ isPolymarket ? $t('trade.askPrice') : $t('trade.ask') }}</span>
               <strong>{{ isPolymarket ? formatProb(currentTicker?.askPrice) : (currentTicker?.askPrice || '--') }}</strong>
             </div>
             <div class="hero-stat">
-              <span>24H 成交量</span>
+              <span>{{ $t('trade.volume24h') }}</span>
               <strong>{{ currentTicker?.volume24h || '--' }}</strong>
             </div>
             <div class="hero-stat">
-              <span>活跃仓位</span>
+              <span>{{ $t('trade.activePositions') }}</span>
               <strong>{{ positionStore.positions.length }}</strong>
             </div>
           </div>
@@ -231,6 +231,8 @@ import { useOrderStore } from '../stores/orders';
 import { usePositionStore } from '../stores/positions';
 // 数值格式化与涨跌颜色工具函数
 import { formatPercent, getTrendClass } from '../utils/format';
+// 国际化
+import { $t } from '../utils/i18n';
 
 // 接收路由参数：品种符号
 const props = defineProps<{ symbol?: string }>();

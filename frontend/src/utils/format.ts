@@ -1,16 +1,65 @@
-// 格式化带符号的数值（如 +1.23 / -1.23）
+import { useCurrencyStore } from '../stores/currency';
+
 export function formatSignedValue(value?: string | number, digits = 2) {
   const numeric = Number(value || 0);
   return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(digits)}`;
 }
 
-// 格式化百分比（如 +1.23% / -1.23%）
 export function formatPercent(value?: string | number, digits = 2) {
   const numeric = Number(value || 0);
   return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(digits)}%`;
 }
 
-// 根据数值正负返回对应的 CSS 类名（up / down）
 export function getTrendClass(value?: string | number) {
   return Number(value || 0) >= 0 ? 'up' : 'down';
+}
+
+export function formatPrice(value?: string | number, digits = 2): string {
+  const numeric = Number(value || 0);
+  return numeric.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+export function formatCurrency(value?: string | number, digits = 2): string {
+  const numeric = Number(value || 0);
+  const store = useCurrencyStore();
+  const sym = store.symbol;
+  const formatted = numeric.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  if (store.quote === 'USD') {
+    return `$${formatted}`;
+  }
+  return `${formatted} ${sym}`;
+}
+
+export function formatSignedCurrency(value?: string | number, digits = 2): string {
+  const numeric = Number(value || 0);
+  const prefix = numeric >= 0 ? '+' : '';
+  const store = useCurrencyStore();
+  const formatted = Math.abs(numeric).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  if (store.quote === 'USD') {
+    return `${prefix}$${formatted}`;
+  }
+  return `${prefix}${formatted} ${store.symbol}`;
+}
+
+export function formatCompactVolume(value?: string | number): string {
+  const amount = Number(value || 0);
+  const store = useCurrencyStore();
+  const prefix = store.quote === 'USD' ? '$' : '₮';
+
+  if (amount >= 1000000) {
+    return `${prefix}${(amount / 1000000).toFixed(2)}M`;
+  }
+  if (amount >= 1000) {
+    return `${prefix}${(amount / 1000).toFixed(2)}K`;
+  }
+  return `${prefix}${amount.toFixed(2)}`;
 }
