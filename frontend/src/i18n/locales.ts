@@ -417,6 +417,7 @@ export const locales: Record<string, Record<string, string>> = {
 
     'currency.USDT': 'USDT',
     'currency.USD': 'USD',
+    'currency.CNY': 'CNY',
 
     'layout.brand': 'Futures Pro',
     'layout.dark': 'Dark',
@@ -721,6 +722,7 @@ export const locales: Record<string, Record<string, string>> = {
 
     'currency.USDT': 'USDT',
     'currency.USD': 'USD',
+    'currency.CNY': '人民元',
 
     'layout.brand': 'Futures Pro',
     'layout.dark': 'ダーク',
@@ -1025,6 +1027,7 @@ export const locales: Record<string, Record<string, string>> = {
 
     'currency.USDT': 'USDT',
     'currency.USD': 'USD',
+    'currency.CNY': '위안',
 
     'layout.brand': 'Futures Pro',
     'layout.dark': '다크',

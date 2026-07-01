@@ -41,13 +41,6 @@
         <EquityChart v-model:mode="modeStore.mode" range="30d" />
       </section>
 
-      <!-- 快捷操作区 -->
-      <section class="quick-actions">
-        <button class="action-btn action-primary">{{ $t('home.onChainDeposit') }}</button>
-        <button class="action-btn action-primary">{{ $t('home.c2cBuy') }}</button>
-        <button class="action-btn action-secondary">{{ $t('home.transfer') }}</button>
-      </section>
-
       <!-- 行情排行榜切换标签 -->
       <section class="market-tabs">
         <button v-for="tab in rankingTabs" :key="tab" :class="['tab-chip', { active: tab === '热门榜' }]">

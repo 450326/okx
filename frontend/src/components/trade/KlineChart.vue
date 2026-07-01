@@ -45,6 +45,7 @@ const chartContainer = ref<HTMLElement | null>(null);
 let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<'Candlestick'> | null = null;
 let volumeSeries: ISeriesApi<'Histogram'> | null = null;
+let isInitialLoad = true;
 
 const intervals = computed(() => [
   { label: $t('chart.interval1s'), value: '1s', disabled: props.exchange === 'binance' || props.exchange === 'uniswap' || props.exchange === 'polymarket' },
@@ -59,6 +60,8 @@ const intervals = computed(() => [
 ]);
 
 const isSecondsInterval = computed(() => props.modelValue === '1s' || props.modelValue === '30s');
+
+const isLiveInterval = computed(() => ['1s', '30s', '1m', '5m'].includes(props.modelValue));
 
 function buildCandleData(items: KlineItem[]): CandlestickData[] {
   return items.map((k) => ({
@@ -89,6 +92,13 @@ function initChart() {
       background: { type: ColorType.Solid, color: 'transparent' },
       textColor: isDark ? '#8b93a6' : '#657089',
     },
+    localization: {
+      timeFormatter: (time: number) => {
+        const d = new Date(time * 1000);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      },
+    },
     grid: {
       vertLines: { color: isDark ? '#202531' : '#edf2f8' },
       horzLines: { color: isDark ? '#202531' : '#edf2f8' },
@@ -103,6 +113,14 @@ function initChart() {
       borderColor: isDark ? '#2a3140' : '#d7deea',
       timeVisible: true,
       secondsVisible: isSecondsInterval.value,
+      tickMarkFormatter: (time: number) => {
+        const d = new Date(time * 1000);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const h = pad(d.getHours());
+        const m = pad(d.getMinutes());
+        const s = isSecondsInterval.value ? `:${pad(d.getSeconds())}` : '';
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${h}:${m}${s}`;
+      },
     },
     width: container.clientWidth,
     height: 460,
@@ -145,6 +163,7 @@ function initChart() {
     }
   });
 
+  isInitialLoad = true;
   updateChartData();
 }
 
@@ -154,7 +173,10 @@ function updateChartData() {
   const volumes = buildVolumeData(props.klines).reverse();
   candleSeries.setData(candles);
   volumeSeries.setData(volumes);
-  chart?.timeScale().fitContent();
+  if (isInitialLoad || isLiveInterval.value) {
+    chart?.timeScale().scrollToPosition(0, false);
+    isInitialLoad = false;
+  }
 }
 
 function handleResize() {
@@ -174,27 +196,38 @@ function applyTimeScaleOptions() {
   }
 }
 
-watch(() => props.klines, () => { nextTick(updateChartData); }, { deep: false });
+watch(() => [props.klines, props.symbol, props.modelValue], () => {
+  nextTick(updateChartData);
+}, { deep: false });
 
-watch(
-  () => [props.symbol, props.modelValue],
-  () => {
-    nextTick(applyTimeScaleOptions);
-    chart?.timeScale().fitContent();
-  },
-);
+watch(() => props.modelValue, () => {
+  isInitialLoad = true;
+  nextTick(() => {
+    applyTimeScaleOptions();
+    updateChartData();
+  });
+});
+
+let resizeObserver: ResizeObserver | null = null;
 
 onMounted(() => {
   nextTick(() => {
     initChart();
-    window.addEventListener('resize', handleResize);
   });
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => handleResize());
+    if (chartContainer.value) {
+      resizeObserver.observe(chartContainer.value);
+    }
+  }
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize);
-  chart?.remove();
-  chart = null;
+  if (resizeObserver) resizeObserver.disconnect();
+  if (chart) {
+    chart.remove();
+    chart = null;
+  }
   candleSeries = null;
   volumeSeries = null;
 });
@@ -202,65 +235,56 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .kline-card {
-  display: flex;
-  flex-direction: column;
+  padding: 22px;
 }
 
 .kline-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
 .kline-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .interval-group {
   display: flex;
   gap: 4px;
-  background: var(--bg-soft);
-  padding: 3px;
-  border-radius: 10px;
   flex-wrap: wrap;
 }
 
 .interval-btn {
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  padding: 6px 10px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
   border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  font-size: 13px;
   font-weight: 600;
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.interval-btn:hover:not(.disabled) {
-  color: var(--text-primary);
-}
-
 .interval-btn.active {
-  background: var(--bg-card);
-  color: var(--text-primary);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border-color: rgba(187, 255, 39, 0.36);
+  background: rgba(187, 255, 39, 0.1);
+  color: #bbff27;
 }
 
 .interval-btn.disabled {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .chart-container {
   width: 100%;
-  height: 460px;
-  border-radius: 12px;
-  overflow: hidden;
+  min-height: 460px;
 }
 </style>

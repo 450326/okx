@@ -23,43 +23,35 @@ export function formatPrice(value?: string | number, digits = 2): string {
 }
 
 export function formatCurrency(value?: string | number, digits = 2): string {
-  const numeric = Number(value || 0);
   const store = useCurrencyStore();
-  const sym = store.symbol;
+  const numeric = store.convert(value);
   const formatted = numeric.toLocaleString('en-US', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
-  if (store.quote === 'USD') {
-    return `$${formatted}`;
-  }
-  return `${formatted} ${sym}`;
+  return `${store.symbol}${formatted}`;
 }
 
 export function formatSignedCurrency(value?: string | number, digits = 2): string {
-  const numeric = Number(value || 0);
-  const prefix = numeric >= 0 ? '+' : '';
   const store = useCurrencyStore();
+  const numeric = store.convert(value);
+  const prefix = numeric >= 0 ? '+' : '';
   const formatted = Math.abs(numeric).toLocaleString('en-US', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
-  if (store.quote === 'USD') {
-    return `${prefix}$${formatted}`;
-  }
-  return `${prefix}${formatted} ${store.symbol}`;
+  return `${prefix}${store.symbol}${formatted}`;
 }
 
 export function formatCompactVolume(value?: string | number): string {
-  const amount = Number(value || 0);
   const store = useCurrencyStore();
-  const prefix = store.quote === 'USD' ? '$' : '₮';
+  const amount = store.convert(value);
 
   if (amount >= 1000000) {
-    return `${prefix}${(amount / 1000000).toFixed(2)}M`;
+    return `${store.symbol}${(amount / 1000000).toFixed(2)}M`;
   }
   if (amount >= 1000) {
-    return `${prefix}${(amount / 1000).toFixed(2)}K`;
+    return `${store.symbol}${(amount / 1000).toFixed(2)}K`;
   }
-  return `${prefix}${amount.toFixed(2)}`;
+  return `${store.symbol}${amount.toFixed(2)}`;
 }

@@ -22,18 +22,18 @@
           <div class="topbar-stats">
             <div>
               <div class="stat-label">{{ $t('layout.accountEquity') }}</div>
-              <div class="stat-value">{{ assetSnapshot?.equity || '--' }} {{ currencyLabel }}</div>
+              <div class="stat-value">{{ formatCurrency(assetSnapshot?.equity) }}</div>
             </div>
             <div>
               <div class="stat-label">{{ $t('layout.availableBalance') }}</div>
               <div class="stat-value">
-                {{ assetSnapshot?.availableBalance || '--' }} {{ currencyLabel }}
+                {{ formatCurrency(assetSnapshot?.availableBalance) }}
               </div>
             </div>
             <div>
               <div class="stat-label">{{ $t('layout.unrealizedPnl') }}</div>
               <div :class="['stat-value', unrealizedPnlClass]">
-                {{ formattedUnrealizedPnl }} {{ currencyLabel }}
+                {{ formatSignedCurrency(assetSnapshot?.unrealizedPnl) }}
               </div>
             </div>
           </div>
@@ -82,7 +82,7 @@ import { useExchangeStore } from '../stores/exchange';
 import { useModeStore } from '../stores/mode';
 import { useThemeStore } from '../stores/theme';
 import { useCurrencyStore } from '../stores/currency';
-import { formatSignedValue, getTrendClass } from '../utils/format';
+import { formatCurrency, formatSignedCurrency, getTrendClass } from '../utils/format';
 import { $t } from '../utils/i18n';
 
 const assetStore = useAssetStore();
@@ -108,13 +108,8 @@ const userName = computed(() => {
   const name = authStore.user?.nickname;
   return name ? `${name} · ` : '';
 });
-const formattedUnrealizedPnl = computed(() => formatSignedValue(assetSnapshot.value?.unrealizedPnl));
 const unrealizedPnlClass = computed(() => getTrendClass(assetSnapshot.value?.unrealizedPnl));
 const globalError = computed(() => authStore.error || modeStore.error || assetStore.error || exchangeStore.error);
-const currencyLabel = computed(() => {
-  if (currencyStore.quote === 'USD') return '$';
-  return assetSnapshot.value?.currency || 'USDT';
-});
 
 const modeConfirmTitle = computed(() => $t('layout.switchConfirmTitle'));
 const modeConfirmEnabled = computed(() => modeStore.mode === 'live' || exchangeStore.hasActiveAccount);
@@ -151,6 +146,8 @@ async function handleToggleMode() {
 
 onMounted(() => {
   void loadGlobalData();
+  currencyStore.initQuote();
+  currencyStore.fetchRate();
 });
 
 function handleLogout() {

@@ -38,11 +38,16 @@ export const useMarketStore = defineStore('market', () => {
   let currentWsInterval = '';
   let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let klinePollTimer: ReturnType<typeof setInterval> | null = null;
 
   function stopPolling() {
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
+    }
+    if (klinePollTimer) {
+      clearInterval(klinePollTimer);
+      klinePollTimer = null;
     }
   }
 
@@ -53,6 +58,16 @@ export const useMarketStore = defineStore('market', () => {
       fetchDepth(sym);
       fetchRecentTrades(sym);
     }, 3000);
+  }
+
+  function startKlinePolling(sym: string, interval: string) {
+    if (klinePollTimer) clearInterval(klinePollTimer);
+    const liveIntervals = ['1s', '30s', '1m', '5m'];
+    if (!liveIntervals.includes(interval)) return;
+    const ms = interval === '1s' ? 1000 : interval === '30s' ? 15000 : 30000;
+    klinePollTimer = setInterval(() => {
+      fetchKlines(sym, interval);
+    }, ms);
   }
 
   function canUseWs(): boolean {
@@ -69,6 +84,7 @@ export const useMarketStore = defineStore('market', () => {
       fetchDepth(sym);
       fetchRecentTrades(sym);
       startPolling(sym, interval);
+      startKlinePolling(sym, interval);
       return;
     }
 
@@ -127,6 +143,8 @@ export const useMarketStore = defineStore('market', () => {
     });
 
     socket.on('disconnect', () => {});
+
+    startKlinePolling(sym, interval);
   }
 
   function doSubscribe() {

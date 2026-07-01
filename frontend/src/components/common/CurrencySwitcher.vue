@@ -21,10 +21,12 @@ const quote = computed(() => store.quote);
 const options = [
   { code: 'USDT' as QuoteCurrency, label: '₮ USDT' },
   { code: 'USD' as QuoteCurrency, label: '$ USD' },
+  { code: 'CNY' as QuoteCurrency, label: '¥ CNY' },
 ];
 
 function switchCurrency(code: QuoteCurrency) {
   store.setQuote(code);
+  store.fetchRate();
 }
 </script>
 

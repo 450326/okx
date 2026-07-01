@@ -8,19 +8,19 @@
         <div class="grid-2">
           <div>
             <div class="stat-label">{{ $t('assets.walletBalance') }}</div>
-            <div class="stat-value">{{ assetStore.snapshot?.walletBalance || '--' }}</div>
+            <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.walletBalance) }}</div>
           </div>
           <div>
             <div class="stat-label">{{ $t('layout.availableBalance') }}</div>
-            <div class="stat-value">{{ assetStore.snapshot?.availableBalance || '--' }}</div>
+            <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.availableBalance) }}</div>
           </div>
           <div>
             <div class="stat-label">{{ $t('assets.positionMargin') }}</div>
-            <div class="stat-value">{{ assetStore.snapshot?.positionMargin || '--' }}</div>
+            <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.positionMargin) }}</div>
           </div>
           <div>
             <div class="stat-label">{{ $t('assets.orderMargin') }}</div>
-            <div class="stat-value">{{ assetStore.snapshot?.orderMargin || '--' }}</div>
+            <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.orderMargin) }}</div>
           </div>
         </div>
       </div>
@@ -139,7 +139,7 @@ import { useAssetStore } from '../stores/assets';
 import { useExchangeStore } from '../stores/exchange';
 import { useModeStore } from '../stores/mode';
 import type { ExchangeAccount, ExchangeAccountPayload } from '../api/types';
-import { formatSignedValue, getTrendClass } from '../utils/format';
+import { formatCurrency, formatSignedValue, getTrendClass } from '../utils/format';
 
 const assetStore = useAssetStore();
 const exchangeStore = useExchangeStore();
