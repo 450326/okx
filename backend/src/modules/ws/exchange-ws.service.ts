@@ -38,6 +38,12 @@ export class ExchangeWsService {
 
   // 订阅行情数据，支持引用计数管理多个订阅者
   subscribe(exchange: string, channel: string, symbol: string, callback: (data: any) => void): void {
+    // Uniswap 和 Polymarket 不支持 WebSocket
+    if (exchange !== 'okx' && exchange !== 'binance') {
+      this.logger.warn(`WebSocket 不支持 ${exchange}，跳过订阅`);
+      return;
+    }
+
     const key = `${exchange}:${channel}:${symbol}`;
     const existing = this.connections.get(key);
 
@@ -152,9 +158,13 @@ export class ExchangeWsService {
 
   // 获取交易所 WebSocket 地址
   private getWsUrl(exchange: string): string {
-    return exchange === 'binance'
-      ? 'wss://fstream.binance.com/ws'
-      : 'wss://ws.okx.com:8443/ws/v5/public';
+    if (exchange === 'binance') {
+      return 'wss://fstream.binance.com/ws';
+    }
+    if (exchange === 'okx') {
+      return 'wss://ws.okx.com:8443/ws/v5/public';
+    }
+    throw new Error(`Exchange ${exchange} does not support WebSocket`);
   }
 
   // 将通用交易对符号转换为 Binance 格式

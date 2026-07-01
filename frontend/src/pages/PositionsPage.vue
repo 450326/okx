@@ -1,28 +1,26 @@
 <template>
-  <!-- 持仓页面容器 -->
   <div class="page">
-    <h1 class="page-title">持仓页</h1>
+    <h1 class="page-title">{{ $t('positions.pageTitle') }}</h1>
 
-    <!-- 当前持仓表格 -->
     <section class="card">
-      <h2 class="section-title">当前持仓</h2>
+      <h2 class="section-title">{{ $t('positions.currentPositions') }}</h2>
       <table class="table">
         <thead>
           <tr>
-            <th>品种</th>
-            <th>方向</th>
-            <th>杠杆</th>
-            <th>数量</th>
-            <th>开仓价</th>
-            <th>标记价</th>
-            <th>强平价</th>
-            <th>盈亏</th>
+            <th>{{ $t('assets.symbol') }}</th>
+            <th>{{ $t('positions.direction') }}</th>
+            <th>{{ $t('positions.leverage') }}</th>
+            <th>{{ $t('positions.qty') }}</th>
+            <th>{{ $t('positions.entryPrice') }}</th>
+            <th>{{ $t('positions.markPrice') }}</th>
+            <th>{{ $t('positions.liquidationPrice') }}</th>
+            <th>{{ $t('positions.pnl') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="item in positionStore.positions" :key="item.id">
             <td>{{ item.symbol }}</td>
-            <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? '多' : '空' }}</td>
+            <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? $t('positions.long') : $t('positions.short') }}</td>
             <td>{{ item.leverage }}x</td>
             <td>{{ item.qty }}</td>
             <td>{{ item.entryPrice }}</td>
@@ -32,22 +30,21 @@
           </tr>
         </tbody>
       </table>
-      <div v-if="!positionStore.positions.length" class="empty-state">暂无持仓数据</div>
+      <div v-if="!positionStore.positions.length" class="empty-state">{{ $t('positions.noData') }}</div>
     </section>
 
-    <!-- 当前委托表格 -->
     <section class="card">
-      <h2 class="section-title">当前委托</h2>
+      <h2 class="section-title">{{ $t('positions.openOrders') }}</h2>
       <table class="table">
         <thead>
           <tr>
-            <th>订单号</th>
-            <th>品种</th>
-            <th>类型</th>
-            <th>方向</th>
-            <th>价格</th>
-            <th>数量</th>
-            <th>状态</th>
+            <th>{{ $t('positions.orderId') }}</th>
+            <th>{{ $t('assets.symbol') }}</th>
+            <th>{{ $t('positions.orderType') }}</th>
+            <th>{{ $t('positions.direction') }}</th>
+            <th>{{ $t('positions.price') }}</th>
+            <th>{{ $t('positions.qty') }}</th>
+            <th>{{ $t('positions.status') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -55,36 +52,30 @@
             <td>{{ item.orderId }}</td>
             <td>{{ item.symbol }}</td>
             <td>{{ item.orderType }}</td>
-            <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? '开多' : '开空' }}</td>
+            <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? $t('positions.openLong') : $t('positions.openShort') }}</td>
             <td>{{ item.price || '--' }}</td>
             <td>{{ item.qty }}</td>
             <td>{{ item.status }}</td>
           </tr>
         </tbody>
       </table>
-      <div v-if="!orderStore.openOrders.length" class="empty-state">暂无委托数据</div>
+      <div v-if="!orderStore.openOrders.length" class="empty-state">{{ $t('positions.noOrders') }}</div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-// Vue 侦听器
 import { watch } from 'vue';
-// 交易模式管理
 import { useModeStore } from '../stores/mode';
-// 订单状态管理
 import { useOrderStore } from '../stores/orders';
-// 持仓状态管理
 import { usePositionStore } from '../stores/positions';
-// 数值格式化与涨跌颜色工具函数
 import { formatSignedValue, getTrendClass } from '../utils/format';
+import { $t } from '../utils/i18n';
 
-// 各 Store 实例
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
 
-// 加载持仓与委托数据
 async function loadPageData() {
   await Promise.all([
     positionStore.fetchPositions(modeStore.mode),
@@ -92,7 +83,6 @@ async function loadPageData() {
   ]);
 }
 
-// 监听交易模式变化重新加载数据
 watch(
   () => modeStore.mode,
   () => {

@@ -10,6 +10,12 @@
   --color-down: #f6465d;
   --color-warning: #f5a623;
   --shadow-soft: 0 10px 30px rgba(4, 10, 24, 0.18);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --bottom-nav-height: 72px;
+  --header-height: 52px;
 }
 
 :root[data-theme='dark'] {
@@ -239,3 +245,77 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+/* =================== Mobile / Android Adaptation =================== */
+
+/* Prevent text selection on touch devices */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* Overscroll behavior */
+html {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Scrollbar styling for mobile */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+/* Input zoom prevention on mobile */
+@media screen and (max-width: 480px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .card {
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  .page {
+    gap: 12px;
+  }
+}
+
+/* Safe area padding for notched devices */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Loading page splash */
+#app-loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  z-index: 9999;
+  transition: opacity 0.3s;
+}
+#app-loading.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+

@@ -4,8 +4,8 @@
     <!-- 面板头部：标题 + 当前交易对 + 交易模式 -->
     <div class="order-head">
       <div>
-        <h2 class="section-title">下单面板</h2>
-        <div class="status-text">当前交易对：{{ symbol }}</div>
+        <h2 class="section-title">{{ $t('order.title') }}</h2>
+        <div class="status-text">{{ $t('order.currentPair') }}：{{ symbol }}</div>
       </div>
       <!-- 当前交易模式徽章 -->
       <div class="mode-badge">{{ modeStore.modeLabel }}</div>
@@ -13,24 +13,24 @@
 
     <!-- 开仓/平仓切换 -->
     <div class="trade-action-toggle">
-      <button :class="['toggle-chip', { active: form.action === 'open' }]" @click="form.action = 'open'">开仓</button>
-      <button :class="['toggle-chip', { active: form.action === 'close' }]" @click="form.action = 'close'">平仓</button>
-      <button class="toggle-chip static-chip" disabled>逐仓</button>
+      <button :class="['toggle-chip', { active: form.action === 'open' }]" @click="form.action = 'open'">{{ $t('order.open') }}</button>
+      <button :class="['toggle-chip', { active: form.action === 'close' }]" @click="form.action = 'close'">{{ $t('order.close') }}</button>
+      <button class="toggle-chip static-chip" disabled>{{ $t('order.isolated') }}</button>
     </div>
 
     <!-- 表单字段网格 -->
     <div class="form-grid">
       <!-- 委托类型：市价单 / 限价单 -->
       <div class="field">
-        <label>委托类型</label>
+        <label>{{ $t('order.orderType') }}</label>
         <select v-model="form.orderType">
-          <option value="market">市价单</option>
-          <option value="limit">限价单</option>
+          <option value="market">{{ $t('order.market') }}</option>
+          <option value="limit">{{ $t('order.limit') }}</option>
         </select>
       </div>
       <!-- 杠杆倍数选择 -->
       <div class="field">
-        <label>杠杆</label>
+        <label>{{ $t('order.leverage') }}</label>
         <select v-model.number="form.leverage">
           <option :value="1">1x</option>
           <option :value="5">5x</option>
@@ -41,12 +41,12 @@
       </div>
       <!-- 限价单时的价格输入 -->
       <div v-if="form.orderType === 'limit'" class="field">
-        <label>价格</label>
+        <label>{{ $t('order.price') }}</label>
         <input v-model="form.price" placeholder="请输入委托价格" />
       </div>
       <!-- 数量输入 + 快捷百分比按钮 -->
       <div class="field">
-        <label>数量</label>
+        <label>{{ $t('order.qty') }}</label>
         <input v-model="form.qty" placeholder="请输入下单数量" />
         <div class="qty-presets">
           <button v-for="preset in qtyPresets" :key="preset" class="preset-btn" @click="applyQtyPreset(preset)">
@@ -56,50 +56,50 @@
       </div>
       <!-- 止盈价输入 -->
       <div class="field">
-        <label>止盈价</label>
-        <input v-model="form.takeProfitPrice" placeholder="可选" />
+        <label>{{ $t('order.takeProfit') }}</label>
+        <input v-model="form.takeProfitPrice" :placeholder="$t('order.optional')" />
       </div>
       <!-- 止损价输入 -->
       <div class="field">
-        <label>止损价</label>
-        <input v-model="form.stopLossPrice" placeholder="可选" />
+        <label>{{ $t('order.stopLoss') }}</label>
+        <input v-model="form.stopLossPrice" :placeholder="$t('order.optional')" />
       </div>
     </div>
 
     <!-- 试算操作区：试算按钮 + 最大可下数量 -->
     <div class="panel-actions preview-actions">
-      <button class="ghost-btn" :disabled="orderStore.submitting" @click="handlePreview()">试算</button>
-      <span class="status-text">最大可下：{{ orderStore.preview?.maxQty || estimatedMaxQty }}</span>
+      <button class="ghost-btn" :disabled="orderStore.submitting" @click="handlePreview()">{{ $t('order.preview') }}</button>
+      <span class="status-text">{{ $t('order.maxQty') }}：{{ orderStore.preview?.maxQty || estimatedMaxQty }}</span>
     </div>
 
     <!-- 试算结果预览网格 -->
     <div class="grid-2 preview-grid">
       <!-- 预估保证金 -->
       <div class="card">
-        <div class="stat-label">预估保证金</div>
+        <div class="stat-label">{{ $t('order.estimatedMargin') }}</div>
         <div class="stat-value">{{ orderStore.preview?.estimatedMargin || '--' }} USDT</div>
       </div>
       <!-- 预估手续费 -->
       <div class="card">
-        <div class="stat-label">预估手续费</div>
+        <div class="stat-label">{{ $t('order.estimatedFee') }}</div>
         <div class="stat-value">{{ orderStore.preview?.estimatedFee || '--' }} USDT</div>
       </div>
       <!-- 预估名义价值 -->
       <div class="card">
-        <div class="stat-label">预估名义价值</div>
+        <div class="stat-label">{{ $t('order.estimatedNotional') }}</div>
         <div class="stat-value">{{ orderStore.preview?.estimatedNotional || '--' }} USDT</div>
       </div>
       <!-- 预估强平价 -->
       <div class="card">
-        <div class="stat-label">预估强平价</div>
+        <div class="stat-label">{{ $t('order.estimatedLiqPrice') }}</div>
         <div class="stat-value">{{ orderStore.preview?.estimatedLiquidationPrice || '--' }}</div>
       </div>
     </div>
 
     <!-- 风险提示 -->
     <div class="order-note">
-      <span>风险提示：</span>
-      {{ form.action === 'open' ? '开仓前确认杠杆与止损设置。' : '平仓会减少当前持仓，请核对方向与数量。' }}
+      <span>{{ $t('order.riskWarning') }}：</span>
+      {{ form.action === 'open' ? $t('order.openRisk') : $t('order.closeRisk') }}
     </div>
 
     <!-- 提交按钮区：做多 / 做空 -->
@@ -116,6 +116,7 @@
 <script setup lang="ts">
 // 导入 Vue 响应式工具
 import { computed, reactive, ref, watch } from 'vue';
+import { $t } from '../../utils/i18n';
 // 导入交易模式和订单状态管理
 import { useModeStore } from '../../stores/mode';
 import { useOrderStore } from '../../stores/orders';
@@ -156,9 +157,9 @@ const localMessage = ref('');
 // 根据杠杆估算最大可下数量
 const estimatedMaxQty = computed(() => (Number(form.leverage) * 0.125).toFixed(3));
 // 做多按钮文本：开仓/平多
-const longActionText = computed(() => (form.action === 'open' ? '开多' : '平多'));
+const longActionText = computed(() => form.action === 'open' ? $t('order.openLong') : $t('order.closeLong'));
 // 做空按钮文本：开空/平空
-const shortActionText = computed(() => (form.action === 'open' ? '开空' : '平空'));
+const shortActionText = computed(() => form.action === 'open' ? $t('order.openShort') : $t('order.closeShort'));
 
 // 监听交易对变化，清空本地消息
 watch(
@@ -221,7 +222,7 @@ async function handleSubmit(side: 'long' | 'short') {
   const result = await orderStore.submitOrder(payload);
 
   if (result) {
-    localMessage.value = `下单成功，订单号 ${result.orderId}`;
+    localMessage.value = `${$t('order.orderSuccess')} ${result.orderId}`;
     emit('submitted');
   }
 }

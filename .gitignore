@@ -7,3 +7,13 @@ build
 .env.local
 .env.*.local
 
+# Capacitor / Android
+android/
+frontend/android/
+*.apk
+*.aab
+local.properties
+
+# Capacitor Electron
+frontend/electron/
+

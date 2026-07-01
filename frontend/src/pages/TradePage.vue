@@ -317,6 +317,8 @@ async function loadTradePageData() {
     marketStore.fetchSymbols(),
     marketStore.fetchTickers(),
     marketStore.fetchKlines(currentSymbol.value, klineInterval.value),
+    marketStore.fetchDepth(currentSymbol.value),
+    marketStore.fetchRecentTrades(currentSymbol.value),
     positionStore.fetchPositions(modeStore.mode, currentSymbol.value),
     orderStore.fetchOpenOrders(modeStore.mode, currentSymbol.value),
   ]);

@@ -1,47 +1,43 @@
 <template>
-  <!-- 资金页面容器 -->
   <div class="page">
-    <h1 class="page-title">资金页</h1>
+    <h1 class="page-title">{{ $t('assets.pageTitle') }}</h1>
 
-    <!-- 资产总览 + 模式工具 -->
     <section class="grid-2">
-      <!-- 资产总览卡片 -->
       <div class="card">
-        <h2 class="section-title">资产总览</h2>
+        <h2 class="section-title">{{ $t('assets.overview') }}</h2>
         <div class="grid-2">
           <div>
-            <div class="stat-label">钱包余额</div>
+            <div class="stat-label">{{ $t('assets.walletBalance') }}</div>
             <div class="stat-value">{{ assetStore.snapshot?.walletBalance || '--' }}</div>
           </div>
           <div>
-            <div class="stat-label">可用余额</div>
+            <div class="stat-label">{{ $t('layout.availableBalance') }}</div>
             <div class="stat-value">{{ assetStore.snapshot?.availableBalance || '--' }}</div>
           </div>
           <div>
-            <div class="stat-label">持仓保证金</div>
+            <div class="stat-label">{{ $t('assets.positionMargin') }}</div>
             <div class="stat-value">{{ assetStore.snapshot?.positionMargin || '--' }}</div>
           </div>
           <div>
-            <div class="stat-label">委托冻结</div>
+            <div class="stat-label">{{ $t('assets.orderMargin') }}</div>
             <div class="stat-value">{{ assetStore.snapshot?.orderMargin || '--' }}</div>
           </div>
         </div>
       </div>
 
-      <!-- 模式工具卡片 -->
       <div class="card">
-        <h2 class="section-title">模式工具</h2>
+        <h2 class="section-title">{{ $t('assets.modeTools') }}</h2>
         <div class="panel-actions">
           <button class="ghost-btn" :disabled="exchangeStore.saving" @click="handleTestConnection()">
-            测试 API 连接
+            {{ $t('assets.testApi') }}
           </button>
-          <button class="ghost-btn" @click="bindingModalOpen = true">绑定 OKX 账户</button>
+          <button class="ghost-btn" @click="bindingModalOpen = true">{{ $t('assets.bindAccount') }}</button>
           <button class="danger-btn" :disabled="modeStore.mode !== 'simulation'" @click="resetConfirmOpen = true">
-            重置模拟账户
+            {{ $t('assets.resetSimulation') }}
           </button>
         </div>
         <div class="status-text">
-          {{ modeStore.mode === 'simulation' ? '当前可重置模拟账户' : '真实模式下不可重置模拟账户' }}
+          {{ modeStore.mode === 'simulation' ? $t('assets.canReset') : $t('assets.cannotReset') }}
         </div>
         <div v-if="exchangeStore.statusMessage || exchangeStore.error" class="status-text">
           {{ exchangeStore.statusMessage || exchangeStore.error }}
@@ -49,22 +45,21 @@
       </div>
     </section>
 
-    <!-- API 绑定信息表格 -->
     <section class="card">
       <div class="section-head">
-        <h2 class="section-title">API 绑定信息</h2>
-        <span class="status-text">{{ exchangeStore.loading ? '加载中...' : '已绑定账户' }}</span>
+        <h2 class="section-title">{{ $t('assets.apiBinding') }}</h2>
+        <span class="status-text">{{ exchangeStore.loading ? $t('common.loading') : $t('assets.boundAccounts') }}</span>
       </div>
       <table class="table">
         <thead>
           <tr>
-            <th>交易所</th>
-            <th>账户备注</th>
-            <th>状态</th>
-            <th>测试环境</th>
-            <th>最近测试</th>
-            <th>最近同步</th>
-            <th>操作</th>
+            <th>{{ $t('assets.exchange') }}</th>
+            <th>{{ $t('assets.accountLabel') }}</th>
+            <th>{{ $t('assets.status') }}</th>
+            <th>{{ $t('assets.testnet') }}</th>
+            <th>{{ $t('assets.lastTest') }}</th>
+            <th>{{ $t('assets.lastSync') }}</th>
+            <th>{{ $t('assets.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -72,7 +67,7 @@
             <td>{{ item.exchange.toUpperCase() }}</td>
             <td>{{ item.label }}</td>
             <td>{{ item.status }}</td>
-            <td>{{ item.isTestnet ? '是' : '否' }}</td>
+            <td>{{ item.isTestnet ? $t('assets.yes') : $t('assets.no') }}</td>
             <td>{{ item.lastTestAt ? formatDisplayTime(item.lastTestAt) : '--' }}</td>
             <td>{{ item.lastSyncAt ? formatDisplayTime(item.lastSyncAt) : '--' }}</td>
             <td>
@@ -81,26 +76,25 @@
                 :disabled="exchangeStore.saving"
                 @click="handleDeleteAccount(item)"
               >
-                删除
+                {{ $t('assets.delete') }}
               </button>
             </td>
           </tr>
         </tbody>
       </table>
-      <div v-if="!exchangeStore.accounts.length" class="empty-state">暂未绑定任何 API 账户</div>
+      <div v-if="!exchangeStore.accounts.length" class="empty-state">{{ $t('assets.noApiAccounts') }}</div>
     </section>
 
-    <!-- 资金流水表格 -->
     <section class="card">
-      <h2 class="section-title">资金流水</h2>
+      <h2 class="section-title">{{ $t('assets.ledger') }}</h2>
       <table class="table">
         <thead>
           <tr>
-            <th>类型</th>
-            <th>金额</th>
-            <th>余额</th>
-            <th>品种</th>
-            <th>时间</th>
+            <th>{{ $t('assets.type') }}</th>
+            <th>{{ $t('assets.amount') }}</th>
+            <th>{{ $t('assets.balance') }}</th>
+            <th>{{ $t('assets.symbol') }}</th>
+            <th>{{ $t('assets.time') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -113,23 +107,21 @@
           </tr>
         </tbody>
       </table>
-      <div v-if="!assetStore.ledger.length" class="empty-state">暂无资金流水</div>
+      <div v-if="!assetStore.ledger.length" class="empty-state">{{ $t('assets.noLedger') }}</div>
     </section>
   </div>
 
-  <!-- 重置模拟账户确认弹窗 -->
   <ConfirmModal
     :open="resetConfirmOpen"
-    title="重置模拟账户"
-    description="重置后会清空模拟持仓、模拟委托和流水，并恢复初始模拟资金。"
-    warning-text="该操作只影响模拟盘数据，不会影响真实交易账户。"
-    confirm-text="确认重置"
-    cancel-text="取消"
+    :title="$t('assets.resetTitle')"
+    :description="$t('assets.resetDesc')"
+    :warning-text="$t('assets.resetWarning')"
+    confirm-text="$t('common.confirm')"
+    cancel-text="$t('common.cancel')"
     @cancel="resetConfirmOpen = false"
     @confirm="handleResetSimulation()"
   />
 
-  <!-- 绑定 OKX 账户弹窗 -->
   <ApiBindingModal
     :open="bindingModalOpen"
     :saving="exchangeStore.saving"
@@ -139,38 +131,26 @@
 </template>
 
 <script setup lang="ts">
-// Vue 响应式工具与侦听器
 import { ref, watch } from 'vue';
-// API 绑定弹窗组件
+import { $t } from '../utils/i18n';
 import ApiBindingModal from '../components/assets/ApiBindingModal.vue';
-// 通用确认弹窗组件
 import ConfirmModal from '../components/common/ConfirmModal.vue';
-// 资产状态管理
 import { useAssetStore } from '../stores/assets';
-// 交易所 API 绑定管理
 import { useExchangeStore } from '../stores/exchange';
-// 交易模式管理
 import { useModeStore } from '../stores/mode';
-// API 类型定义
 import type { ExchangeAccount, ExchangeAccountPayload } from '../api/types';
-// 数值格式化与涨跌颜色工具函数
 import { formatSignedValue, getTrendClass } from '../utils/format';
 
-// 各 Store 实例
 const assetStore = useAssetStore();
 const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
-// 绑定 OKX 账户弹窗是否打开
 const bindingModalOpen = ref(false);
-// 重置模拟账户确认弹窗是否打开
 const resetConfirmOpen = ref(false);
 
-// 格式化时间显示
 function formatDisplayTime(value: string) {
   return new Date(value).toLocaleString();
 }
 
-// 加载资金页数据
 async function loadPageData() {
   await Promise.all([
     assetStore.fetchAssets(modeStore.mode),
@@ -179,7 +159,6 @@ async function loadPageData() {
   ]);
 }
 
-// 重置模拟账户
 async function handleResetSimulation() {
   const success = await assetStore.resetSimulation();
 
@@ -189,12 +168,10 @@ async function handleResetSimulation() {
   }
 }
 
-// 测试 API 连接
 async function handleTestConnection() {
   await exchangeStore.testFirstAccount();
 }
 
-// 绑定 OKX 账户
 async function handleBindAccount(payload: ExchangeAccountPayload) {
   const result = await exchangeStore.createAccount(payload);
 
@@ -204,13 +181,11 @@ async function handleBindAccount(payload: ExchangeAccountPayload) {
   }
 }
 
-// 删除绑定的 API 账户
 async function handleDeleteAccount(account: ExchangeAccount) {
   if (!confirm(`确定要删除 API 账户「${account.label}」吗？`)) return;
   await exchangeStore.deleteAccount(account.id);
 }
 
-// 监听交易模式变化重新加载数据
 watch(
   () => modeStore.mode,
   () => {
@@ -221,7 +196,6 @@ watch(
 </script>
 
 <style scoped>
-/* 面板标题行 */
 .section-head {
   display: flex;
   align-items: center;
@@ -229,7 +203,6 @@ watch(
   gap: 12px;
 }
 
-/* 小型危险按钮 */
 .danger-btn-sm {
   border: none;
   border-radius: 8px;

@@ -1,12 +1,8 @@
 <template>
-  <!-- 登录页面容器，支持深色主题 -->
   <div class="login-page" :class="{ 'login-dark': isDark }">
-    <!-- 背景装饰 -->
     <div class="login-bg"></div>
     <div class="login-container">
-      <!-- 登录卡片 -->
       <div class="login-card">
-        <!-- 登录头部：Logo + 欢迎文案 -->
         <div class="login-header">
           <div class="login-logo">
             <div class="logo-icon">
@@ -18,15 +14,13 @@
             </div>
             <span class="logo-text">Futures&nbsp;<span class="logo-accent">Pro</span></span>
           </div>
-          <h1 class="login-title">欢迎回来</h1>
-          <p class="login-subtitle">登录您的账户以继续</p>
+          <h1 class="login-title">{{ $t('login.welcome') }}</h1>
+          <p class="login-subtitle">{{ $t('login.subtitle') }}</p>
         </div>
 
-        <!-- 登录表单 -->
         <form class="login-form" @submit.prevent="handleLogin">
-          <!-- 邮箱输入字段 -->
           <div class="field">
-            <label for="email">邮箱地址</label>
+            <label for="email">{{ $t('login.email') }}</label>
             <div class="input-wrap">
               <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
               <input
@@ -40,9 +34,8 @@
             </div>
           </div>
 
-          <!-- 密码输入字段（带显示/隐藏切换） -->
           <div class="field">
-            <label for="password">密码</label>
+            <label for="password">{{ $t('login.password') }}</label>
             <div class="input-wrap">
               <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
               <input
@@ -60,19 +53,16 @@
             </div>
           </div>
 
-          <!-- 提交按钮（含加载状态） -->
           <button type="submit" class="login-btn" :disabled="!canSubmit || submitting">
             <span v-if="submitting" class="btn-loader"></span>
-            <span v-else>登录</span>
+            <span v-else>{{ $t('login.loginBtn') }}</span>
           </button>
         </form>
 
-        <!-- 分隔线 -->
         <div class="login-divider">
-          <span>或</span>
+          <span>{{ $t('login.or') }}</span>
         </div>
 
-        <!-- 生物识别登录按钮 -->
         <button
           class="faceid-btn"
           :disabled="faceLoading || !biometricSupported"
@@ -91,21 +81,19 @@
               <circle cx="9" cy="11" r="1"/>
               <circle cx="15" cy="11" r="1"/>
             </svg>
-            <span>{{ biometricSupported ? '面容 ID / 生物识别登录' : '当前设备不支持面容解锁' }}</span>
+            <span>{{ biometricSupported ? $t('login.faceId') : $t('login.faceUnsupported') }}</span>
           </template>
         </button>
 
-        <!-- 错误信息提示 -->
         <div v-if="errorMsg" class="login-error">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           {{ errorMsg }}
         </div>
 
-        <!-- 页脚信息 -->
         <div class="login-footer">
           <span class="footer-text">Futures Pro</span>
           <span class="footer-dot">·</span>
-          <span class="footer-text">模拟交易平台</span>
+          <span class="footer-text">{{ $t('login.simulated') }}</span>
         </div>
       </div>
     </div>
@@ -113,43 +101,30 @@
 </template>
 
 <script setup lang="ts">
-// Vue 响应式工具与生命周期
 import { computed, onMounted, ref } from 'vue';
-// Vue Router 路由跳转
 import { useRouter } from 'vue-router';
-// 认证状态管理
 import { useAuthStore } from '../stores/auth';
+import { $t } from '../utils/i18n';
 
-// 路由与 Store 实例
 const router = useRouter();
 const authStore = useAuthStore();
 
-// 登录表单数据
 const form = ref({ email: '', password: '' });
-// 是否显示明文密码
 const showPassword = ref(false);
-// 是否正在提交登录
 const submitting = ref(false);
-// 是否正在加载面容登录
 const faceLoading = ref(false);
-// 登录错误提示信息
 const errorMsg = ref('');
-// 当前设备是否支持生物识别
 const biometricSupported = ref(false);
 
-// 当前是否为深色主题
 const isDark = computed(() => document.documentElement.getAttribute('data-theme') !== 'light');
-// 表单是否可提交（邮箱和密码均非空）
 const canSubmit = computed(() => form.value.email.trim() && form.value.password.trim());
 
-// 页面挂载时检测生物识别功能是否可用
 onMounted(async () => {
   if (typeof PublicKeyCredential !== 'undefined' && typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
     biometricSupported.value = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
   }
 });
 
-// 邮箱密码登录
 async function handleLogin() {
   if (!canSubmit.value) return;
   submitting.value = true;
@@ -159,13 +134,12 @@ async function handleLogin() {
     await authStore.login(form.value.email, form.value.password);
     router.replace('/');
   } catch (err) {
-    errorMsg.value = err instanceof Error ? err.message : '登录失败，请重试';
+    errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
   } finally {
     submitting.value = false;
   }
 }
 
-// 面容 ID / 生物识别登录
 async function handleFaceLogin() {
   if (!biometricSupported.value) return;
   faceLoading.value = true;
@@ -187,9 +161,9 @@ async function handleFaceLogin() {
     }
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'NotAllowedError') {
-      errorMsg.value = '面容验证已取消';
+      errorMsg.value = $t('login.errorCanceled');
     } else {
-      errorMsg.value = '面容验证失败，请使用密码登录';
+      errorMsg.value = $t('login.errorFailed');
     }
   } finally {
     faceLoading.value = false;
@@ -198,7 +172,6 @@ async function handleFaceLogin() {
 </script>
 
 <style scoped>
-/* 登录页外层容器：全屏居中 */
 .login-page {
   position: fixed;
   inset: 0;
@@ -209,7 +182,6 @@ async function handleFaceLogin() {
   overflow: hidden;
 }
 
-/* 背景装饰渐变层 */
 .login-bg {
   position: absolute;
   inset: 0;
@@ -219,7 +191,6 @@ async function handleFaceLogin() {
   pointer-events: none;
 }
 
-/* 卡片容器，限制最大宽度 */
 .login-container {
   position: relative;
   width: 100%;
@@ -227,7 +198,6 @@ async function handleFaceLogin() {
   padding: 24px;
 }
 
-/* 登录卡片主体 */
 .login-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -236,19 +206,16 @@ async function handleFaceLogin() {
   animation: fadeUp 0.5s ease both;
 }
 
-/* 淡入上升动画 */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* 登录头部区域 */
 .login-header {
   text-align: center;
   margin-bottom: 32px;
 }
 
-/* Logo 行 */
 .login-logo {
   display: inline-flex;
   align-items: center;
@@ -256,12 +223,10 @@ async function handleFaceLogin() {
   margin-bottom: 24px;
 }
 
-/* Logo 图标颜色 */
 .logo-icon {
   color: var(--color-up);
 }
 
-/* 品牌文字 */
 .logo-text {
   font-size: 20px;
   font-weight: 800;
@@ -269,12 +234,10 @@ async function handleFaceLogin() {
   color: var(--text-primary);
 }
 
-/* 品牌强调色 */
 .logo-accent {
   color: var(--color-up);
 }
 
-/* 欢迎标题 */
 .login-title {
   font-size: 26px;
   font-weight: 800;
@@ -283,28 +246,24 @@ async function handleFaceLogin() {
   letter-spacing: -0.03em;
 }
 
-/* 欢迎副标题 */
 .login-subtitle {
   color: var(--text-secondary);
   font-size: 15px;
   margin: 0;
 }
 
-/* 登录表单 */
 .login-form {
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-/* 通用字段容器 */
 .field {
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
 
-/* 字段标签 */
 .field label {
   font-size: 13px;
   font-weight: 700;
@@ -312,14 +271,12 @@ async function handleFaceLogin() {
   letter-spacing: 0.02em;
 }
 
-/* 输入框包裹器（用于图标定位） */
 .input-wrap {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-/* 输入框前置图标 */
 .input-icon {
   position: absolute;
   left: 14px;
@@ -329,7 +286,6 @@ async function handleFaceLogin() {
   flex-shrink: 0;
 }
 
-/* 输入框样式 */
 .input-wrap input {
   width: 100%;
   padding: 12px 14px 12px 42px;
@@ -343,20 +299,17 @@ async function handleFaceLogin() {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* 输入框聚焦样式 */
 .input-wrap input:focus {
   border-color: var(--color-up);
   box-shadow: 0 0 0 3px rgba(99, 255, 152, 0.12);
 }
 
-/* 输入框占位符样式 */
 .input-wrap input::placeholder {
   color: var(--text-secondary);
   opacity: 0.5;
   font-weight: 400;
 }
 
-/* 密码显隐切换按钮 */
 .toggle-pw {
   position: absolute;
   right: 10px;
@@ -376,7 +329,6 @@ async function handleFaceLogin() {
   opacity: 1;
 }
 
-/* 登录提交按钮 */
 .login-btn {
   margin-top: 6px;
   padding: 13px;
@@ -403,7 +355,6 @@ async function handleFaceLogin() {
   cursor: not-allowed;
 }
 
-/* 按钮加载旋转器 */
 .btn-loader {
   width: 22px;
   height: 22px;
@@ -413,12 +364,10 @@ async function handleFaceLogin() {
   animation: spin 0.6s linear infinite;
 }
 
-/* 旋转动画 */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* 分隔线（或） */
 .login-divider {
   display: flex;
   align-items: center;
@@ -437,7 +386,6 @@ async function handleFaceLogin() {
   background: var(--border-color);
 }
 
-/* 面容 ID 登录按钮 */
 .faceid-btn {
   width: 100%;
   display: flex;
@@ -465,13 +413,11 @@ async function handleFaceLogin() {
   cursor: not-allowed;
 }
 
-/* 面容加载旋转 */
 .face-spinner {
   animation: spin 0.7s linear infinite;
   color: var(--text-secondary);
 }
 
-/* 登录错误提示框 */
 .login-error {
   display: flex;
   align-items: center;
@@ -485,7 +431,6 @@ async function handleFaceLogin() {
   font-weight: 600;
 }
 
-/* 登录页页脚 */
 .login-footer {
   display: flex;
   align-items: center;

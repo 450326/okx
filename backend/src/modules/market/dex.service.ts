@@ -55,8 +55,8 @@ const TOKEN_MAP: Record<string, { address: string; decimals: number }> = {
 
 // USDT 合约地址
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
-// Uniswap V3 子图 API 地址
-const UNISWAP_SUBGRAPH = 'https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3';
+// Uniswap V3 子图 API 地址（去中心化网络）
+const UNISWAP_SUBGRAPH = 'https://gateway.thegraph.com/api/0d10e8eab286a7516e6ed4cd76e12214/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV';
 // 交易池手续费等级（3000 = 0.3%）
 const POOL_FEE = '3000';
 

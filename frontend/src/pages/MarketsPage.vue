@@ -1,45 +1,42 @@
 <template>
-  <!-- 行情页容器 -->
   <div class="page">
-    <h1 class="page-title">行情页</h1>
+    <h1 class="page-title">{{ $t('market.pageTitle') }}</h1>
 
-    <!-- 筛选与搜索区 -->
     <section class="card">
       <div class="form-grid">
         <div class="field">
-          <label>搜索品种</label>
+          <label>{{ $t('market.searchSymbol') }}</label>
           <input v-model="keyword" placeholder="例如 BTC / ETH / SOL" />
         </div>
         <div class="field">
-          <label>分类</label>
+          <label>{{ $t('market.category') }}</label>
           <select v-model="category">
-            <option value="all">全部</option>
-            <option value="main">主流</option>
-            <option value="favorite">自选</option>
+            <option value="all">{{ $t('market.all') }}</option>
+            <option value="main">{{ $t('market.main') }}</option>
+            <option value="favorite">{{ $t('market.favorite') }}</option>
           </select>
         </div>
         <div class="field">
-          <label>排序</label>
+          <label>{{ $t('market.sort') }}</label>
           <select v-model="sortKey">
-            <option value="priceChange">按涨跌幅</option>
-            <option value="volume">按成交量</option>
+            <option value="priceChange">{{ $t('market.byChange') }}</option>
+            <option value="volume">{{ $t('market.byVolume') }}</option>
           </select>
         </div>
       </div>
     </section>
 
-    <!-- 可交易合约列表 -->
     <section class="card">
-      <h2 class="section-title">可交易合约</h2>
+      <h2 class="section-title">{{ $t('market.tradableContracts') }}</h2>
       <table class="table">
         <thead>
           <tr>
-            <th>品种</th>
-            <th>最新价</th>
-            <th>买一</th>
-            <th>卖一</th>
-            <th>24H 涨跌</th>
-            <th>操作</th>
+            <th>{{ $t('assets.symbol') }}</th>
+            <th>{{ $t('trade.lastPrice') }}</th>
+            <th>{{ $t('trade.bid') }}</th>
+            <th>{{ $t('trade.ask') }}</th>
+            <th>{{ $t('trade.change24h') }}</th>
+            <th>{{ $t('assets.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -52,37 +49,29 @@
               {{ formatPercent(item.priceChangePercent24h) }}
             </td>
             <td>
-              <RouterLink class="primary-btn" :to="`/trade/${item.symbol}`">去交易</RouterLink>
+              <RouterLink class="primary-btn" :to="`/trade/${item.symbol}`">{{ $t('market.goTrade') }}</RouterLink>
             </td>
           </tr>
         </tbody>
       </table>
-      <div v-if="!rows.length" class="empty-state">暂无匹配的合约</div>
+      <div v-if="!rows.length" class="empty-state">{{ $t('market.noMatch') }}</div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-// Vue 响应式工具与生命周期
 import { computed, onMounted, ref } from 'vue';
-// Vue Router 导航组件
 import { RouterLink } from 'vue-router';
-// 行情状态管理
 import { useMarketStore } from '../stores/market';
-// 数值格式化与涨跌颜色工具函数
 import { formatPercent, getTrendClass } from '../utils/format';
+import { $t } from '../utils/i18n';
 
-// 行情 Store 实例
 const marketStore = useMarketStore();
 
-// 搜索关键词
 const keyword = ref('');
-// 分类筛选（全部 / 主流 / 自选）
 const category = ref<'all' | 'main' | 'favorite'>('all');
-// 排序方式（涨跌幅 / 成交量）
 const sortKey = ref<'priceChange' | 'volume'>('priceChange');
 
-// 经过筛选与排序后的合约行数据
 const rows = computed(() => {
   const merged = marketStore.symbols.map((symbol) => ({
     ...symbol,
@@ -110,12 +99,10 @@ const rows = computed(() => {
   });
 });
 
-// 加载行情页面数据
 async function loadPageData() {
   await Promise.all([marketStore.fetchSymbols(), marketStore.fetchTickers()]);
 }
 
-// 页面挂载时加载数据
 onMounted(() => {
   void loadPageData();
 });

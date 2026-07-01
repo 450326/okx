@@ -2,7 +2,7 @@
   <div class="app-shell">
     <header v-if="showGlobalHeader" class="global-header">
       <div class="header-left">
-        <RouterLink to="/" class="logo">OKX</RouterLink>
+        <RouterLink to="/" class="logo">Kaser22</RouterLink>
       </div>
       <div class="header-right">
         <CurrencySwitcher />

@@ -6,6 +6,8 @@ import { defineStore } from 'pinia';
 import { accountApi } from '../api/services';
 // 导入交易模式类型
 import type { TradeMode } from '../api/types';
+// 导入国际化
+import { $t } from '../utils/i18n';
 
 // 交易模式状态 store
 export const useModeStore = defineStore('mode', () => {
@@ -16,8 +18,8 @@ export const useModeStore = defineStore('mode', () => {
   // 错误信息
   const error = ref('');
 
-  // 交易模式中文标签
-  const modeLabel = computed(() => (mode.value === 'simulation' ? '模拟交易' : '真实交易'));
+  // 交易模式国际化标签
+  const modeLabel = computed(() => (mode.value === 'simulation' ? $t('equity.simulation') : $t('equity.live')));
 
   // 从服务端获取当前交易模式
   async function fetchMode() {

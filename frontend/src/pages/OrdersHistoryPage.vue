@@ -1,23 +1,21 @@
 <template>
-  <!-- 历史订单页面容器 -->
   <div class="page">
-    <h1 class="page-title">历史订单页</h1>
+    <h1 class="page-title">{{ $t('orders.pageTitle') }}</h1>
 
-    <!-- 历史委托表格 -->
     <section class="card">
-      <h2 class="section-title">历史委托</h2>
+      <h2 class="section-title">{{ $t('orders.history') }}</h2>
       <table class="table">
         <thead>
           <tr>
-            <th>订单号</th>
-            <th>品种</th>
-            <th>方向</th>
-            <th>类型</th>
-            <th>委托价</th>
-            <th>成交均价</th>
-            <th>数量</th>
-            <th>手续费</th>
-            <th>状态</th>
+            <th>{{ $t('orders.orderId') }}</th>
+            <th>{{ $t('assets.symbol') }}</th>
+            <th>{{ $t('orders.direction') }}</th>
+            <th>{{ $t('orders.orderType') }}</th>
+            <th>{{ $t('orders.entrustPrice') }}</th>
+            <th>{{ $t('orders.avgPrice') }}</th>
+            <th>{{ $t('orders.qty') }}</th>
+            <th>{{ $t('orders.fee') }}</th>
+            <th>{{ $t('orders.status') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -34,42 +32,35 @@
           </tr>
         </tbody>
       </table>
-      <div v-if="!orderStore.historyOrders.length" class="empty-state">暂无历史订单</div>
+      <div v-if="!orderStore.historyOrders.length" class="empty-state">{{ $t('orders.noHistory') }}</div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-// Vue 侦听器
 import { watch } from 'vue';
-// 交易模式管理
 import { useModeStore } from '../stores/mode';
-// 订单状态管理
 import { useOrderStore } from '../stores/orders';
-// 订单类型定义
 import type { OrderItem } from '../api/types';
+import { $t } from '../utils/i18n';
 
-// 各 Store 实例
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 
-// 格式化订单方向文字（开多/开空/平多/平空）
 function formatDirection(item: OrderItem): string {
   if (item.action === 'open') {
-    return item.side === 'long' ? '开多' : '开空';
+    return item.side === 'long' ? $t('positions.openLong') : $t('positions.openShort');
   }
   if (item.action === 'close') {
-    return item.side === 'long' ? '平多' : '平空';
+    return item.side === 'long' ? $t('positions.closeLong') : $t('positions.closeShort');
   }
-  return item.side === 'long' ? '多' : '空';
+  return item.side === 'long' ? $t('positions.long') : $t('positions.short');
 }
 
-// 加载历史订单数据
 async function loadPageData() {
   await orderStore.fetchHistory(modeStore.mode);
 }
 
-// 监听交易模式变化重新加载数据
 watch(
   () => modeStore.mode,
   () => {
