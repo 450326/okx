@@ -1,35 +1,22 @@
-// 引入 NestJS 控制器相关装饰器
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
-// 引入统一响应成功方法
+import { Body, Controller, Delete, Get, Logger, Param, Post } from '@nestjs/common';
 import { ok } from '../../common/api-response';
+import { AccountStore, StoredAccount } from '../account/account-store';
+import { OkxApiService } from '../account/okx-api.service';
 
-// 已存储的交易所账户信息接口
-interface StoredAccount {
-  id: string;
-  exchange: string;
-  label: string;
-  apiKey: string;
-  apiSecret: string;
-  passphrase: string;
-  isTestnet: boolean;
-  status: string;
-  lastTestAt: string | null;
-  lastSyncAt: string | null;
-  createdAt: string;
-}
-
-// 内存中存储的交易所账户映射表
-const accounts = new Map<string, StoredAccount>();
-// 自增 ID 计数器
 let nextId = 1;
 
-// 交易所账户管理控制器
 @Controller('exchange-accounts')
 export class ExchangeController {
-  // 获取所有已添加的交易所账户列表
+  private readonly logger = new Logger(ExchangeController.name);
+
+  constructor(
+    private readonly accountStore: AccountStore,
+    private readonly okxApi: OkxApiService,
+  ) {}
+
   @Get()
   getAccounts() {
-    const list = Array.from(accounts.values()).map((a) => ({
+    const list = this.accountStore.getAll().map((a) => ({
       id: a.id,
       exchange: a.exchange,
       label: a.label,
@@ -41,9 +28,8 @@ export class ExchangeController {
     return ok({ list });
   }
 
-  // 添加新的交易所账户
   @Post()
-  createAccount(
+  async createAccount(
     @Body()
     body: {
       exchange: string;
@@ -54,9 +40,9 @@ export class ExchangeController {
       isTestnet: boolean;
     },
   ) {
-    // 生成唯一 ID
     const id = `ex_${String(nextId++).padStart(4, '0')}`;
     const now = new Date().toISOString();
+
     const account: StoredAccount = {
       id,
       exchange: body.exchange || 'okx',
@@ -65,12 +51,32 @@ export class ExchangeController {
       apiSecret: body.apiSecret,
       passphrase: body.passphrase,
       isTestnet: body.isTestnet ?? false,
-      status: 'active',
+      status: 'pending',
       lastTestAt: null,
       lastSyncAt: null,
       createdAt: now,
     };
-    accounts.set(id, account);
+
+    this.logger.log(`校验 OKX API 账户: ${account.label}`);
+    const result = await this.okxApi.getBalance({
+      apiKey: account.apiKey,
+      apiSecret: account.apiSecret,
+      passphrase: account.passphrase,
+      isTestnet: account.isTestnet,
+    });
+
+    if (result && result.code === '0' && result.data?.length) {
+      account.status = 'active';
+      account.lastTestAt = now;
+      this.logger.log(`OKX 账户校验通过: ${account.label}`);
+    } else {
+      const errMsg = result?.msg || result?.data?.[0]?.msg || 'API 校验失败，请检查 Key / Secret / Passphrase';
+      account.status = 'error';
+      account.lastTestAt = now;
+      this.logger.error(`OKX 账户校验失败: ${account.label} - ${errMsg}`);
+    }
+
+    this.accountStore.set(id, account);
 
     return ok({
       id: account.id,
@@ -83,23 +89,42 @@ export class ExchangeController {
     });
   }
 
-  // 测试交易所账户连接
   @Post(':id/test')
-  testAccount(@Param('id') id: string) {
-    const account = accounts.get(id);
+  async testAccount(@Param('id') id: string) {
+    const account = this.accountStore.get(id);
     if (!account) {
       return ok({ id, connected: false, error: '账户不存在' });
     }
-    account.lastTestAt = new Date().toISOString();
-    account.status = 'active';
-    return ok({ id, connected: true });
+
+    const now = new Date().toISOString();
+    this.logger.log(`测试连接 OKX API 账户: ${account.label}`);
+
+    const result = await this.okxApi.getBalance({
+      apiKey: account.apiKey,
+      apiSecret: account.apiSecret,
+      passphrase: account.passphrase,
+      isTestnet: account.isTestnet,
+    });
+
+    if (result && result.code === '0' && result.data?.length) {
+      account.status = 'active';
+      account.lastTestAt = now;
+      this.accountStore.set(id, account);
+      this.logger.log(`测试连接通过: ${account.label}`);
+      return ok({ id, connected: true, lastTestAt: now });
+    }
+
+    const errMsg = result?.msg || result?.data?.[0]?.msg || '连接测试失败';
+    account.status = 'error';
+    account.lastTestAt = now;
+    this.accountStore.set(id, account);
+    this.logger.error(`测试连接失败: ${account.label} - ${errMsg}`);
+    return ok({ id, connected: false, error: errMsg, lastTestAt: now });
   }
 
-  // 删除交易所账户
   @Delete(':id')
   deleteAccount(@Param('id') id: string) {
-    const existed = accounts.has(id);
-    accounts.delete(id);
-    return ok({ id, deleted: existed });
+    this.accountStore.delete(id);
+    return ok({ deleted: true });
   }
 }

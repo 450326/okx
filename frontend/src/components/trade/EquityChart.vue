@@ -47,10 +47,11 @@
       </div>
     </div>
 
-    <div v-if="!points.length" class="chart-empty">
-      <div class="empty-text">{{ $t('equity.noLiveData') }}</div>
+    <div ref="chartContainer" class="chart-container" :class="{ 'chart-empty': !points.length }">
+      <div v-if="!points.length" class="empty-overlay">
+        <div class="empty-text">{{ $t('equity.noLiveData') }}</div>
+      </div>
     </div>
-    <div v-else ref="chartContainer" class="chart-container"></div>
   </div>
 </template>
 
@@ -113,6 +114,9 @@ async function fetchData() {
   try {
     const data = await accountApi.getEquityHistory(activeMode.value, activeRange.value);
     points.value = data.points;
+    if (!lineSeries) {
+      initChart();
+    }
     updateChart();
   } catch {
     points.value = [];
@@ -325,16 +329,19 @@ watch(() => props.range, (val) => {
   height: 320px;
   border-radius: 12px;
   overflow: hidden;
+  position: relative;
 }
 
 .chart-empty {
-  width: 100%;
-  height: 200px;
+  background: var(--bg-soft);
+}
+
+.empty-overlay {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: var(--bg-soft);
 }
 
 .empty-text {

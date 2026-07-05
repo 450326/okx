@@ -1,7 +1,7 @@
 <template>
   <div class="shell">
     <aside class="sidebar card">
-      <div>
+      <div class="sidebar-title">
         <div class="brand">{{ $t('layout.brand') }}</div>
         <div class="muted">{{ $t('layout.subtitle') }}</div>
       </div>
@@ -15,42 +15,23 @@
 
     <div class="content">
       <header class="topbar card">
-        <div>
-          <div :class="['tag', { 'tag-live': modeStore.mode === 'live' }]">
-            {{ modeStore.mode === 'simulation' ? $t('equity.simulation') : $t('equity.live') }}
+        <div class="topbar-stats">
+          <div>
+            <div class="stat-label">{{ $t('layout.accountEquity') }}</div>
+            <div class="stat-value">{{ formatCurrency(assetSnapshot?.equity) }}</div>
           </div>
-          <div class="topbar-stats">
-            <div>
-              <div class="stat-label">{{ $t('layout.accountEquity') }}</div>
-              <div class="stat-value">{{ formatCurrency(assetSnapshot?.equity) }}</div>
-            </div>
-            <div>
-              <div class="stat-label">{{ $t('layout.availableBalance') }}</div>
-              <div class="stat-value">
-                {{ formatCurrency(assetSnapshot?.availableBalance) }}
-              </div>
-            </div>
-            <div>
-              <div class="stat-label">{{ $t('layout.unrealizedPnl') }}</div>
-              <div :class="['stat-value', unrealizedPnlClass]">
-                {{ formatSignedCurrency(assetSnapshot?.unrealizedPnl) }}
-              </div>
-            </div>
+          <div>
+            <div class="stat-label">{{ $t('layout.availableBalance') }}</div>
+            <div class="stat-value">{{ formatCurrency(assetSnapshot?.availableBalance) }}</div>
           </div>
-          <div class="status-text">{{ authStore.user ? `${$t('layout.loggedIn')}: ${authStore.user.nickname}` : $t('layout.notLoggedIn') }}</div>
-          <div v-if="globalError" class="status-text">{{ globalError }}</div>
-        </div>
-
-        <div class="panel-actions">
-          <button class="ghost-btn" @click="themeStore.toggleTheme()">
-            {{ $t('layout.theme') }}: {{ themeStore.theme === 'dark' ? $t('layout.dark') : $t('layout.light') }}
-          </button>
-          <button class="ghost-btn" :disabled="modeStore.loading" @click="openModeConfirm()">
-            {{ $t('layout.switchTo') }}{{ modeStore.mode === 'simulation' ? $t('equity.live') : $t('equity.simulation') }}
-          </button>
-          <button class="primary-btn" @click="handleLogout">{{ userName }}{{ $t('layout.logout') }}</button>
+          <div>
+            <div class="stat-label">{{ $t('layout.unrealizedPnl') }}</div>
+            <div :class="['stat-value', unrealizedPnlClass]">{{ formatSignedCurrency(assetSnapshot?.unrealizedPnl) }}</div>
+          </div>
         </div>
       </header>
+
+      <div v-if="globalError" class="status-text">{{ globalError }}</div>
 
       <main class="main-view">
         <RouterView />
@@ -80,7 +61,6 @@ import { useAssetStore } from '../stores/assets';
 import { useAuthStore } from '../stores/auth';
 import { useExchangeStore } from '../stores/exchange';
 import { useModeStore } from '../stores/mode';
-import { useThemeStore } from '../stores/theme';
 import { useCurrencyStore } from '../stores/currency';
 import { formatCurrency, formatSignedCurrency, getTrendClass } from '../utils/format';
 import { $t } from '../utils/i18n';
@@ -89,7 +69,6 @@ const assetStore = useAssetStore();
 const authStore = useAuthStore();
 const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
-const themeStore = useThemeStore();
 const currencyStore = useCurrencyStore();
 const router = useRouter();
 const modeConfirmOpen = ref(false);
@@ -101,13 +80,10 @@ const navItems = [
   { to: '/positions', labelKey: 'nav.positions' },
   { to: '/assets', labelKey: 'nav.assets' },
   { to: '/orders/history', labelKey: 'nav.orderHistory' },
+  { to: '/settings', labelKey: 'nav.settings' },
 ];
 
 const assetSnapshot = computed(() => assetStore.snapshot);
-const userName = computed(() => {
-  const name = authStore.user?.nickname;
-  return name ? `${name} · ` : '';
-});
 const unrealizedPnlClass = computed(() => getTrendClass(assetSnapshot.value?.unrealizedPnl));
 const globalError = computed(() => authStore.error || modeStore.error || assetStore.error || exchangeStore.error);
 
@@ -158,34 +134,56 @@ function handleLogout() {
 
 <style scoped>
 .shell {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 16px;
+  display: flex;
   min-height: 100vh;
-  padding: 16px;
 }
 
 .sidebar {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 24px;
-  align-content: start;
+  width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 0;
+  border-right: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  margin-bottom: 4px;
 }
 
 .brand {
-  font-size: 24px;
+  font-size: 15px;
   font-weight: 800;
 }
 
+.muted {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
 .nav {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
 }
 
 .nav-item {
-  padding: 12px 14px;
-  border-radius: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.12s;
+}
+
+.nav-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-soft);
 }
 
 .nav-item.router-link-active {
@@ -194,45 +192,49 @@ function handleLogout() {
 }
 
 .content {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  min-width: 0;
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
   align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
 }
 
 .topbar-stats {
   display: flex;
-  gap: 24px;
-  margin-top: 12px;
-  flex-wrap: wrap;
+  gap: 20px;
 }
 
+.stat-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value.up { color: #00c087; }
+.stat-value.down { color: #f6465d; }
+
 .main-view {
+  flex: 1;
   min-width: 0;
 }
 
-@media (max-width: 960px) {
-  .shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    grid-template-rows: auto auto;
-  }
-
-  .nav {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .topbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
+.status-text {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 </style>

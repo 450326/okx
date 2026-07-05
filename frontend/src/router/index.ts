@@ -14,6 +14,8 @@ import TradePage from '../pages/TradePage.vue';
 import PositionsPage from '../pages/PositionsPage.vue';
 // 引入资产页面组件
 import AssetsPage from '../pages/AssetsPage.vue';
+// 引入设置页面组件
+import SettingsPage from '../pages/SettingsPage.vue';
 // 引入历史委托页面组件
 import OrdersHistoryPage from '../pages/OrdersHistoryPage.vue';
 // 引入认证状态 Store
@@ -40,6 +42,7 @@ const router = createRouter({
         { path: 'trade/:symbol?', name: 'trade', component: TradePage, props: true },  // 交易页（可选交易对参数）
         { path: 'positions', name: 'positions', component: PositionsPage }, // 持仓页
         { path: 'assets', name: 'assets', component: AssetsPage },          // 资产页
+        { path: 'settings', name: 'settings', component: SettingsPage },    // 设置页
         { path: 'orders/history', name: 'orders-history', component: OrdersHistoryPage },  // 历史委托页
       ],
     },
