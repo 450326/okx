@@ -332,3 +332,20 @@ graph TD
 
 2026.6.30
 添加登录页面，支持面容解锁登录
+
+2026.7.5
+更新 OKx webSocket 支持，优化账户管理
+模块
+一新增 account-store.ts用于持久化 API 账户
+一 新增 okx-api.service.ts 统一 OKX REST 签名与
+请求
+-重构 exchange-ws. service.ts 支持引用计数和自动
+重连
+一 更新 exchange.controller.ts 完善账户 CRUD 与
+测试接囗
+一新增 SettingsPage.vue 前端设置页面
+-
+优化 EquityChart.vue 图表展示
+更新路由和多语言配置
+一更新 .gitignore 排除 backend/data/ （敏感数据）
+和构建产物
