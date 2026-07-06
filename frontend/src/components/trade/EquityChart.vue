@@ -47,8 +47,9 @@
       </div>
     </div>
 
-    <div ref="chartContainer" class="chart-container" :class="{ 'chart-empty': !points.length }">
-      <div v-if="!points.length" class="empty-overlay">
+    <div v-if="points.length" ref="chartContainer" class="chart-container"></div>
+    <div v-else class="chart-container chart-empty">
+      <div class="empty-overlay">
         <div class="empty-text">{{ $t('equity.noLiveData') }}</div>
       </div>
     </div>
@@ -56,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { createChart, LineSeries, type IChartApi, type ISeriesApi, type LineData, type Time, ColorType } from 'lightweight-charts';
 import { accountApi } from '../../api/services';
 import { formatSignedValue, getTrendClass } from '../../utils/format';
@@ -114,10 +115,13 @@ async function fetchData() {
   try {
     const data = await accountApi.getEquityHistory(activeMode.value, activeRange.value);
     points.value = data.points;
-    if (!lineSeries) {
-      initChart();
+    if (points.value.length) {
+      await nextTick();
+      if (!lineSeries) {
+        initChart();
+      }
+      updateChart();
     }
-    updateChart();
   } catch {
     points.value = [];
   }

@@ -46,6 +46,22 @@
         </div>
       </section>
 
+      <!-- 交易市场 -->
+      <section class="settings-card card">
+        <h3 class="settings-section-title">{{ $t('settings.exchange') }}</h3>
+        <div class="settings-row">
+          <span class="settings-label">{{ $t('settings.currentExchange') }}</span>
+          <div class="settings-actions-row">
+            <button
+              v-for="ex in exchanges"
+              :key="ex.value"
+              :class="['exch-btn-settings', { active: marketStore.exchange === ex.value }]"
+              @click="switchExchange(ex.value)"
+            >{{ ex.label }}</button>
+          </div>
+        </div>
+      </section>
+
       <!-- 账户 -->
       <section class="settings-card card">
         <h3 class="settings-section-title">{{ $t('settings.account') }}</h3>
@@ -91,6 +107,7 @@ import LocaleSwitcher from '../components/common/LocaleSwitcher.vue';
 import CurrencySwitcher from '../components/common/CurrencySwitcher.vue';
 import ConfirmModal from '../components/common/ConfirmModal.vue';
 import { useAuthStore } from '../stores/auth';
+import { useMarketStore } from '../stores/market';
 import { useModeStore } from '../stores/mode';
 import { useThemeStore } from '../stores/theme';
 import { useExchangeStore } from '../stores/exchange';
@@ -98,11 +115,24 @@ import { useAssetStore } from '../stores/assets';
 import { $t } from '../utils/i18n';
 
 const authStore = useAuthStore();
+const marketStore = useMarketStore();
 const modeStore = useModeStore();
 const themeStore = useThemeStore();
 const exchangeStore = useExchangeStore();
 const assetStore = useAssetStore();
 const router = useRouter();
+
+const exchanges = [
+  { value: 'okx' as const, label: 'OKX' },
+  { value: 'binance' as const, label: 'Binance' },
+  { value: 'uniswap' as const, label: 'Uniswap' },
+  { value: 'polymarket' as const, label: 'Polymarket' },
+];
+
+function switchExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket') {
+  marketStore.setExchange(exch);
+}
+
 const modeConfirmOpen = ref(false);
 
 const modeConfirmTitle = computed(() => $t('layout.switchConfirmTitle'));
@@ -209,5 +239,27 @@ function handleOpenApiBinding() {
 .tag-live {
   background: rgba(246, 70, 93, 0.15);
   color: #f6465d;
+}
+
+.exch-btn-settings {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.exch-btn-settings.active {
+  background: rgba(99, 255, 152, 0.14);
+  border-color: var(--color-up);
+  color: var(--color-up);
+}
+
+.exch-btn-settings:hover {
+  opacity: 0.85;
 }
 </style>

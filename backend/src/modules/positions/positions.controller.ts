@@ -12,29 +12,52 @@ export class PositionsController {
   constructor(private readonly sim: SimulationState) {}
 
   @Get()
-  getPositions(@Query('mode') mode = 'simulation', @Query('symbol') symbol?: string) {
+  async getPositions(@Query('mode') mode = 'simulation', @Query('symbol') symbol?: string) {
     if (mode === 'live') return ok({ list: [] });
 
     const all = this.sim.getAllPositions();
-    let list = all.map((p) => ({
-      id: p.id,
-      symbol: p.symbol,
-      side: p.side,
-      leverage: p.leverage,
-      qty: p.qty,
-      entryPrice: p.entryPrice,
-      markPrice: '0',
-      lastPrice: '0',
-      notional: (Number(p.qty) * Number(p.entryPrice)).toFixed(2),
-      initialMargin: ((Number(p.qty) * Number(p.entryPrice)) / p.leverage).toFixed(2),
-      maintenanceMargin: ((Number(p.qty) * Number(p.entryPrice)) / p.leverage / 20).toFixed(2),
-      liquidationPrice: '0',
-      unrealizedPnl: '0',
-      roe: '0',
-      status: 'open',
-    }));
+    const list: any[] = [];
+    for (const p of all) {
+      if (symbol && p.symbol !== symbol) continue;
 
-    if (symbol) list = list.filter((p) => p.symbol === symbol);
+      let markPrice = '0';
+      try {
+        const res = await axios.get(`${OKX_BASE}/market/ticker`, {
+          params: { instId: p.symbol },
+          timeout: 3000,
+        });
+        const last = res.data?.data?.[0]?.last;
+        if (last) markPrice = last;
+      } catch {
+        // ignore
+      }
+
+      const entry = Number(p.entryPrice);
+      const mark = Number(markPrice);
+      const qty = Number(p.qty);
+      const pnl = p.side === 'long' ? (mark - entry) * qty : (entry - mark) * qty;
+      const roe = entry ? ((mark - entry) / entry) * 100 * p.leverage : 0;
+
+      list.push({
+        id: p.id,
+        symbol: p.symbol,
+        side: p.side,
+        leverage: p.leverage,
+        qty: p.qty,
+        entryPrice: p.entryPrice,
+        createdAt: p.createdAt,
+        markPrice,
+        lastPrice: markPrice,
+        notional: (qty * (mark || entry)).toFixed(2),
+        initialMargin: ((qty * entry) / p.leverage).toFixed(2),
+        maintenanceMargin: ((qty * entry) / p.leverage / 20).toFixed(2),
+        liquidationPrice: '0',
+        unrealizedPnl: pnl.toFixed(2),
+        roe: roe.toFixed(2),
+        status: 'open',
+      });
+    }
+
     return ok({ list });
   }
 
@@ -50,9 +73,8 @@ export class PositionsController {
 
     let closePrice: string;
     try {
-      const instId = sym.replace('-SWAP', '-USDT-SWAP');
       const res = await axios.get(`${OKX_BASE}/market/ticker`, {
-        params: { instId },
+        params: { instId: sym },
         timeout: 5000,
       });
       closePrice = res.data?.data?.[0]?.last || (sym.includes('BTC') ? '65000' : '3450');

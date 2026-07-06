@@ -35,7 +35,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(item, idx) in marketStore.recentTrades" :key="`${item.ts}-${idx}`">
+            <tr v-for="(item, idx) in visibleTrades" :key="`${item.ts}-${idx}`">
               <td>{{ formatTradeTime(item.ts) }}</td>
               <td :class="item.side === 'buy' ? 'up' : 'down'">{{ item.price }}</td>
               <td>{{ item.qty }}</td>
@@ -100,8 +100,8 @@
       </div>
     </section>
 
-    <!-- 持仓 + 委托汇总 -->
-    <PositionsSummary :positions="positionStore.positions" :open-orders="orderStore.openOrders" />
+    <!-- 持仓 + 委托汇总（盈亏实时更新） -->
+    <PositionsSummary :positions="livePositions" :open-orders="orderStore.openOrders" @closed="handlePositionClosed" />
   </div>
 </template>
 
@@ -154,14 +154,36 @@ const currentSymbol = computed(() => {
 });
 // 当前品种行情数据
 const currentTicker = computed(() => marketStore.tickerMap[currentSymbol.value] || null);
-// 当前品种持仓（取第一个）
-const currentPosition = computed(() => positionStore.positions[0] || null);
+// 利用 WebSocket 实时行情重算持仓盈亏和标记价
+const livePositions = computed(() =>
+  positionStore.positions.map((p) => {
+    const ticker = marketStore.tickerMap[p.symbol];
+    if (!ticker) return p;
+    const entry = Number(p.entryPrice);
+    const mark = Number(ticker.markPrice || ticker.lastPrice);
+    const qty = Number(p.qty);
+    const pnl =
+      p.side === 'long' ? (mark - entry) * qty : (entry - mark) * qty;
+    return {
+      ...p,
+      unrealizedPnl: pnl.toFixed(2),
+      markPrice: ticker.markPrice || ticker.lastPrice,
+      lastPrice: ticker.lastPrice,
+      roe: entry ? (((mark - entry) / entry) * 100 * p.leverage).toFixed(2) : '0.00',
+    };
+  }),
+);
+
+// 当前品种持仓（取第一个，使用实时价格）
+const currentPosition = computed(() => livePositions.value[0] || null);
 
 // 相关品种行情
 const relatedTickers = computed(() => {
   const source = marketStore.tickers.filter((item) => item.symbol !== currentSymbol.value);
   return source.length ? source.slice(0, 4) : marketStore.tickers.slice(0, 4);
 });
+// 最近成交（取最新 15 条）
+const visibleTrades = computed(() => marketStore.recentTrades.slice(0, 15));
 // 格式化成交时间
 function formatTradeTime(value: number) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -195,6 +217,11 @@ function handleKlineClickPrice(price: number) {
 async function switchExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket') {
   marketStore.setExchange(exch);
   await loadTradePageData();
+}
+
+// 平仓后刷新
+function handlePositionClosed() {
+  positionStore.fetchPositions(modeStore.mode, currentSymbol.value);
 }
 
 // 下单成功后的回调

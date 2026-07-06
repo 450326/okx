@@ -83,9 +83,8 @@ export class OrdersController {
 
   private async fetchMarkPrice(symbol: string): Promise<string> {
     try {
-      const instId = symbol.replace('-SWAP', '-USDT-SWAP');
       const res = await axios.get(`${OKX_BASE}/market/ticker`, {
-        params: { instId },
+        params: { instId: symbol },
         timeout: 5000,
       });
       const last = res.data?.data?.[0]?.last;

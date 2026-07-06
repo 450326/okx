@@ -39,6 +39,7 @@ export const useMarketStore = defineStore('market', () => {
   let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let klinePollTimer: ReturnType<typeof setInterval> | null = null;
+  let globalTickerTimer: ReturnType<typeof setInterval> | null = null;
 
   function stopPolling() {
     if (pollTimer) {
@@ -170,6 +171,24 @@ export const useMarketStore = defineStore('market', () => {
     socket = null;
   }
 
+  function startGlobalTickerPoll() {
+    stopGlobalTickerPoll();
+    fetchTickers();
+    globalTickerTimer = setInterval(() => {
+      fetchTickers();
+    }, 3000);
+  }
+
+  function stopGlobalTickerPoll() {
+    if (globalTickerTimer) {
+      clearInterval(globalTickerTimer);
+      globalTickerTimer = null;
+    }
+  }
+
+  // 创建 store 时自动启动全局行情轮询
+  startGlobalTickerPoll();
+
   function setExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket') {
     exchange.value = exch;
   }
@@ -266,6 +285,7 @@ export const useMarketStore = defineStore('market', () => {
     exchange, symbols, tickers, depthBids, depthAsks, klines, recentTrades,
     loading, depthLoading, chartLoading, tradesLoading, error, tickerMap,
     setExchange, connectWs, disconnectWs,
+    startGlobalTickerPoll, stopGlobalTickerPoll,
     fetchSymbols, fetchTickers, fetchDepth, fetchKlines, fetchRecentTrades,
   };
 });

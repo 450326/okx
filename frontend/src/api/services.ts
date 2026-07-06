@@ -99,6 +99,10 @@ export const positionApi = {
   getPositions(mode: TradeMode, symbol?: string) {
     return get<PositionListResponse>('/positions', { mode, symbol });
   },
+  // 平仓
+  closePosition(id: string, payload: { symbol: string; qty?: string }) {
+    return post<{ positionId: string; status: string }, { symbol: string; qty?: string }>(`/positions/${id}/close`, payload);
+  },
 };
 
 // 订单相关 API

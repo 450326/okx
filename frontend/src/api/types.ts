@@ -176,6 +176,7 @@ export interface PositionItem {
   takeProfitPrice?: string;   // 止盈价格
   stopLossPrice?: string;     // 止损价格
   status?: string;            // 持仓状态
+  createdAt?: string;         // 开仓时间
 }
 
 // 持仓列表响应

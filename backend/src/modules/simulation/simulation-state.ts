@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface SimOrder {
   orderId: string;
@@ -24,6 +26,17 @@ export interface SimPosition {
   leverage: number;
   qty: string;
   entryPrice: string;
+  createdAt: string;
+}
+
+interface PersistedData {
+  orders: SimOrder[];
+  positions: { key: string; value: SimPosition }[];
+  nextOrdId: number;
+  nextPosId: number;
+  walletBalance: number;
+  availableBalance: number;
+  positionMargin: number;
 }
 
 @Injectable()
@@ -35,6 +48,50 @@ export class SimulationState {
   walletBalance = 100000;
   availableBalance = 98200;
   positionMargin = 1500;
+  private readonly filePath: string;
+
+  constructor() {
+    this.filePath = path.resolve(__dirname, '../../../data/simulation.json');
+    this.load();
+  }
+
+  private load() {
+    try {
+      if (fs.existsSync(this.filePath)) {
+        const raw = fs.readFileSync(this.filePath, 'utf-8');
+        const data: PersistedData = JSON.parse(raw);
+        this.orders = data.orders || [];
+        this.positions = new Map((data.positions || []).map((p) => [p.key, p.value]));
+        this.nextOrdId = data.nextOrdId || 1003;
+        this.nextPosId = data.nextPosId || 1003;
+        this.walletBalance = data.walletBalance ?? 100000;
+        this.availableBalance = data.availableBalance ?? 98200;
+        this.positionMargin = data.positionMargin ?? 1500;
+        console.log(`[SimulationState] 已恢复 ${this.orders.length} 笔订单, ${this.positions.size} 个持仓`);
+      }
+    } catch (err) {
+      console.error('[SimulationState] 加载失败:', err.message);
+    }
+  }
+
+  private save() {
+    try {
+      const dir = path.dirname(this.filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const data: PersistedData = {
+        orders: this.orders,
+        positions: Array.from(this.positions.entries()).map(([key, value]) => ({ key, value })),
+        nextOrdId: this.nextOrdId,
+        nextPosId: this.nextPosId,
+        walletBalance: this.walletBalance,
+        availableBalance: this.availableBalance,
+        positionMargin: this.positionMargin,
+      };
+      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('[SimulationState] 保存失败:', err.message);
+    }
+  }
 
   getAllOrders(): SimOrder[] {
     return this.orders;
@@ -88,6 +145,7 @@ export class SimulationState {
       };
       this.orders.push(order);
       this.applyFillToPosition(body.symbol, body.side, body.qty, fillPrice, body.leverage);
+      this.save();
       return { orderId, status: 'filled' };
     }
 
@@ -106,6 +164,7 @@ export class SimulationState {
       createdAt: now,
     };
     this.orders.push(order);
+    this.save();
     return { orderId, status: 'pending' };
   }
 
@@ -113,6 +172,7 @@ export class SimulationState {
     const order = this.orders.find((o) => o.orderId === orderId);
     if (order && order.status === 'pending') {
       order.status = 'cancelled';
+      this.save();
       return true;
     }
     return false;
@@ -141,6 +201,7 @@ export class SimulationState {
         existing.qty = Math.abs(net).toFixed(4);
         existing.entryPrice = fillPrice;
         existing.leverage = leverage;
+        existing.createdAt = new Date().toISOString();
       } else {
         this.positions.delete(symbol);
       }
@@ -152,12 +213,14 @@ export class SimulationState {
         leverage,
         qty: qtyNum.toFixed(4),
         entryPrice: fillPrice,
+        createdAt: new Date().toISOString(),
       });
     }
 
     const marginUsed = qtyNum * priceNum / leverage;
     this.positionMargin += marginUsed;
     this.availableBalance = Math.max(0, this.availableBalance - marginUsed);
+    this.save();
   }
 
   closePosition(symbol: string, closePrice: string): boolean {
@@ -174,6 +237,7 @@ export class SimulationState {
     this.availableBalance += pnl;
     this.walletBalance += pnl;
     this.positions.delete(symbol);
+    this.save();
     return true;
   }
 

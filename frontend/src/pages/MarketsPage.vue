@@ -82,10 +82,6 @@ const rows = computed(() => {
 
   let filtered = merged.filter((item) => !normalizedKeyword || item.symbol.includes(normalizedKeyword));
 
-  if (category.value === 'main') {
-    filtered = filtered.slice(0, 5);
-  }
-
   if (category.value === 'favorite') {
     filtered = [];
   }

@@ -1,18 +1,12 @@
 // 引入 NestJS 可注入装饰器
-import { Injectable } from '@nestjs/common';
-// 引入 HTTP 请求库
+import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
-// 引入去中心化交易所服务
 import { DexService } from './dex.service';
-// 引入 Polymarket 预测市场服务
 import { PolymarketService } from './polymarket.service';
 
-// OKX 交易所 API 基础地址
 const OKX_BASE = 'https://www.okx.com/api/v5';
-// Binance 交易所 API 基础地址
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
 
-// OKX K 线周期映射表
 const OKX_INTERVAL_MAP: Record<string, string> = {
   '1s': '1s',
   '30s': '30s',
@@ -25,7 +19,6 @@ const OKX_INTERVAL_MAP: Record<string, string> = {
   '1d': '1D',
 };
 
-// OKX 行情 ticker 数据接口
 interface OkxTicker {
   instId: string;
   last: string;
@@ -37,7 +30,6 @@ interface OkxTicker {
   vol24h: string;
 }
 
-// OKX 成交数据接口
 interface OkxTrade {
   instId: string;
   tradeId: string;
@@ -47,7 +39,6 @@ interface OkxTrade {
   ts: string;
 }
 
-// Binance 行情 ticker 数据接口
 interface BinanceTicker {
   symbol: string;
   lastPrice: string;
@@ -61,7 +52,6 @@ interface BinanceTicker {
   openPrice: string;
 }
 
-// Binance 成交数据接口
 interface BinanceTrade {
   id: number;
   price: string;
@@ -72,14 +62,12 @@ interface BinanceTrade {
   isBestMatch: boolean;
 }
 
-// Binance 深度数据接口
 interface BinanceDepth {
   lastUpdateId: number;
   bids: string[][];
   asks: string[][];
 }
 
-// 已知交易品种的信息结构
 type KnownSymbol = {
   symbol: string;
   baseCoin: string;
@@ -90,17 +78,8 @@ type KnownSymbol = {
   qtyPrecision: number;
 };
 
-// 各交易所支持的交易品种列表
 const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
-  // OKX 永续合约交易对
-  okx: [
-    { symbol: 'BTC-USDT-SWAP', baseCoin: 'BTC', quoteCoin: 'USDT', maxLeverage: 50, minQty: '0.001', pricePrecision: 1, qtyPrecision: 3 },
-    { symbol: 'ETH-USDT-SWAP', baseCoin: 'ETH', quoteCoin: 'USDT', maxLeverage: 50, minQty: '0.01', pricePrecision: 2, qtyPrecision: 2 },
-    { symbol: 'SOL-USDT-SWAP', baseCoin: 'SOL', quoteCoin: 'USDT', maxLeverage: 25, minQty: '0.1', pricePrecision: 2, qtyPrecision: 1 },
-    { symbol: 'DOGE-USDT-SWAP', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 25, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
-    { symbol: 'XRP-USDT-SWAP', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 25, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
-  ],
-  // Binance 永续合约交易对
+  okx: [],
   binance: [
     { symbol: 'BTCUSDT', baseCoin: 'BTC', quoteCoin: 'USDT', maxLeverage: 125, minQty: '0.001', pricePrecision: 1, qtyPrecision: 3 },
     { symbol: 'ETHUSDT', baseCoin: 'ETH', quoteCoin: 'USDT', maxLeverage: 75, minQty: '0.01', pricePrecision: 2, qtyPrecision: 2 },
@@ -108,7 +87,6 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
     { symbol: 'DOGEUSDT', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 50, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
     { symbol: 'XRPUSDT', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 50, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
   ],
-  // Uniswap 去中心化交易对
   uniswap: [
     { symbol: 'ETH-USDT', baseCoin: 'ETH', quoteCoin: 'USDT', maxLeverage: 1, minQty: '0.001', pricePrecision: 2, qtyPrecision: 4 },
     { symbol: 'BTC-USDT', baseCoin: 'BTC', quoteCoin: 'USDT', maxLeverage: 1, minQty: '0.0001', pricePrecision: 2, qtyPrecision: 6 },
@@ -116,7 +94,6 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
     { symbol: 'DOGE-USDT', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 1, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
     { symbol: 'XRP-USDT', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 1, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
   ],
-  // Polymarket 预测市场交易对
   polymarket: [
     { symbol: 'BTC-150K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
     { symbol: 'ETH-5K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
@@ -132,6 +109,8 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
 // 行情数据服务，聚合多交易所和多协议数据
 @Injectable()
 export class MarketService {
+  private readonly logger = new Logger(MarketService.name);
+
   constructor(
     // 注入去中心化交易所服务
     private readonly dexService: DexService,
@@ -179,11 +158,51 @@ export class MarketService {
 
   // 获取指定交易所支持的交易品种列表
   async getSymbols(exchange: string = 'okx') {
-    // Polymarket 走独立服务获取
     if (exchange === 'polymarket') {
       return this.polymarketService.getSymbols();
     }
+    if (exchange === 'okx') {
+      return this.getOkxSymbols();
+    }
     return SYMBOLS_BY_EXCHANGE[exchange] || SYMBOLS_BY_EXCHANGE['okx'];
+  }
+
+  private async getOkxSymbols(): Promise<KnownSymbol[]> {
+    try {
+      const res = await axios.get<{ code: string; data: any[] }>(`${OKX_BASE}/public/instruments`, {
+        params: { instType: 'SWAP' },
+        timeout: 15000,
+      });
+
+      const instruments = res.data?.data;
+      if (res.data?.code !== '0' || !instruments?.length) {
+        this.logger.warn(`OKX instruments 返回空, code=${res.data?.code}`);
+        return [];
+      }
+
+      this.logger.log(`OKX instruments 加载 ${instruments.length} 个合约`);
+
+      return instruments
+        .filter((inst) => inst.ctType === 'linear' && inst.instId.endsWith('-USDT-SWAP'))
+        .map((inst: any) => {
+          const base = inst.uly?.replace('-USDT', '') || inst.instId.split('-')[0];
+          const tickSz = inst.tickSz || '0.01';
+          const lotSz = inst.lotSz || '0.001';
+          return {
+            symbol: inst.instId,
+            baseCoin: base,
+            quoteCoin: 'USDT',
+            maxLeverage: Number(inst.lever) || 10,
+            minQty: inst.minSz || lotSz,
+            pricePrecision: tickSz.includes('.') ? tickSz.split('.')[1].length : 0,
+            qtyPrecision: lotSz.includes('.') ? lotSz.split('.')[1].length : 0,
+          };
+        })
+        .filter((s) => s.symbol.endsWith('-USDT-SWAP'));
+    } catch (err) {
+      this.logger.error(`获取 OKX instruments 失败: ${(err as Error).message}`);
+      return [];
+    }
   }
 
   // 获取行情 ticker 数据，支持多交易所

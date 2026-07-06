@@ -5,15 +5,13 @@
     <section class="mobile-shell">
       <!-- 移动端顶部栏 -->
       <header class="mobile-topbar">
-        <div class="topbar-actions">
-          <button class="icon-btn">扫</button>
-        </div>
       </header>
 
-      <!-- 搜索栏（热搜） -->
+      <!-- 搜索栏 -->
       <div class="search-bar">
         <span class="search-icon">⌕</span>
-        <span class="search-text">🔥 {{ trendingSymbol }} {{ $t('home.hotSearch') }}</span>
+        <input v-model="searchQuery" class="search-input" placeholder="搜索币种..." />
+        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">✕</button>
       </div>
 
       <!-- 总资产卡片 -->
@@ -107,16 +105,39 @@
         </RouterLink>
       </section>
 
-      <!-- 仓位快照 -->
-      <section class="holdings-strip">
-        <div class="strip-title">{{ $t('home.positionsSnapshot') }}</div>
-        <div v-if="recentPositions.length" class="holdings-list">
-          <div v-for="item in recentPositions" :key="item.id" class="holding-pill">
-            <span>{{ item.symbol }}</span>
-            <strong :class="getTrendClass(item.unrealizedPnl)">{{ formatSignedValue(item.unrealizedPnl) }}</strong>
-          </div>
+      <!-- 持仓列表 -->
+      <section class="card">
+        <div class="section-head">
+          <h2 class="section-title">{{ $t('home.positionsSnapshot') }}</h2>
+          <RouterLink v-if="recentPositions.length" class="ghost-btn" to="/positions">{{ $t('common.all') }}</RouterLink>
         </div>
-        <div v-else class="status-text">{{ $t('home.noPositionData') }}</div>
+        <table v-if="recentPositions.length" class="table">
+           <thead>
+             <tr>
+               <th>品种</th>
+               <th>方向</th>
+               <th>{{ $t('trade.leverage') }}</th>
+               <th>数量</th>
+               <th>开仓价</th>
+               <th>开仓时间</th>
+               <th>盈亏</th>
+               <th></th>
+             </tr>
+           </thead>
+           <tbody>
+             <tr v-for="item in recentPositions" :key="item.id" class="pos-row" @click="goTrade(item.symbol)">
+               <td>{{ item.symbol }}</td>
+               <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? '多' : '空' }}</td>
+               <td>{{ item.leverage }}x</td>
+               <td>{{ item.qty }}</td>
+               <td>{{ item.entryPrice }}</td>
+               <td class="time-cell">{{ formatOpenTime(item.createdAt) }}</td>
+               <td :class="getTrendClass(item.unrealizedPnl)">{{ formatSignedValue(item.unrealizedPnl) }}</td>
+               <td><button class="close-btn" :disabled="closingId === item.id" @click.stop="handleClose(item)">{{ closingId === item.id ? '...' : '平仓' }}</button></td>
+             </tr>
+           </tbody>
+         </table>
+        <div v-else class="empty-state">{{ $t('home.noPositionData') }}</div>
       </section>
 
       <!-- 底部导航栏 -->
@@ -202,9 +223,9 @@
 
 <script setup lang="ts">
 // Vue 响应式工具与侦听器
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 // Vue Router 导航组件
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 // 资产状态管理
 import { useAssetStore } from '../stores/assets';
 // 行情状态管理
@@ -219,6 +240,8 @@ import { usePositionStore } from '../stores/positions';
 import EquityChart from '../components/trade/EquityChart.vue';
 // 国际化
 import { $t } from '../utils/i18n';
+// API
+import { positionApi } from '../api/services';
 // 数值格式化与涨跌颜色工具函数
 import { formatPercent, formatSignedValue, formatSignedCurrency, formatCurrency, formatCompactVolume, getTrendClass } from '../utils/format';
 
@@ -232,14 +255,42 @@ const positionStore = usePositionStore();
 // 排行榜标签列表
 const rankingTabs = ['自选', '热门榜', '新币榜', 'TradFi', 'DEX'];
 
-// 热门市场（取前 5 条）
-const featuredMarkets = computed(() => marketStore.tickers.slice(0, 5));
-// 最近持仓（取前 4 条）
-const recentPositions = computed(() => positionStore.positions.slice(0, 4));
+// 搜索
+const searchQuery = ref('');
+
+// 热门市场（按 24h 成交量排序，取前 8 条，支持搜索）
+const featuredMarkets = computed(() => {
+  let list = [...marketStore.tickers].sort(
+    (a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0),
+  );
+  if (searchQuery.value) {
+    const q = searchQuery.value.toUpperCase();
+    list = list.filter((t) => t.symbol.toUpperCase().includes(q));
+  }
+  return list.slice(0, 8);
+});
+// 利用 WebSocket 实时行情重算持仓盈亏
+const livePositions = computed(() =>
+  positionStore.positions.map((p) => {
+    const ticker = marketStore.tickerMap[p.symbol];
+    if (!ticker) return p;
+    const entry = Number(p.entryPrice);
+    const mark = Number(ticker.markPrice || ticker.lastPrice);
+    const qty = Number(p.qty);
+    const pnl = p.side === 'long' ? (mark - entry) * qty : (entry - mark) * qty;
+    return {
+      ...p,
+      unrealizedPnl: pnl.toFixed(2),
+      markPrice: ticker.markPrice || ticker.lastPrice,
+      lastPrice: ticker.lastPrice,
+    };
+  }),
+);
+
+// 最近持仓（取前 4 条，盈亏实时更新）
+const recentPositions = computed(() => livePositions.value.slice(0, 4));
 // 历史订单（取前 5 条）
 const recentOrders = computed(() => orderStore.historyOrders.slice(0, 5));
-// 当前热搜品种
-const trendingSymbol = computed(() => featuredMarkets.value[3]?.symbol.split('-')[0] || 'ZEC');
 // 年化收益率
 const yieldPercent = computed(() => {
   const equity = Number(assetStore.snapshot?.equity || 0);
@@ -308,6 +359,31 @@ function coinTone(symbol: string) {
   return 'coin-alt';
 }
 
+const router = useRouter();
+const closingId = ref('');
+
+function formatOpenTime(iso?: string) {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  return d.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function goTrade(symbol: string) {
+  router.push(`/trade/${symbol}`);
+}
+
+async function handleClose(item: { id: string; symbol: string }) {
+  if (closingId.value) return;
+  closingId.value = item.id;
+  try {
+    await positionApi.closePosition(item.id, { symbol: item.symbol });
+    await positionStore.fetchPositions(modeStore.mode);
+  } catch {
+    // ignore
+  }
+  closingId.value = '';
+}
+
 // 行情卡计算属性
 const currentTicker = computed(() => marketStore.tickers[0] || null);
 const currentBaseSymbol = computed(() => {
@@ -362,21 +438,19 @@ watch(
   box-shadow: 0 30px 60px rgba(2, 6, 12, 0.42);
 }
 
-/* 弹性布局公用 */
+/* 移动端顶部栏 */
 .mobile-topbar,
-.topbar-actions,
 .mode-switch,
 .market-tabs,
 .spot-switch,
 .quick-actions,
 .summary-grid,
-.holdings-list,
 .bottom-dock {
   display: flex;
   gap: 12px;
 }
 
-/* 两端对齐公用 */
+/* 顶部栏两端对齐 */
 .mobile-topbar,
 .section-head {
   align-items: center;
@@ -384,23 +458,12 @@ watch(
 }
 
 /* 无边框按钮公用 */
-.icon-btn,
 .mode-pill,
 .tab-chip,
 .tab-arrow,
 .spot-pill {
   border: none;
   cursor: pointer;
-}
-
-/* 圆形图标按钮 */
-.icon-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-primary);
-  font-size: 18px;
 }
 
 /* 模式切换按钮组 */
@@ -433,7 +496,7 @@ watch(
   align-items: center;
   gap: 12px;
   margin-top: 18px;
-  padding: 16px 20px;
+  padding: 12px 20px;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.06);
 }
@@ -441,12 +504,34 @@ watch(
 /* 搜索图标 */
 .search-icon {
   font-size: 22px;
+  flex-shrink: 0;
 }
 
-/* 热搜文本 */
-.search-text {
-  color: var(--text-secondary);
+/* 搜索输入框 */
+.search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
   font-size: 18px;
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+/* 搜索清空按钮 */
+.search-clear {
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* 资产卡片 */
@@ -576,7 +661,6 @@ watch(
 /* 弹性居中公用 */
 .market-meta,
 .market-symbol,
-.holding-pill,
 .dock-item {
   display: flex;
   align-items: center;
@@ -665,33 +749,6 @@ watch(
 .market-change.down {
   background: rgba(246, 70, 93, 0.9);
   color: #fff3f5;
-}
-
-/* 持仓快照栏 */
-.holdings-strip {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-/* 栏目标题 */
-.strip-title {
-  margin-bottom: 12px;
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-/* 持仓列表 */
-.holdings-list {
-  flex-wrap: wrap;
-}
-
-/* 持仓胶囊 */
-.holding-pill {
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
 }
 
 /* 底部导航栏 */
@@ -878,7 +935,46 @@ watch(
   white-space: nowrap;
 }
 
-/* 窄屏自适应 */
+/* 持仓行点击效果 */
+.pos-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.pos-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* 开仓时间列 */
+.time-cell {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* 平仓按钮 */
+.close-btn {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-down);
+  background: transparent;
+  color: var(--color-down);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.close-btn:hover {
+  background: rgba(246, 70, 93, 0.12);
+}
+
+.close-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 窄屏（手机）自适应 */
 @media (max-width: 960px) {
   .mobile-shell {
     padding: 16px;
