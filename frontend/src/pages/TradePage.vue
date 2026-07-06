@@ -248,6 +248,17 @@ watch(klineInterval, () => {
   initWs();
 });
 
+// 交易所显示名称映射
+const exchangeLabel = computed(() => {
+  const labels: Record<string, string> = {
+    okx: 'OKX',
+    binance: 'Binance',
+    uniswap: 'Uniswap',
+    polymarket: 'Polymarket',
+  };
+  return labels[marketStore.exchange] || marketStore.exchange;
+});
+
 // 页面卸载时断开 WebSocket
 onBeforeUnmount(() => {
   marketStore.disconnectWs();

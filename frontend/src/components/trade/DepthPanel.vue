@@ -71,8 +71,8 @@ function formatQty(val: string | number): string {
   return n.toFixed(3);
 }
 
-function barWidth(val: string | number, max: number): string {
-  return Math.min((Number(val) / max) * 100, 100).toFixed(0) + '%';
+function barWidth(val: string | number, max: string | number): string {
+  return Math.min((Number(val) / Number(max)) * 100, 100).toFixed(0) + '%';
 }
 </script>
 

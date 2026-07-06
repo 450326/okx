@@ -1,124 +1,118 @@
-// Prisma 客户端生成器
 generator client {
   provider = "prisma-client-js"
 }
 
-// 数据库数据源配置
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-// 用户模型
 model User {
-  id           String           @id  // 用户唯一标识
-  email        String           @unique  // 用户邮箱（唯一）
-  passwordHash String           @map("password_hash")  // 密码哈希值
-  nickname     String  // 用户昵称
-  status       String           @default("active")  // 用户状态（active/inactive）
-  defaultMode  String           @default("simulation") @map("default_mode")  // 默认交易模式（simulation/live）
-  createdAt    DateTime         @default(now()) @map("created_at")  // 创建时间
-  updatedAt    DateTime         @updatedAt @map("updated_at")  // 更新时间
-  balances     AccountBalance[]  // 账户余额关联
-  positions    Position[]  // 持仓关联
-  orders       Order[]  // 订单关联
+  id           String             @id
+  email        String             @unique
+  passwordHash String             @map("password_hash")
+  nickname     String
+  status       String             @default("active")
+  defaultMode  String             @default("simulation") @map("default_mode")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+  balances     AccountBalance[]
+  positions    Position[]
+  orders       Order[]
+  exchangeAccounts ExchangeAccount[]
 
   @@map("users")
 }
 
-// 账户余额模型
 model AccountBalance {
-  id               String   @id  // 余额唯一标识
-  userId           String   @map("user_id")  // 关联用户 ID
-  mode             String  // 交易模式（simulation/live）
-  currency         String   @default("USDT")  // 币种
-  walletBalance    Decimal  @default(0) @db.Decimal(30, 12) @map("wallet_balance")  // 钱包余额
-  availableBalance Decimal  @default(0) @db.Decimal(30, 12) @map("available_balance")  // 可用余额
-  positionMargin   Decimal  @default(0) @db.Decimal(30, 12) @map("position_margin")  // 持仓保证金
-  orderMargin      Decimal  @default(0) @db.Decimal(30, 12) @map("order_margin")  // 委托保证金
-  unrealizedPnl    Decimal  @default(0) @db.Decimal(30, 12) @map("unrealized_pnl")  // 未实现盈亏
-  realizedPnl      Decimal  @default(0) @db.Decimal(30, 12) @map("realized_pnl")  // 已实现盈亏
-  equity           Decimal  @default(0) @db.Decimal(30, 12)  // 账户权益
-  version          Int      @default(0)  // 乐观锁版本号
-  createdAt        DateTime @default(now()) @map("created_at")  // 创建时间
-  updatedAt        DateTime @updatedAt @map("updated_at")  // 更新时间
-  user             User     @relation(fields: [userId], references: [id])  // 关联用户
+  id               String   @id
+  userId           String   @map("user_id")
+  mode             String
+  currency         String   @default("USDT")
+  walletBalance    Float    @default(0) @map("wallet_balance")
+  availableBalance Float    @default(0) @map("available_balance")
+  positionMargin   Float    @default(0) @map("position_margin")
+  orderMargin      Float    @default(0) @map("order_margin")
+  unrealizedPnl    Float    @default(0) @map("unrealized_pnl")
+  realizedPnl      Float    @default(0) @map("realized_pnl")
+  equity           Float    @default(0)
+  version          Int      @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  user             User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, mode, currency])
   @@map("account_balances")
 }
 
-// 持仓模型
 model Position {
-  id                String   @id  // 持仓唯一标识
-  userId            String   @map("user_id")  // 关联用户 ID
-  mode              String  // 交易模式
-  venue             String  // 交易所
-  symbol            String  // 交易对
-  side              String  // 持仓方向（long/short）
-  marginMode        String   @default("isolated") @map("margin_mode")  // 保证金模式
-  leverage          Int  // 杠杆倍数
-  qty               Decimal  @db.Decimal(30, 12)  // 持仓数量
-  entryPrice        Decimal  @db.Decimal(30, 12) @map("entry_price")  // 开仓均价
-  markPrice         Decimal  @default(0) @db.Decimal(30, 12) @map("mark_price")  // 标记价格
-  lastPrice         Decimal  @default(0) @db.Decimal(30, 12) @map("last_price")  // 最新成交价
-  notional          Decimal  @db.Decimal(30, 12)  // 名义价值
-  initialMargin     Decimal  @db.Decimal(30, 12) @map("initial_margin")  // 初始保证金
-  maintenanceMargin Decimal  @db.Decimal(30, 12) @map("maintenance_margin")  // 维持保证金
-  liquidationPrice  Decimal? @db.Decimal(30, 12) @map("liquidation_price")  // 强平价格
-  isolatedMargin    Decimal  @db.Decimal(30, 12) @map("isolated_margin")  // 逐仓保证金
-  unrealizedPnl     Decimal  @default(0) @db.Decimal(30, 12) @map("unrealized_pnl")  // 未实现盈亏
-  realizedPnl       Decimal  @default(0) @db.Decimal(30, 12) @map("realized_pnl")  // 已实现盈亏
-  status            String   @default("open")  // 持仓状态（open/closed）
-  openedAt          DateTime @default(now()) @map("opened_at")  // 开仓时间
-  closedAt          DateTime? @map("closed_at")  // 平仓时间
-  createdAt         DateTime @default(now()) @map("created_at")  // 创建时间
-  updatedAt         DateTime @updatedAt @map("updated_at")  // 更新时间
-  user              User     @relation(fields: [userId], references: [id])  // 关联用户
+  id                String   @id
+  userId            String   @map("user_id")
+  mode              String
+  venue             String
+  symbol            String
+  side              String
+  marginMode        String   @default("isolated") @map("margin_mode")
+  leverage          Int
+  qty               Float
+  entryPrice        Float    @map("entry_price")
+  markPrice         Float    @default(0) @map("mark_price")
+  lastPrice         Float    @default(0) @map("last_price")
+  notional          Float
+  initialMargin     Float    @map("initial_margin")
+  maintenanceMargin Float    @map("maintenance_margin")
+  liquidationPrice  Float?   @map("liquidation_price")
+  isolatedMargin    Float    @map("isolated_margin")
+  unrealizedPnl     Float    @default(0) @map("unrealized_pnl")
+  realizedPnl       Float    @default(0) @map("realized_pnl")
+  status            String   @default("open")
+  openedAt          DateTime @default(now()) @map("opened_at")
+  closedAt          DateTime? @map("closed_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  user              User     @relation(fields: [userId], references: [id])
 
   @@map("positions")
 }
 
-// 订单模型
 model Order {
-  id                String    @id  // 订单唯一标识
-  userId            String    @map("user_id")  // 关联用户 ID
-  mode              String  // 交易模式
-  venue             String  // 交易所
-  symbol            String  // 交易对
-  side              String  // 订单方向（long/short）
-  action            String  // 开平动作（open/close）
-  orderType         String    @map("order_type")  // 订单类型（market/limit）
-  leverage          Int  // 杠杆倍数
-  qty               Decimal   @db.Decimal(30, 12)  // 委托数量
-  price             Decimal?  @db.Decimal(30, 12)  // 委托价格
-  avgFillPrice      Decimal?  @db.Decimal(30, 12) @map("avg_fill_price")  // 平均成交价
-  filledQty         Decimal   @default(0) @db.Decimal(30, 12) @map("filled_qty")  // 已成交数量
-  fee               Decimal   @default(0) @db.Decimal(30, 12)  // 手续费
-  status            String  // 订单状态
-  createdAt         DateTime  @default(now()) @map("created_at")  // 创建时间
-  updatedAt         DateTime  @updatedAt @map("updated_at")  // 更新时间
-  user              User      @relation(fields: [userId], references: [id])  // 关联用户
+  id           String    @id
+  userId       String    @map("user_id")
+  mode         String
+  venue        String
+  symbol       String
+  side         String
+  action       String
+  orderType    String    @map("order_type")
+  leverage     Int
+  qty          Float
+  price        Float?
+  avgFillPrice Float?    @map("avg_fill_price")
+  filledQty    Float     @default(0) @map("filled_qty")
+  fee          Float     @default(0)
+  status       String
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  user         User      @relation(fields: [userId], references: [id])
 
   @@map("orders")
 }
 
-// 交易所账户模型
 model ExchangeAccount {
-  id           String   @id  // 账户唯一标识
-  userId       String   @map("user_id")  // 关联用户 ID
-  exchange     String  // 交易所名称
-  label        String  // 账户标签
-  apiKey       String   @map("api_key")  // API Key
-  apiSecret    String   @map("api_secret")  // API Secret
-  passphrase   String  // API Passphrase
-  isTestnet    Boolean  @default(false) @map("is_testnet")  // 是否为测试网
-  status       String   @default("active")  // 账户状态
-  lastTestAt   DateTime? @map("last_test_at")  // 最后测试时间
-  lastSyncAt   DateTime? @map("last_sync_at")  // 最后同步时间
-  createdAt    DateTime @default(now()) @map("created_at")  // 创建时间
-  updatedAt    DateTime @updatedAt @map("updated_at")  // 更新时间
-  user         User     @relation(fields: [userId], references: [id])  // 关联用户
+  id         String   @id
+  userId     String   @map("user_id")
+  exchange   String
+  label      String
+  apiKey     String   @map("api_key")
+  apiSecret  String   @map("api_secret")
+  passphrase String
+  isTestnet  Boolean  @default(false) @map("is_testnet")
+  status     String   @default("active")
+  lastTestAt DateTime? @map("last_test_at")
+  lastSyncAt DateTime? @map("last_sync_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [id])
 
   @@map("exchange_accounts")
 }

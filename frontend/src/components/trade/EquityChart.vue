@@ -105,12 +105,6 @@ function formatEquity(val: number): string {
   return val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-function formatSignedValue(val: number): string {
-  if (val > 0) return `+${val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-  if (val < 0) return `${val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-  return '0';
-}
-
 async function fetchData() {
   try {
     const data = await accountApi.getEquityHistory(activeMode.value, activeRange.value);
