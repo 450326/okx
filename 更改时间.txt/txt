@@ -25,3 +25,9 @@
 - i18n: 补充中英日韩四语新增字段
 
 2026.7.7
+添加 Electron 桌面包装器和 SQLite 迁移
+- 添加桌面/与Electron主工艺及Electron-builder配置
+- 将数据库从 PostgreSQL 切换到 SQLite 以实现独立桌面使用
+- 修复 EquityChart.vue、DepthPanel.vue、TradePage.vue 中的 TypeScript 错误
+- 添加build-installer.bat实现一键Windows.exe生成
+- 更新 .gitignore 以获取桌面构建的工件
