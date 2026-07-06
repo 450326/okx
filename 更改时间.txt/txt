@@ -325,4 +325,10 @@ graph TD
 *   🐛 **Testing Suggestions (测试建议):**
     1.  **切换测试:** 在交易页面反复点击 `OKX` 和 `Binance` 按钮，验证行情、盘口、近期成交是否能迅速切换，并确认不存在数据串流（即 Binance 页面出现 OKX 数据）。
     2.  **断线重连机制:** 模拟后端重启或断开本地网络，观察前端 `socket.io-client` 是否能自动重连，以及后端 `ExchangeWsService` 的 `reconnectTimer` 是否能成功重新连上原生交易所 WS。
-    3.  **Symbol 解析边界情况:** Binance 交易对格式 (如 `BTCUSDT`) 与 OKX (如 `BTC-USDT-SWAP`) 存在差异。重点测试切换到币安后，路由参数、图表加载（Lightweight Charts）以及持仓显示的解析是否完全正常。
+			    3.  **Symbol 解析边界情况:** Binance 交易对格式 (如 `BTCUSDT`) 与 OKX (如 `BTC-USDT-SWAP`) 存在差异。重点测试切换到币安后，路由参数、图表加载（Lightweight Charts）以及持仓显示的解析是否完全正常
+
+
+
+
+2026.6.30
+添加登录页面，支持面容解锁登录
