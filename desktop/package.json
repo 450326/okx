@@ -20,50 +20,24 @@
     "files": [
       "main.js",
       "preload.js",
+      "splash.html",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "../frontend/dist",
         "to": "frontend",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
-        "from": "../backend/dist",
+        "from": "../backend",
         "to": "backend",
         "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../backend/node_modules",
-        "to": "backend/node_modules",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../backend/package.json",
-        "to": "backend/package.json"
-      },
-      {
-        "from": "../backend/.env",
-        "to": "backend/.env"
-      },
-      {
-        "from": "../backend/prisma",
-        "to": "backend/prisma",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../backend/node_modules/@prisma/client",
-        "to": "backend/node_modules/@prisma/client",
-        "filter": [
-          "**/*"
+          "dist/**",
+          "prisma/**",
+          "node_modules/**",
+          "package.json",
+          ".env"
         ]
       }
     ],
@@ -71,9 +45,7 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "icon": null
