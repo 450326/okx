@@ -41,6 +41,36 @@
         <EquityChart v-model:mode="modeStore.mode" range="30d" />
       </section>
 
+      <!-- 紧凑行情卡 -->
+      <section class="card hero-market-card">
+        <div class="hero-head">
+          <div class="hero-symbol-line">
+            <h1 class="hero-symbol">{{ currentBaseSymbol }}</h1>
+            <span class="hero-quote">/ {{ currentQuoteSymbol }}</span>
+            <span :class="['hero-change', getTrendClass(currentTicker?.priceChangePercent24h)]">
+              {{ formatPercent(currentTicker?.priceChangePercent24h) }}
+            </span>
+          </div>
+          <div class="hero-mode-text">{{ $t('trade.currentMode') }}：{{ modeStore.modeLabel }}</div>
+        </div>
+        <div class="hero-compact-row">
+          <div class="price-large">{{ currentTicker?.lastPrice || '--' }}</div>
+          <div class="hero-stat-group">
+            <span>{{ $t('trade.ask') }} {{ currentTicker?.askPrice || '--' }}</span>
+            <span class="hero-divider"></span>
+            <span>{{ $t('trade.bid') }} {{ currentTicker?.bidPrice || '--' }}</span>
+            <span class="hero-divider"></span>
+            <span>{{ $t('trade.volume24h') }} {{ currentTicker?.volume24h || '--' }}</span>
+          </div>
+          <div class="range-strip compact-range">
+            <div class="range-track">
+              <div class="range-progress" :style="{ width: `${priceRangeProgress}%` }"></div>
+            </div>
+            <div class="range-label">{{ currentTicker?.low24h || '--' }} — {{ currentTicker?.high24h || '--' }}</div>
+          </div>
+        </div>
+      </section>
+
       <!-- 行情排行榜切换标签 -->
       <section class="market-tabs">
         <button v-for="tab in rankingTabs" :key="tab" :class="['tab-chip', { active: tab === '热门榜' }]">
@@ -277,6 +307,21 @@ function coinTone(symbol: string) {
 
   return 'coin-alt';
 }
+
+// 行情卡计算属性
+const currentTicker = computed(() => marketStore.tickers[0] || null);
+const currentBaseSymbol = computed(() => {
+  const s = currentTicker.value?.symbol || 'BTC-USDT-SWAP';
+  return s.includes('-') ? s.split('-')[0] : s.replace('USDT', '');
+});
+const currentQuoteSymbol = computed(() => 'USDT');
+const priceRangeProgress = computed(() => {
+  const high = Number(currentTicker.value?.high24h || 0);
+  const low = Number(currentTicker.value?.low24h || 0);
+  const last = Number(currentTicker.value?.lastPrice || 0);
+  if (!high || high <= low || !last) return 50;
+  return Math.min(100, Math.max(0, ((last - low) / (high - low)) * 100));
+});
 
 // 加载首页数据
 async function loadPageData() {
@@ -726,6 +771,111 @@ watch(
   display: block;
   margin-top: 10px;
   font-size: 18px;
+}
+
+/* 紧凑行情卡 */
+.hero-market-card {
+  margin-top: 24px;
+  padding: 16px 22px;
+}
+
+.hero-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+}
+
+.hero-symbol-line {
+  display: grid;
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hero-symbol {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.hero-quote {
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.hero-change {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.hero-mode-text {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.hero-compact-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.hero-stat-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.hero-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+}
+
+.price-large {
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.compact-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.range-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  min-width: 100px;
+}
+
+.range-progress {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #63ff98 0%, #bbff27 100%);
+}
+
+.range-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 /* 窄屏自适应 */

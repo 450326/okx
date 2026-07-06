@@ -1,69 +1,6 @@
 <template>
   <!-- 交易页面容器 -->
   <div class="page trade-page">
-    <!-- 顶部行情区域 -->
-    <section class="card hero-market-card">
-      <div class="hero-head">
-        <div>
-          <div class="hero-eyebrow">{{ isPolymarket ? $t('trade.predictionMarket') : $t('trade.workbench') }}</div>
-          <div class="hero-symbol-line">
-            <h1 class="hero-symbol">{{ isPolymarket ? 'YES' : currentBaseSymbol }}</h1>
-            <span class="hero-quote">/ {{ currentQuoteSymbol }}</span>
-            <span :class="['hero-change', getTrendClass(currentTicker?.priceChangePercent24h)]">
-              {{ isPolymarket ? formatProb(currentTicker?.lastPrice) : formatPercent(currentTicker?.priceChangePercent24h) }}
-            </span>
-          </div>
-          <div class="hero-mode-text">{{ isPolymarket ? $t('trade.probabilityMarket') : `${$t('trade.currentMode')}：${modeStore.modeLabel}` }}</div>
-        </div>
-
-        <!-- 交易所 / 品种切换 -->
-        <div class="symbol-switches">
-          <button
-            :class="['exchange-chip', { active: marketStore.exchange === 'okx' }]"
-            @click="switchExchange('okx')"
-          >OKX</button>
-          <button
-            :class="['exchange-chip', { active: marketStore.exchange === 'binance' }]"
-            @click="switchExchange('binance')"
-          >Binance</button>
-          <button
-            :class="['exchange-chip', { active: marketStore.exchange === 'uniswap' }]"
-            @click="switchExchange('uniswap')"
-          >Uniswap</button>
-          <button
-            :class="['exchange-chip', { active: marketStore.exchange === 'polymarket' }]"
-            @click="switchExchange('polymarket')"
-          >Polymarket</button>
-          <RouterLink
-            v-for="item in symbolShortcuts"
-            :key="item.symbol"
-            :to="`/trade/${item.symbol}`"
-            :class="['symbol-chip', { active: item.symbol === currentSymbol }]"
-          >
-            {{ item.symbol.split('-')[0] || item.symbol.replace('USDT', '') }}
-          </RouterLink>
-        </div>
-      </div>
-
-      <!-- 价格与快捷统计 -->
-      <div class="hero-compact-row">
-        <div class="price-large">{{ isPolymarket ? formatProb(currentTicker?.lastPrice) : (currentTicker?.lastPrice || '--') }}</div>
-        <div class="hero-stat-group">
-          <span>{{ $t('trade.ask') }} {{ currentTicker?.askPrice || '--' }}</span>
-          <span class="hero-divider"></span>
-          <span>{{ $t('trade.bid') }} {{ currentTicker?.bidPrice || '--' }}</span>
-          <span class="hero-divider"></span>
-          <span>{{ $t('trade.volume24h') }} {{ currentTicker?.volume24h || '--' }}</span>
-        </div>
-        <div class="range-strip">
-          <div class="range-track">
-            <div class="range-progress" :style="{ width: `${priceRangeProgress}%` }"></div>
-          </div>
-          <div class="range-label">{{ currentTicker?.low24h || '--' }} — {{ currentTicker?.high24h || '--' }}</div>
-        </div>
-      </div>
-    </section>
-
     <!-- K 线 + 下单区: 并排 -->
     <section class="kline-order-grid">
       <KlineChart
@@ -219,56 +156,15 @@ const currentSymbol = computed(() => {
 const currentTicker = computed(() => marketStore.tickerMap[currentSymbol.value] || null);
 // 当前品种持仓（取第一个）
 const currentPosition = computed(() => positionStore.positions[0] || null);
-// 基础币符号
-const currentBaseSymbol = computed(() => {
-  const s = currentSymbol.value;
-  if (s.includes('-')) return s.split('-')[0];
-  return s.replace('USDT', '');
-});
-// 计价币符号
-const currentQuoteSymbol = computed(() => {
-  if (marketStore.exchange === 'polymarket') return 'USDC';
-  return 'USDT';
-});
-// 交易所显示标签
-const exchangeLabel = computed(() => {
-  if (marketStore.exchange === 'okx') return 'OKX';
-  if (marketStore.exchange === 'binance') return 'Binance';
-  if (marketStore.exchange === 'uniswap') return 'Uniswap V3';
-  return 'Polymarket';
-});
-// 是否为 Polymarket 预测市场
-const isPolymarket = computed(() => marketStore.exchange === 'polymarket');
-// 品种快捷切换列表
-const symbolShortcuts = computed(() => marketStore.symbols.slice(0, 5));
+
 // 相关品种行情
 const relatedTickers = computed(() => {
   const source = marketStore.tickers.filter((item) => item.symbol !== currentSymbol.value);
   return source.length ? source.slice(0, 4) : marketStore.tickers.slice(0, 4);
 });
-// 24H 价格区间进度百分比
-const priceRangeProgress = computed(() => {
-  const high = Number(currentTicker.value?.high24h || 0);
-  const low = Number(currentTicker.value?.low24h || 0);
-  const last = Number(currentTicker.value?.lastPrice || 0);
-
-  if (!high || high <= low || !last) {
-    return 50;
-  }
-
-  return Math.min(100, Math.max(0, ((last - low) / (high - low)) * 100));
-});
-
 // 格式化成交时间
 function formatTradeTime(value: number) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-// 格式化概率价格（百分比显示）
-function formatProb(price: string | undefined | null): string {
-  if (!price) return '--';
-  const pct = Number(price) * 100;
-  return `${pct.toFixed(1)}%`;
 }
 
 // 加载交易页面数据
@@ -337,11 +233,6 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
-/* 顶部紧凑行情卡 */
-.hero-market-card {
-  padding: 16px 22px;
-}
-
 /* K 线 + 下单面板并排网格 */
 .kline-order-grid {
   display: grid;
@@ -350,174 +241,12 @@ onBeforeUnmount(() => {
   align-items: start;
 }
 
-/* 紧凑行情行 */
-.hero-compact-row {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin-top: 10px;
-  flex-wrap: wrap;
-}
-
-.hero-stat-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  flex-wrap: wrap;
-}
-
-.hero-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--border-color);
-}
-
-.range-strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 200px;
-}
-
-.range-track {
-  flex: 1;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  overflow: hidden;
-  min-width: 100px;
-}
-
-.range-progress {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #63ff98 0%, #bbff27 100%);
-}
-
-.range-label {
-  color: var(--text-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
 /* 网格布局公用 */
-.hero-head,
-.hero-symbol-line,
 .trade-panel-grid,
 .trade-summary-row,
 .panel-head {
   display: grid;
   gap: 14px;
-}
-
-/* 标题行 + 切换按钮 */
-.hero-head {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-}
-
-/* 工作台眉题 */
-.hero-eyebrow {
-  color: var(--text-secondary);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-/* 品种符号行 */
-.hero-symbol-line {
-  grid-auto-flow: column;
-  justify-content: start;
-  align-items: end;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-/* 品种大标题 */
-.hero-symbol {
-  margin: 0;
-  font-size: 26px;
-  line-height: 1;
-}
-
-/* 计价币 */
-.hero-quote {
-  color: var(--text-secondary);
-  font-size: 16px;
-  font-weight: 700;
-}
-
-/* 涨跌幅标签 */
-.hero-change {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-/* 模式文字 */
-.hero-mode-text {
-  margin-top: 6px;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-/* 交易所 / 品种切换按钮组 */
-.symbol-switches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: end;
-  align-items: center;
-}
-
-/* 交易所切换按钮 */
-.exchange-chip {
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-weight: 700;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-/* 激活态交易所按钮 */
-.exchange-chip.active {
-  background: rgba(99, 255, 152, 0.14);
-  border-color: var(--color-up);
-  color: var(--color-up);
-}
-
-.exchange-chip:hover {
-  opacity: 0.85;
-}
-
-/* 品种快捷切换按钮 */
-.symbol-chip {
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--bg-soft);
-  color: var(--text-secondary);
-  font-weight: 700;
-  font-size: 12px;
-}
-
-.symbol-chip.active {
-  background: rgba(187, 255, 39, 0.14);
-  color: #bbff27;
-}
-
-/* 大号价格展示 */
-.price-large {
-  font-size: clamp(24px, 3vw, 36px);
-  font-weight: 900;
-  line-height: 1;
 }
 
 /* 下方面板三栏网格 */
