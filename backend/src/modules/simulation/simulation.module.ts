@@ -1,4 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+import { SimulationState } from './simulation-state';
 
-@Module({})
+@Global()
+@Module({
+  providers: [SimulationState],
+  exports: [SimulationState],
+})
 export class SimulationModule {}

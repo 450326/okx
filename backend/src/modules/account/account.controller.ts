@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpException, HttpStatus, Post, Put, Query, Log
 import { ok, fail } from '../../common/api-response';
 import { OkxApiService } from './okx-api.service';
 import { AccountStore } from './account-store';
+import { SimulationState } from '../simulation/simulation-state';
 
 function generateEquityPoints(mode: string, days: number) {
   const now = Date.now();
@@ -39,6 +40,7 @@ export class AccountController {
   constructor(
     private readonly okxApi: OkxApiService,
     private readonly accountStore: AccountStore,
+    private readonly sim: SimulationState,
   ) {}
 
   @Get('mode')
@@ -109,13 +111,13 @@ export class AccountController {
     return ok({
       mode,
       currency: 'USDT',
-      walletBalance: '100000.00',
-      availableBalance: '98200.15',
-      positionMargin: '1500.00',
-      orderMargin: '200.00',
-      unrealizedPnl: '85.65',
-      realizedPnl: '-12.30',
-      equity: '100085.65',
+      walletBalance: String(this.sim.walletBalance.toFixed(2)),
+      availableBalance: String(this.sim.availableBalance.toFixed(2)),
+      positionMargin: String(this.sim.positionMargin.toFixed(2)),
+      orderMargin: '0',
+      unrealizedPnl: '0',
+      realizedPnl: '0',
+      equity: String((this.sim.walletBalance).toFixed(2)),
     });
   }
 

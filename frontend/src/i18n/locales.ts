@@ -262,6 +262,7 @@ export const locales: Record<string, Record<string, string>> = {
     'order.closeLong': '平多',
     'order.openShort': '开空',
     'order.closeShort': '平空',
+    'order.orderSuccess': '订单提交成功',
 
     'depth.title': '盘口深度',
     'depth.live': '实时深度',
@@ -584,6 +585,7 @@ export const locales: Record<string, Record<string, string>> = {
     'order.closeLong': 'Close Long',
     'order.openShort': 'Open Short',
     'order.closeShort': 'Close Short',
+    'order.orderSuccess': 'Order submitted',
 
     'depth.title': 'Order Book',
     'depth.live': 'Live Depth',
@@ -906,6 +908,7 @@ export const locales: Record<string, Record<string, string>> = {
     'order.closeLong': 'ロング閉じる',
     'order.openShort': 'ショート開く',
     'order.closeShort': 'ショート閉じる',
+    'order.orderSuccess': '注文が送信されました',
 
     'depth.title': '板情報',
     'depth.live': 'リアルタイム',
@@ -1228,6 +1231,7 @@ export const locales: Record<string, Record<string, string>> = {
     'order.closeLong': '롱 종료',
     'order.openShort': '숏 오픈',
     'order.closeShort': '숏 종료',
+    'order.orderSuccess': '주문 제출 성공',
 
     'depth.title': '호가창',
     'depth.live': '실시간',

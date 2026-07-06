@@ -1,121 +1,81 @@
 <template>
   <!-- 交易页面容器 -->
   <div class="page trade-page">
-    <!-- 顶部行情 + 下单区域 -->
-    <section class="trade-hero-grid">
-      <!-- 行情信息卡片 -->
-      <section class="card hero-market-card">
-        <div class="hero-head">
-          <div>
-            <!-- 工作台标题 -->
-            <div class="hero-eyebrow">{{ isPolymarket ? $t('trade.predictionMarket') : $t('trade.workbench') }}</div>
-            <!-- 品种名称及涨跌幅 -->
-            <div class="hero-symbol-line">
-              <h1 class="hero-symbol">{{ isPolymarket ? 'YES' : currentBaseSymbol }}</h1>
-              <span class="hero-quote">/ {{ currentQuoteSymbol }}</span>
-              <span :class="['hero-change', getTrendClass(currentTicker?.priceChangePercent24h)]">
-                {{ isPolymarket ? formatProb(currentTicker?.lastPrice) : formatPercent(currentTicker?.priceChangePercent24h) }}
-              </span>
-            </div>
-            <!-- Polymarket 问题描述 -->
-            <div v-if="isPolymarket && currentTicker?.question" class="hero-question">
-              {{ currentTicker.question }}
-            </div>
-            <div class="hero-mode-text">{{ isPolymarket ? $t('trade.probabilityMarket') : `${$t('trade.currentMode')}：${modeStore.modeLabel}` }}</div>
+    <!-- 顶部行情区域 -->
+    <section class="card hero-market-card">
+      <div class="hero-head">
+        <div>
+          <div class="hero-eyebrow">{{ isPolymarket ? $t('trade.predictionMarket') : $t('trade.workbench') }}</div>
+          <div class="hero-symbol-line">
+            <h1 class="hero-symbol">{{ isPolymarket ? 'YES' : currentBaseSymbol }}</h1>
+            <span class="hero-quote">/ {{ currentQuoteSymbol }}</span>
+            <span :class="['hero-change', getTrendClass(currentTicker?.priceChangePercent24h)]">
+              {{ isPolymarket ? formatProb(currentTicker?.lastPrice) : formatPercent(currentTicker?.priceChangePercent24h) }}
+            </span>
           </div>
-
-          <!-- 交易所 / 品种切换 -->
-          <div class="symbol-switches">
-            <button
-              :class="['exchange-chip', { active: marketStore.exchange === 'okx' }]"
-              @click="switchExchange('okx')"
-            >
-              OKX
-            </button>
-            <button
-              :class="['exchange-chip', { active: marketStore.exchange === 'binance' }]"
-              @click="switchExchange('binance')"
-            >
-              Binance
-            </button>
-            <button
-              :class="['exchange-chip', { active: marketStore.exchange === 'uniswap' }]"
-              @click="switchExchange('uniswap')"
-            >
-              Uniswap
-            </button>
-            <button
-              :class="['exchange-chip', { active: marketStore.exchange === 'polymarket' }]"
-              @click="switchExchange('polymarket')"
-            >
-              Polymarket
-            </button>
-            <RouterLink
-              v-for="item in symbolShortcuts"
-              :key="item.symbol"
-              :to="`/trade/${item.symbol}`"
-              :class="['symbol-chip', { active: item.symbol === currentSymbol }]"
-            >
-              {{ item.symbol.split('-')[0] || item.symbol.replace('USDT', '') }}
-            </RouterLink>
-          </div>
+          <div class="hero-mode-text">{{ isPolymarket ? $t('trade.probabilityMarket') : `${$t('trade.currentMode')}：${modeStore.modeLabel}` }}</div>
         </div>
 
-        <!-- 价格展示区 -->
-        <div class="hero-price-block">
-          <div class="price-large">{{ isPolymarket ? formatProb(currentTicker?.lastPrice) : (currentTicker?.lastPrice || '--') }}</div>
-          <div class="price-sub">
-            {{ exchangeLabel }}
-            · {{ isPolymarket ? `${$t('trade.bidPrice')} ${formatProb(currentTicker?.bidPrice)}` : `${$t('trade.ask')} ${currentTicker?.askPrice || '--'}` }}
-            · {{ isPolymarket ? `${$t('trade.askPrice')} ${formatProb(currentTicker?.askPrice)}` : `${$t('trade.bid')} ${currentTicker?.bidPrice || '--'}` }}
-          </div>
-
-          <!-- 24H 价格区间进度条 -->
-          <div class="range-strip">
-            <div class="range-header">
-              <span>24H 区间</span>
-              <span>{{ currentTicker?.low24h || '--' }} - {{ currentTicker?.high24h || '--' }}</span>
-            </div>
-            <div class="range-track">
-              <div class="range-progress" :style="{ width: `${priceRangeProgress}%` }"></div>
-            </div>
-          </div>
-
-          <!-- 四格统计数据 -->
-          <div class="hero-stat-grid">
-            <div class="hero-stat">
-              <span>{{ isPolymarket ? $t('trade.bidPrice') : $t('trade.bid') }}</span>
-              <strong>{{ isPolymarket ? formatProb(currentTicker?.bidPrice) : (currentTicker?.bidPrice || '--') }}</strong>
-            </div>
-            <div class="hero-stat">
-              <span>{{ isPolymarket ? $t('trade.askPrice') : $t('trade.ask') }}</span>
-              <strong>{{ isPolymarket ? formatProb(currentTicker?.askPrice) : (currentTicker?.askPrice || '--') }}</strong>
-            </div>
-            <div class="hero-stat">
-              <span>{{ $t('trade.volume24h') }}</span>
-              <strong>{{ currentTicker?.volume24h || '--' }}</strong>
-            </div>
-            <div class="hero-stat">
-              <span>{{ $t('trade.activePositions') }}</span>
-              <strong>{{ positionStore.positions.length }}</strong>
-            </div>
-          </div>
+        <!-- 交易所 / 品种切换 -->
+        <div class="symbol-switches">
+          <button
+            :class="['exchange-chip', { active: marketStore.exchange === 'okx' }]"
+            @click="switchExchange('okx')"
+          >OKX</button>
+          <button
+            :class="['exchange-chip', { active: marketStore.exchange === 'binance' }]"
+            @click="switchExchange('binance')"
+          >Binance</button>
+          <button
+            :class="['exchange-chip', { active: marketStore.exchange === 'uniswap' }]"
+            @click="switchExchange('uniswap')"
+          >Uniswap</button>
+          <button
+            :class="['exchange-chip', { active: marketStore.exchange === 'polymarket' }]"
+            @click="switchExchange('polymarket')"
+          >Polymarket</button>
+          <RouterLink
+            v-for="item in symbolShortcuts"
+            :key="item.symbol"
+            :to="`/trade/${item.symbol}`"
+            :class="['symbol-chip', { active: item.symbol === currentSymbol }]"
+          >
+            {{ item.symbol.split('-')[0] || item.symbol.replace('USDT', '') }}
+          </RouterLink>
         </div>
-      </section>
+      </div>
 
-      <!-- 下单表单 -->
-      <OrderForm :symbol="currentSymbol" :kline-price="klineClickPrice" @submitted="handleOrderSubmitted" />
+      <!-- 价格与快捷统计 -->
+      <div class="hero-compact-row">
+        <div class="price-large">{{ isPolymarket ? formatProb(currentTicker?.lastPrice) : (currentTicker?.lastPrice || '--') }}</div>
+        <div class="hero-stat-group">
+          <span>{{ $t('trade.ask') }} {{ currentTicker?.askPrice || '--' }}</span>
+          <span class="hero-divider"></span>
+          <span>{{ $t('trade.bid') }} {{ currentTicker?.bidPrice || '--' }}</span>
+          <span class="hero-divider"></span>
+          <span>{{ $t('trade.volume24h') }} {{ currentTicker?.volume24h || '--' }}</span>
+        </div>
+        <div class="range-strip">
+          <div class="range-track">
+            <div class="range-progress" :style="{ width: `${priceRangeProgress}%` }"></div>
+          </div>
+          <div class="range-label">{{ currentTicker?.low24h || '--' }} — {{ currentTicker?.high24h || '--' }}</div>
+        </div>
+      </div>
     </section>
 
-    <!-- K 线图 -->
-    <KlineChart
-      :klines="marketStore.klines"
-      :loading="marketStore.chartLoading"
-      :symbol="currentSymbol"
-      :exchange="marketStore.exchange"
-      v-model="klineInterval"
-      @click-price="handleKlineClickPrice"
-    />
+    <!-- K 线 + 下单区: 并排 -->
+    <section class="kline-order-grid">
+      <KlineChart
+        :klines="marketStore.klines"
+        :loading="marketStore.chartLoading"
+        :symbol="currentSymbol"
+        :exchange="marketStore.exchange"
+        v-model="klineInterval"
+        @click-price="handleKlineClickPrice"
+      />
+      <OrderForm :symbol="currentSymbol" :kline-price="klineClickPrice" @submitted="handleOrderSubmitted" />
+    </section>
 
     <!-- 下方面板网格：深度图 + 成交记录 + 市场热度 -->
     <section class="trade-panel-grid">
@@ -138,7 +98,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in marketStore.recentTrades" :key="`${item.ts}-${item.price}`">
+            <tr v-for="(item, idx) in marketStore.recentTrades" :key="`${item.ts}-${idx}`">
               <td>{{ formatTradeTime(item.ts) }}</td>
               <td :class="item.side === 'buy' ? 'up' : 'down'">{{ item.price }}</td>
               <td>{{ item.qty }}</td>
@@ -374,26 +334,77 @@ onBeforeUnmount(() => {
 <style scoped>
 /* 交易页面内容间距 */
 .trade-page {
-  gap: 18px;
+  gap: 14px;
 }
 
-/* 顶部行情 + 下单双栏网格 */
-.trade-hero-grid {
+/* 顶部紧凑行情卡 */
+.hero-market-card {
+  padding: 16px 22px;
+}
+
+/* K 线 + 下单面板并排网格 */
+.kline-order-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.95fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 14px;
   align-items: start;
 }
 
-/* 行情卡片内边距 */
-.hero-market-card {
-  padding: 22px;
+/* 紧凑行情行 */
+.hero-compact-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.hero-stat-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.hero-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+}
+
+.range-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.range-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  min-width: 100px;
+}
+
+.range-progress {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #63ff98 0%, #bbff27 100%);
+}
+
+.range-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 /* 网格布局公用 */
 .hero-head,
 .hero-symbol-line,
-.hero-stat-grid,
 .trade-panel-grid,
 .trade-summary-row,
 .panel-head {
@@ -410,7 +421,7 @@ onBeforeUnmount(() => {
 /* 工作台眉题 */
 .hero-eyebrow {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -420,67 +431,58 @@ onBeforeUnmount(() => {
   grid-auto-flow: column;
   justify-content: start;
   align-items: end;
-  gap: 10px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 /* 品种大标题 */
 .hero-symbol {
   margin: 0;
-  font-size: 38px;
+  font-size: 26px;
   line-height: 1;
 }
 
 /* 计价币 */
 .hero-quote {
   color: var(--text-secondary);
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
 }
 
 /* 涨跌幅标签 */
 .hero-change {
-  padding: 8px 12px;
+  padding: 4px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
 }
 
 /* 模式文字 */
 .hero-mode-text {
-  margin-top: 10px;
+  margin-top: 6px;
   color: var(--text-secondary);
-}
-
-/* Polymarket 问题描述 */
-.hero-question {
-  margin-top: 10px;
-  color: var(--text-primary);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.5;
-  max-width: 480px;
+  font-size: 13px;
 }
 
 /* 交易所 / 品种切换按钮组 */
 .symbol-switches {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   justify-content: end;
   align-items: center;
 }
 
 /* 交易所切换按钮 */
 .exchange-chip {
-  padding: 9px 12px;
+  padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--border-color);
   background: var(--bg-card);
   color: var(--text-secondary);
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -498,11 +500,12 @@ onBeforeUnmount(() => {
 
 /* 品种快捷切换按钮 */
 .symbol-chip {
-  padding: 9px 12px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: var(--bg-soft);
   color: var(--text-secondary);
   font-weight: 700;
+  font-size: 12px;
 }
 
 .symbol-chip.active {
@@ -512,81 +515,9 @@ onBeforeUnmount(() => {
 
 /* 大号价格展示 */
 .price-large {
-  font-size: clamp(34px, 5vw, 56px);
+  font-size: clamp(24px, 3vw, 36px);
   font-weight: 900;
   line-height: 1;
-}
-
-/* 价格辅助信息行 */
-.price-sub,
-.range-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.price-sub {
-  margin-top: 10px;
-  flex-wrap: wrap;
-  color: var(--text-secondary);
-}
-
-/* 24H 区间进度条容器 */
-.range-strip {
-  margin-top: 18px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: var(--bg-soft);
-}
-
-/* 区间标签行 */
-.range-header {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-/* 进度条轨道 */
-.range-track {
-  margin-top: 12px;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  overflow: hidden;
-}
-
-/* 进度条填充 */
-.range-progress {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #63ff98 0%, #bbff27 100%);
-}
-
-/* 四格统计网格 */
-.hero-stat-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 16px;
-}
-
-/* 统计项卡片 */
-.hero-stat,
-.summary-card {
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--bg-soft);
-}
-
-/* 统计项标签 */
-.hero-stat span {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-/* 统计项数值 */
-.hero-stat strong {
-  display: block;
-  margin-top: 8px;
-  font-size: 18px;
 }
 
 /* 下方面板三栏网格 */
@@ -658,7 +589,9 @@ onBeforeUnmount(() => {
 
 /* 中屏自适应 */
 @media (max-width: 1200px) {
-  .trade-hero-grid,
+  .kline-order-grid {
+    grid-template-columns: 1fr;
+  }
   .trade-panel-grid,
   .trade-summary-row {
     grid-template-columns: 1fr;
@@ -677,8 +610,9 @@ onBeforeUnmount(() => {
     justify-content: start;
   }
 
-  .hero-stat-grid {
-    grid-template-columns: 1fr;
+  .hero-compact-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

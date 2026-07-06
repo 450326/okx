@@ -1,12 +1,16 @@
-// 引入 NestJS 控制器相关装饰器
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-// 引入统一响应成功方法
+import { Body, Controller, Get, Logger, Param, Post, Query } from '@nestjs/common';
 import { ok } from '../../common/api-response';
+import { SimulationState } from '../simulation/simulation-state';
+import axios from 'axios';
 
-// 订单管理控制器
+const OKX_BASE = 'https://www.okx.com/api/v5';
+
 @Controller('orders')
 export class OrdersController {
-  // 订单预览/预估接口
+  private readonly logger = new Logger(OrdersController.name);
+
+  constructor(private readonly sim: SimulationState) {}
+
   @Post('preview')
   preview(@Body() body: { symbol: string; leverage: number; qty: string }) {
     return ok({
@@ -19,108 +23,80 @@ export class OrdersController {
     });
   }
 
-  // 创建新订单
   @Post()
-  createOrder(@Body() body: Record<string, unknown>) {
-    return ok({
-      orderId: 'ord_1001',
-      status: 'filled',
-      payload: body,
-    });
+  async createOrder(
+    @Body()
+    body: {
+      symbol: string;
+      side: 'long' | 'short';
+      action: 'open' | 'close';
+      orderType: 'market' | 'limit';
+      qty: string;
+      leverage: number;
+      price?: string | null;
+      takeProfitPrice?: string;
+      stopLossPrice?: string;
+    },
+  ) {
+    let fillPrice: string | undefined;
+
+    if (body.orderType === 'market') {
+      fillPrice = await this.fetchMarkPrice(body.symbol);
+      this.logger.log(`市价单使用成交价: ${fillPrice}`);
+    }
+
+    const result = this.sim.addOrder(body, fillPrice);
+    return ok(result);
   }
 
-  // 获取当前未成交的挂单列表
   @Get('open')
-  getOpenOrders(@Query('mode') mode = 'simulation', @Query('symbol') symbol?: string) {
-    const list = [
-      {
-        orderId: 'ord_1001',
-        symbol: 'BTC-USDT-SWAP',
-        side: 'long',
-        action: 'open',
-        status: 'pending',
-        orderType: 'limit',
-        price: '64750',
-        qty: '0.03',
-      },
-      {
-        orderId: 'ord_1002',
-        symbol: 'ETH-USDT-SWAP',
-        side: 'short',
-        action: 'open',
-        status: 'pending',
-        orderType: 'limit',
-        price: '3465',
-        qty: '0.50',
-      },
-    ];
-
-    return ok({
-      mode,
-      list: symbol ? list.filter((item) => item.symbol === symbol) : list,
-    });
+  getOpenOrders(@Query('mode') _mode = 'simulation', @Query('symbol') symbol?: string) {
+    return ok({ list: this.sim.getPendingOrders(symbol) });
   }
 
-  // 获取历史订单列表
   @Get('history')
-  getOrderHistory(@Query('mode') mode = 'simulation', @Query('symbol') symbol?: string) {
-    const list = [
-      {
-        orderId: 'ord_1001',
-        symbol: 'BTC-USDT-SWAP',
-        side: 'long',
-        action: 'open',
-        orderType: 'market',
-        avgFillPrice: '65000.2',
-        qty: '0.02',
-        fee: '0.65',
-        status: 'filled',
-      },
-      {
-        orderId: 'ord_1002',
-        symbol: 'ETH-USDT-SWAP',
-        side: 'short',
-        action: 'close',
-        orderType: 'limit',
-        price: '3445',
-        avgFillPrice: '3445',
-        qty: '0.50',
-        fee: '0.86',
-        status: 'filled',
-      },
-    ];
-
-    return ok({
-      mode,
-      list: symbol ? list.filter((item) => item.symbol === symbol) : list,
-    });
+  getOrderHistory(@Query('mode') _mode = 'simulation', @Query('symbol') symbol?: string) {
+    return ok({ list: this.sim.getHistoryOrders(symbol) });
   }
 
-  // 获取订单成交明细
   @Get('fills')
-  getFills(@Query('mode') mode = 'simulation') {
-    return ok({
-      mode,
-      list: [
-        {
-          fillId: 'fill_1001',
-          orderId: 'ord_1001',
-          symbol: 'BTC-USDT-SWAP',
-          fillPrice: '65000.2',
-          fillQty: '0.02',
-          fee: '0.65',
-          liquidity: 'taker',
-        },
-      ],
-    });
+  getFills(@Query('mode') _mode = 'simulation') {
+    const list = this.sim.getAllOrders()
+      .filter((o) => o.status === 'filled')
+      .map((o) => ({
+        fillId: `fill_${o.orderId}`,
+        orderId: o.orderId,
+        symbol: o.symbol,
+        fillPrice: o.avgFillPrice || '0',
+        fillQty: o.qty,
+        fee: o.fee || '0',
+        liquidity: 'taker',
+      }));
+    return ok({ list });
   }
 
-  // 撤销指定订单
   @Post(':id/cancel')
   cancelOrder(@Param('id') id: string) {
-    return ok({
-      orderId: id,
-      status: 'cancelled',
-    });
+    const ok2 = this.sim.cancelOrder(id);
+    return ok({ orderId: id, status: ok2 ? 'cancelled' : 'not_found' });
+  }
+
+  private async fetchMarkPrice(symbol: string): Promise<string> {
+    try {
+      const instId = symbol.replace('-SWAP', '-USDT-SWAP');
+      const res = await axios.get(`${OKX_BASE}/market/ticker`, {
+        params: { instId },
+        timeout: 5000,
+      });
+      const last = res.data?.data?.[0]?.last;
+      if (last) return last;
+    } catch {
+      this.logger.warn(`获取市价失败，使用默认价格`);
+    }
+    const fallbacks: Record<string, string> = {
+      'BTC-USDT-SWAP': '65000',
+      'ETH-USDT-SWAP': '3450',
+    };
+    return fallbacks[symbol] || '100';
   }
 }

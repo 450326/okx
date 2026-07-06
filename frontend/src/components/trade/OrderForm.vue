@@ -1,115 +1,89 @@
 <template>
-  <!-- 下单面板卡片 -->
   <section class="card order-panel">
-    <!-- 面板头部：标题 + 当前交易对 + 交易模式 -->
     <div class="order-head">
-      <div>
-        <h2 class="section-title">{{ $t('order.title') }}</h2>
-        <div class="status-text">{{ $t('order.currentPair') }}：{{ symbol }}</div>
-      </div>
-      <!-- 当前交易模式徽章 -->
-      <div class="mode-badge">{{ modeStore.modeLabel }}</div>
+      <h2 class="section-title">{{ $t('order.title') }}</h2>
+      <span class="mode-badge">{{ modeStore.modeLabel }}</span>
     </div>
 
-    <!-- 开仓/平仓切换 -->
     <div class="trade-action-toggle">
       <button :class="['toggle-chip', { active: form.action === 'open' }]" @click="form.action = 'open'">{{ $t('order.open') }}</button>
       <button :class="['toggle-chip', { active: form.action === 'close' }]" @click="form.action = 'close'">{{ $t('order.close') }}</button>
       <button class="toggle-chip static-chip" disabled>{{ $t('order.isolated') }}</button>
     </div>
 
-    <!-- 表单字段网格 -->
-    <div class="form-grid">
-      <!-- 委托类型：市价单 / 限价单 -->
-      <div class="field">
-        <label>{{ $t('order.orderType') }}</label>
-        <select v-model="form.orderType">
-          <option value="market">{{ $t('order.market') }}</option>
-          <option value="limit">{{ $t('order.limit') }}</option>
-        </select>
-      </div>
-      <!-- 杠杆倍数选择 -->
-      <div class="field">
-        <label>{{ $t('order.leverage') }}</label>
-        <select v-model.number="form.leverage">
-          <option :value="1">1x</option>
-          <option :value="5">5x</option>
-          <option :value="10">10x</option>
-          <option :value="20">20x</option>
-          <option :value="50">50x</option>
-        </select>
-      </div>
-      <!-- 限价单时的价格输入 -->
-      <div v-if="form.orderType === 'limit'" class="field">
-        <label>{{ $t('order.price') }}</label>
-        <input v-model="form.price" placeholder="请输入委托价格" />
-      </div>
-      <!-- 数量输入 + 快捷百分比按钮 -->
-      <div class="field">
-        <label>{{ $t('order.qty') }}</label>
-        <input v-model="form.qty" placeholder="请输入下单数量" />
-        <div class="qty-presets">
-          <button v-for="preset in qtyPresets" :key="preset" class="preset-btn" @click="applyQtyPreset(preset)">
-            {{ preset }}%
-          </button>
+    <div class="compact-form">
+      <div class="field-row">
+        <div class="field">
+          <select v-model="form.orderType">
+            <option value="market">{{ $t('order.market') }}</option>
+            <option value="limit">{{ $t('order.limit') }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <select v-model.number="form.leverage">
+            <option :value="1">1x</option>
+            <option :value="5">5x</option>
+            <option :value="10">10x</option>
+            <option :value="20">20x</option>
+            <option :value="50">50x</option>
+          </select>
         </div>
       </div>
-      <!-- 止盈价输入 -->
-      <div class="field">
-        <label>{{ $t('order.takeProfit') }}</label>
-        <input v-model="form.takeProfitPrice" :placeholder="$t('order.optional')" />
+
+      <div v-if="form.orderType === 'limit'" class="field">
+        <input v-model="form.price" :placeholder="$t('order.price')" />
       </div>
-      <!-- 止损价输入 -->
+
       <div class="field">
-        <label>{{ $t('order.stopLoss') }}</label>
-        <input v-model="form.stopLossPrice" :placeholder="$t('order.optional')" />
+        <div class="qty-input-row">
+          <input v-model="form.qty" placeholder="数量" />
+          <div class="qty-presets">
+            <button v-for="preset in qtyPresets" :key="preset" class="preset-btn" @click="applyQtyPreset(preset)">{{ preset }}%</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <input v-model="form.takeProfitPrice" :placeholder="$t('order.takeProfit')" />
+        </div>
+        <div class="field">
+          <input v-model="form.stopLossPrice" :placeholder="$t('order.stopLoss')" />
+        </div>
       </div>
     </div>
 
-    <!-- 试算操作区：试算按钮 + 最大可下数量 -->
     <div class="panel-actions preview-actions">
       <button class="ghost-btn" :disabled="orderStore.submitting" @click="handlePreview()">{{ $t('order.preview') }}</button>
       <span class="status-text">{{ $t('order.maxQty') }}：{{ orderStore.preview?.maxQty || estimatedMaxQty }}</span>
+      <button v-if="showPreview" class="ghost-btn" @click="showPreview = false">收起</button>
     </div>
 
-    <!-- 试算结果预览网格 -->
-    <div class="grid-2 preview-grid">
-      <!-- 预估保证金 -->
-      <div class="card">
-        <div class="stat-label">{{ $t('order.estimatedMargin') }}</div>
-        <div class="stat-value">{{ orderStore.preview?.estimatedMargin || '--' }} USDT</div>
+    <div v-if="showPreview" class="preview-grid">
+      <div class="preview-item">
+        <span class="preview-label">{{ $t('order.estimatedMargin') }}</span>
+        <span class="preview-value">{{ orderStore.preview?.estimatedMargin || '--' }}</span>
       </div>
-      <!-- 预估手续费 -->
-      <div class="card">
-        <div class="stat-label">{{ $t('order.estimatedFee') }}</div>
-        <div class="stat-value">{{ orderStore.preview?.estimatedFee || '--' }} USDT</div>
+      <div class="preview-item">
+        <span class="preview-label">{{ $t('order.estimatedFee') }}</span>
+        <span class="preview-value">{{ orderStore.preview?.estimatedFee || '--' }}</span>
       </div>
-      <!-- 预估名义价值 -->
-      <div class="card">
-        <div class="stat-label">{{ $t('order.estimatedNotional') }}</div>
-        <div class="stat-value">{{ orderStore.preview?.estimatedNotional || '--' }} USDT</div>
+      <div class="preview-item">
+        <span class="preview-label">{{ $t('order.estimatedNotional') }}</span>
+        <span class="preview-value">{{ orderStore.preview?.estimatedNotional || '--' }}</span>
       </div>
-      <!-- 预估强平价 -->
-      <div class="card">
-        <div class="stat-label">{{ $t('order.estimatedLiqPrice') }}</div>
-        <div class="stat-value">{{ orderStore.preview?.estimatedLiquidationPrice || '--' }}</div>
+      <div class="preview-item">
+        <span class="preview-label">{{ $t('order.estimatedLiqPrice') }}</span>
+        <span class="preview-value">{{ orderStore.preview?.estimatedLiquidationPrice || '--' }}</span>
       </div>
     </div>
 
-    <!-- 风险提示 -->
-    <div class="order-note">
-      <span>{{ $t('order.riskWarning') }}：</span>
-      {{ form.action === 'open' ? $t('order.openRisk') : $t('order.closeRisk') }}
-    </div>
-
-    <!-- 提交按钮区：做多 / 做空 -->
     <div class="panel-actions submit-actions">
       <button class="primary-btn" :disabled="orderStore.submitting" @click="handleSubmit('long')">{{ longActionText }}</button>
       <button class="danger-btn" :disabled="orderStore.submitting" @click="handleSubmit('short')">{{ shortActionText }}</button>
     </div>
 
-    <!-- 本地消息或错误状态显示 -->
-    <div v-if="localMessage || orderStore.error" class="status-text">{{ localMessage || orderStore.error }}</div>
+    <div v-if="localMessage || orderStore.error" class="status-text order-msg">{{ localMessage || orderStore.error }}</div>
   </section>
 </template>
 
@@ -154,6 +128,8 @@ const form = reactive({
 
 // 本地消息文本
 const localMessage = ref('');
+// 试算结果展开状态
+const showPreview = ref(false);
 // 根据杠杆估算最大可下数量
 const estimatedMaxQty = computed(() => (Number(form.leverage) * 0.125).toFixed(3));
 // 做多按钮文本：开仓/平多
@@ -206,6 +182,7 @@ function buildPreviewPayload(side: 'long' | 'short'): OrderPreviewPayload {
 // 执行试算
 async function handlePreview() {
   localMessage.value = '';
+  showPreview.value = true;
   await orderStore.previewOrder(buildPreviewPayload('long'));
 }
 
@@ -229,106 +206,185 @@ async function handleSubmit(side: 'long' | 'short') {
 </script>
 
 <style scoped>
-/* 下单面板容器内边距 */
 .order-panel {
-  padding: 22px;
+  padding: 12px;
 }
 
-/* 弹性布局：头部、切换、预设、操作区 */
 .order-head,
 .trade-action-toggle,
-.qty-presets,
-.preview-actions,
-.submit-actions {
+.panel-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
 }
 
-/* 头部与试算操作区居中对齐 */
-.order-head,
-.preview-actions {
+.order-head {
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 10px;
 }
 
-/* 徽章、切换按钮、预设按钮统一圆角与字重 */
-.mode-badge,
-.toggle-chip,
-.preset-btn {
+.order-head .section-title {
+  margin: 0;
+}
+
+.mode-badge {
+  padding: 4px 10px;
   border-radius: 999px;
+  background: rgba(187, 255, 39, 0.14);
+  color: #bbff27;
+  font-size: 11px;
   font-weight: 700;
 }
 
-/* 交易模式徽章样式 */
-.mode-badge {
-  padding: 8px 12px;
-  background: rgba(187, 255, 39, 0.14);
-  color: #bbff27;
-  font-size: 13px;
-}
-
-/* 开平仓切换按钮组上边距与换行 */
 .trade-action-toggle {
-  margin-top: 18px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
-/* 切换按钮与预设按钮基础样式 */
-.toggle-chip,
-.preset-btn {
+.toggle-chip {
+  padding: 6px 12px;
   border: 1px solid var(--border-color);
+  border-radius: 999px;
   background: var(--bg-soft);
   color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-/* 切换按钮内边距 */
-.toggle-chip {
-  padding: 10px 16px;
-}
-
-/* 激活态切换按钮 */
 .toggle-chip.active {
   border-color: rgba(187, 255, 39, 0.36);
   background: rgba(187, 255, 39, 0.12);
   color: #bbff27;
 }
 
-/* 禁用状态切换按钮 */
 .static-chip {
   cursor: default;
   opacity: 0.7;
 }
 
-/* 快捷百分比按钮组 */
+.compact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.field select,
+.field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.field select {
+  cursor: pointer;
+}
+
+.qty-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.qty-input-row input {
+  flex: 1;
+}
+
 .qty-presets {
-  margin-top: 10px;
-  flex-wrap: wrap;
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-/* 单个百分比预设按钮 */
 .preset-btn {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-/* 风险提示区域 */
-.order-note {
-  margin-top: 16px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(245, 166, 35, 0.1);
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-soft);
   color: var(--text-secondary);
-  line-height: 1.6;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-/* 试算结果预览网格上边距 */
+.preview-actions {
+  margin-bottom: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .preview-grid {
-  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
-/* 风险提示中"风险提示"文本颜色 */
-.order-note span {
-  color: var(--color-warning);
+.preview-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+}
+
+.preview-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.preview-value {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.submit-actions {
+  gap: 8px;
+}
+
+.primary-btn,
+.danger-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.primary-btn {
+  background: #00c087;
+  color: #fff;
+}
+
+.danger-btn {
+  background: #f6465d;
+  color: #fff;
+}
+
+.primary-btn:disabled,
+.danger-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.order-msg {
+  margin-top: 8px;
+  font-size: 12px;
 }
 </style>
