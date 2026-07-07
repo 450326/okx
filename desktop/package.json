@@ -1,6 +1,6 @@
 {
   "name": "okx-trading-desktop",
-  "version": "1.0.0",
+  "version": "1.00",
   "description": "OKX Trading Desktop Application",
   "main": "main.js",
   "author": "Kaser22",
@@ -9,7 +9,9 @@
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win",
+    "version:bump": "node -e \"const p=require('./package.json');const v=parseFloat(p.version);p.version=(v+0.01).toFixed(2);require('fs').writeFileSync('./package.json',JSON.stringify(p,null,2)+'\\n');console.log('Version bumped to '+p.version);\"",
+    "publish": "npm run version:bump && cd ../frontend && npm run build && cd ../backend && npm run build && cd ../desktop && npx electron-builder --win --x64 -p always"
   },
   "build": {
     "appId": "com.okx.trading.desktop",
@@ -21,6 +23,7 @@
       "main.js",
       "preload.js",
       "splash.html",
+      "update.html",
       "package.json"
     ],
     "extraResources": [
@@ -41,6 +44,12 @@
         ]
       }
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "450326",
+      "repo": "okx",
+      "releaseType": "release"
+    },
     "win": {
       "target": [
         {
@@ -56,14 +65,15 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "OKX Trading",
-      "installerIcon": null,
-      "uninstallerIcon": null
+      "shortcutName": "OKX Trading"
     },
     "asar": false
   },
   "devDependencies": {
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   }
 }

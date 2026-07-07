@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>更新</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0f1116; color:#fff;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  display:flex; align-items:center; justify-content:center;
+  height:100vh; flex-direction:column; gap:16px; padding:32px; text-align:center;
+  -webkit-app-region:drag;
+}
+h2 { font-size:20px; font-weight:700; }
+p { font-size:14px; color:#999; line-height:1.6; }
+.btn-group { display:flex; gap:12px; margin-top:8px; -webkit-app-region:no-drag; }
+button {
+  padding:10px 28px; border:none; border-radius:10px;
+  font-size:14px; font-weight:600; cursor:pointer;
+}
+.btn-primary { background:#63ff98; color:#000; }
+.btn-primary:hover { background:#4de085; }
+.btn-secondary { background:#252836; color:#ccc; }
+.btn-secondary:hover { background:#32364a; }
+.spinner {
+  width:36px; height:36px;
+  border:3px solid rgba(255,255,255,0.08);
+  border-top-color:#63ff98; border-radius:50%;
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.bar-bg {
+  width:200px; height:6px; background:#252836; border-radius:3px; overflow:hidden;
+}
+.bar-fill {
+  height:100%; background:#63ff98; border-radius:3px;
+  transition:width 0.3s;
+}
+</style>
+</head>
+<body>
+
+<div id="page-new" style="display:none">
+  <h2>发现新版本</h2>
+  <p id="version-info">v{version} 可用</p>
+  <p style="font-size:12px;color:#666">当前版本: v{current}</p>
+  <div class="btn-group">
+    <button class="btn-secondary" onclick="skip()">稍后</button>
+    <button class="btn-primary" onclick="download()">立即更新</button>
+  </div>
+</div>
+
+<div id="page-downloading" style="display:none">
+  <div class="spinner"></div>
+  <h2>正在下载更新…</h2>
+  <div class="bar-bg"><div class="bar-fill" id="progress-bar" style="width:0%"></div></div>
+  <p id="progress-text">0%</p>
+</div>
+
+<div id="page-ready" style="display:none">
+  <div style="font-size:40px">✅</div>
+  <h2>更新已就绪</h2>
+  <p>重启应用以完成更新</p>
+  <div class="btn-group">
+    <button class="btn-primary" onclick="install()">立即重启</button>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+
+if (params.get('ready')) {
+  document.getElementById('page-ready').style.display = 'flex';
+} else if (params.get('downloading')) {
+  document.getElementById('page-downloading').style.display = 'flex';
+  document.getElementById('page-downloading').style.flexDirection = 'column';
+  if (window.electronAPI) {
+    window.electronAPI.onDownloadProgress((pct) => {
+      document.getElementById('progress-bar').style.width = pct + '%';
+      document.getElementById('progress-text').textContent = pct + '%';
+    });
+  }
+} else {
+  document.getElementById('page-new').style.display = 'flex';
+  document.getElementById('page-new').style.flexDirection = 'column';
+  const ver = params.get('version') || '?';
+  const cur = params.get('current') || '?';
+  document.getElementById('version-info').textContent = 'v' + ver + ' 可用';
+  document.querySelector('#page-new p:last-child').textContent = '当前版本: v' + cur;
+}
+
+function skip() { window.electronAPI?.skipUpdate(); }
+function download() { window.electronAPI?.downloadUpdate(); }
+function install() { window.electronAPI?.installUpdate(); }
+</script>
+</body>
+</html>

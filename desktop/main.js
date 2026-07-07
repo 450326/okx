@@ -1,24 +1,21 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
 const net = require('net');
 
 let mainWindow = null;
 let backendProcess = null;
+let updateWindow = null;
+
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
 
 function getResourceBase() {
   if (app.isPackaged) {
     return process.resourcesPath;
   }
   return path.join(__dirname, '..');
-}
-
-function getBackendDir() {
-  return path.join(getResourceBase(), 'backend');
-}
-
-function getFrontendFile() {
-  return path.join(getResourceBase(), 'frontend', 'index.html');
 }
 
 function waitForPort(port, timeoutMs = 20000) {
@@ -44,7 +41,7 @@ function waitForPort(port, timeoutMs = 20000) {
 
 function startBackend() {
   return new Promise((resolve, reject) => {
-    const backendDir = getBackendDir();
+    const backendDir = path.join(getResourceBase(), 'backend');
     const serverScript = path.join(backendDir, 'dist', 'main.js');
     const env = {
       ...process.env,
@@ -53,19 +50,15 @@ function startBackend() {
     };
 
     backendProcess = spawn('node', [serverScript], {
-      env,
-      cwd: backendDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      env, cwd: backendDir, stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     const output = [];
-    backendProcess.stdout.on('data', (data) => { output.push(data.toString()); });
-    backendProcess.stderr.on('data', (data) => { output.push(data.toString()); });
-
+    backendProcess.stdout.on('data', (d) => { output.push(d.toString()); });
+    backendProcess.stderr.on('data', (d) => { output.push(d.toString()); });
     backendProcess.on('error', (err) => {
       reject(new Error(`Backend start error: ${err.message}\n${output.join('')}`));
     });
-
     backendProcess.on('exit', (code) => {
       reject(new Error(`Backend exited code=${code}\n${output.join('')}`));
     });
@@ -74,12 +67,86 @@ function startBackend() {
   });
 }
 
+function loadMainApp() {
+  const frontendFile = path.join(getResourceBase(), 'frontend', 'index.html');
+  if (updateWindow) {
+    updateWindow.close();
+    updateWindow = null;
+  }
+  if (mainWindow) {
+    mainWindow.loadFile(frontendFile);
+  }
+}
+
+function showUpdatePrompt(info) {
+  if (!mainWindow) return;
+  updateWindow = new BrowserWindow({
+    width: 480,
+    height: 300,
+    parent: mainWindow,
+    modal: true,
+    resizable: false,
+    frame: false,
+    backgroundColor: '#0f1116',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  const query = new URLSearchParams({
+    version: info.version,
+    current: app.getVersion(),
+  });
+  updateWindow.loadFile(path.join(__dirname, 'update.html'), { query: Object.fromEntries(query) });
+}
+
+ipcMain.on('update-skip', () => {
+  if (updateWindow) { updateWindow.close(); updateWindow = null; }
+  loadMainApp();
+});
+
+ipcMain.on('update-download', () => {
+  if (updateWindow) {
+    updateWindow.loadFile(path.join(__dirname, 'update.html'), { query: { downloading: '1' } });
+  }
+  autoUpdater.downloadUpdate();
+});
+
+autoUpdater.on('update-available', (info) => {
+  showUpdatePrompt(info);
+});
+
+autoUpdater.on('download-progress', (progress) => {
+  if (updateWindow && !updateWindow.isDestroyed()) {
+    try {
+      updateWindow.webContents.send('download-progress', progress.percent.toFixed(1));
+    } catch {}
+  }
+});
+
+autoUpdater.on('update-downloaded', () => {
+  if (updateWindow && !updateWindow.isDestroyed()) {
+    try {
+      updateWindow.loadFile(path.join(__dirname, 'update.html'), { query: { ready: '1' } });
+    } catch {}
+  }
+});
+
+ipcMain.on('update-install', () => {
+  autoUpdater.quitAndInstall();
+});
+
+autoUpdater.on('error', (err) => {
+  console.error('Auto-updater error:', err.message);
+});
+
+autoUpdater.on('update-not-available', () => {});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 700,
+    width: 1400, height: 900,
+    minWidth: 1024, minHeight: 700,
     title: 'OKX Trading',
     backgroundColor: '#0f1116',
     show: false,
@@ -93,8 +160,12 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'splash.html'));
   mainWindow.show();
 
+  autoUpdater.checkForUpdates().catch(() => {});
+
   startBackend()
-    .then(() => { mainWindow.loadFile(getFrontendFile()); })
+    .then(() => {
+      if (!updateWindow) loadMainApp();
+    })
     .catch((err) => {
       mainWindow.loadURL(`data:text/html,
         <html><body style="background:#0f1116;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;flex-direction:column;padding:40px;text-align:center">
