@@ -1,6 +1,6 @@
 {
   "name": "okx-trading-desktop",
-  "version": "1.00",
+  "version": "1.0.0",
   "description": "OKX Trading Desktop Application",
   "main": "main.js",
   "author": "Kaser22",
@@ -10,7 +10,7 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
-    "version:bump": "node -e \"const p=require('./package.json');const v=parseFloat(p.version);p.version=(v+0.01).toFixed(2);require('fs').writeFileSync('./package.json',JSON.stringify(p,null,2)+'\\n');console.log('Version bumped to '+p.version);\"",
+    "version:bump": "node -e \"const p=require('./package.json');const m=p.version.split('.').map(Number);m[2]++;p.version=m.join('.');require('fs').writeFileSync('./package.json',JSON.stringify(p,null,2)+'\\n');console.log('Version bumped to '+p.version);\"",
     "publish": "npm run version:bump && cd ../frontend && npm run build && cd ../backend && npm run build && cd ../desktop && npx electron-builder --win --x64 -p always"
   },
   "build": {
