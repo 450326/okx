@@ -3,7 +3,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import * as https from 'https';
 import { DexService } from './dex.service';
-import { PolymarketService } from './polymarket.service';
 
 const OKX_BASE = 'https://www.okx.com/api/v5';
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
@@ -167,16 +166,6 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
     { symbol: 'DOGE-USDT', baseCoin: 'DOGE', quoteCoin: 'USDT', maxLeverage: 1, minQty: '10', pricePrecision: 5, qtyPrecision: 0 },
     { symbol: 'XRP-USDT', baseCoin: 'XRP', quoteCoin: 'USDT', maxLeverage: 1, minQty: '1', pricePrecision: 4, qtyPrecision: 0 },
   ],
-  polymarket: [
-    { symbol: 'BTC-150K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
-    { symbol: 'ETH-5K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
-    { symbol: 'SOL-500-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
-    { symbol: 'BTC-110K-JUN28', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
-    { symbol: 'ETH-4K-JUN28', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
-    { symbol: 'FED-CUT-OCT2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
-    { symbol: 'BTC-200K-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
-    { symbol: 'SPX-7000-DEC2026', baseCoin: 'YES', quoteCoin: 'USDC', maxLeverage: 1, minQty: '1', pricePrecision: 3, qtyPrecision: 0 },
-  ],
 };
 
 // 行情数据服务，聚合多交易所和多协议数据
@@ -193,8 +182,6 @@ export class MarketService {
   constructor(
     // 注入去中心化交易所服务
     private readonly dexService: DexService,
-    // 注入 Polymarket 预测市场服务
-    private readonly polymarketService: PolymarketService,
   ) {}
 
   // 通用 OKX API GET 请求封装
@@ -239,9 +226,6 @@ export class MarketService {
 
   // 获取指定交易所支持的交易品种列表
   async getSymbols(exchange: string = 'okx') {
-    if (exchange === 'polymarket') {
-      return this.polymarketService.getSymbols();
-    }
     if (exchange === 'okx') {
       return this.getOkxSymbols();
     }
@@ -427,7 +411,6 @@ export class MarketService {
   // 获取行情 ticker 数据，支持多交易所
   async getTickers(symbols?: string[], exchange: string = 'okx') {
     switch (exchange) {
-      case 'polymarket': return this.polymarketService.getTickers(symbols);
       case 'binance':    return this.getBinanceTickers(symbols);
       case 'coinbase':   return this.getCoinbaseTickers(symbols);
       case 'uniswap':    return this.dexService.getTickers(symbols);
@@ -557,9 +540,6 @@ export class MarketService {
   async getKlines(symbol: string, interval: string, exchange: string = 'okx') {
     if (exchange === 'okx') {
       return this.getOkxKlines(symbol, interval);
-    }
-    if (exchange === 'polymarket') {
-      return this.polymarketService.getKlines(symbol, interval);
     }
     if (exchange === 'binance') {
       return this.getBinanceKlines(symbol, interval);
@@ -703,7 +683,6 @@ export class MarketService {
   // 获取深度数据，支持多交易所
   async getDepth(symbol: string, limit = 20, exchange: string = 'okx') {
     switch (exchange) {
-      case 'polymarket': return this.polymarketService.getDepth(symbol);
       case 'binance':    return this.getBinanceDepth(symbol, limit);
       case 'coinbase':   return this.getCoinbaseDepth(symbol, limit);
       case 'uniswap':    return this.dexService.getDepth(symbol);
@@ -766,9 +745,6 @@ export class MarketService {
   async getTrades(symbol: string, exchange: string = 'okx') {
     if (exchange === 'uniswap') {
       return this.dexService.getTrades(symbol);
-    }
-    if (exchange === 'polymarket') {
-      return this.polymarketService.getTrades(symbol);
     }
     if (exchange === 'binance') {
       return this.getBinanceTrades(symbol);

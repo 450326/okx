@@ -10,11 +10,17 @@ import {
   OrderSnapshot,
   PlaceOrderResult,
   PositionSnapshot,
+  PredictionMarketSnapshot,
+  PredictionOrderInput,
+  PredictionOrderSnapshot,
+  PredictionPlaceResult,
+  PredictionPositionSnapshot,
   PreviewResult,
   SIM_ERROR,
   SimAccountState,
   SimLedgerEntry,
   SimOrder,
+  SimPredictionPosition,
   SimulationError,
   SimulationOrderInput,
 } from './simulation.types';
@@ -60,7 +66,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     this.engine = new SimulationEngine(loaded);
     const state = this.engine.getState();
     this.logger.log(
-      `模拟盘已加载：钱包 ${state.walletBalance.toFixed(2)} USDT，持仓 ${state.positions.length} 个，委托 ${state.orders.filter((o) => o.status === 'pending').length} 笔`,
+      `模拟盘已加载：钱包 ${state.walletBalance.toFixed(2)} USDT，持仓 ${state.positions.length} 个，预测持仓 ${state.predictionPositions.length} 个，委托 ${state.orders.filter((o) => o.status === 'pending').length} 笔`,
     );
   }
 
@@ -89,6 +95,51 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       .map((p) => p.symbol);
     const markets = await this.fetchMarkets(symbols);
     return this.engine.listPositions(markets).map((p) => this.toPosition(p));
+  }
+
+  // ---------------------------------------------------------------- 预测市场查询/交易
+
+  getPredictionPosition(id: string): SimPredictionPosition | undefined {
+    return this.engine.getPredictionPosition(id);
+  }
+
+  getOpenPredictionSlugs(): string[] {
+    return this.engine.trackedPredictionSlugs();
+  }
+
+  getPredictionPositions(): Record<string, unknown>[] {
+    return this.engine.listPredictionPositions().map((position) => this.toPredictionPosition(position));
+  }
+
+  getPredictionOrders(slug?: string): Record<string, unknown>[] {
+    return this.engine
+      .getPredictionOrderSnapshots(slug)
+      .map((order) => this.toPredictionOrder(order));
+  }
+
+  applyPredictionMarks(marks: Record<string, PredictionMarketSnapshot>): void {
+    const changed = this.engine.updatePredictionMarks(marks);
+    if (changed) this.save();
+  }
+
+  placePredictionOrder(
+    input: PredictionOrderInput,
+    market: PredictionMarketSnapshot,
+  ): Record<string, unknown> {
+    this.assertSimulationMode(input.mode);
+    const result = this.engine.placePredictionOrder(input, market);
+    this.save();
+    return this.toPredictionResult(result);
+  }
+
+  closePredictionPosition(
+    positionId: string,
+    qty: string | number | undefined,
+    market: PredictionMarketSnapshot,
+  ): Record<string, unknown> {
+    const result = this.engine.closePredictionPosition(positionId, qty, market);
+    this.save();
+    return this.toPredictionResult(result);
   }
 
   getOpenOrders(symbol?: string): Record<string, unknown>[] {
@@ -456,6 +507,8 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       realizedPnl: this.money(snapshot.realizedPnl),
       equity: this.money(snapshot.equity),
       totalFee: this.money(snapshot.totalFee),
+      predictionValue: this.money(snapshot.predictionValue),
+      predictionUnrealizedPnl: this.money(snapshot.predictionUnrealizedPnl),
       updatedAt: snapshot.updatedAt,
     };
   }
@@ -510,6 +563,76 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       filledAt: order.filledAt || undefined,
+    };
+  }
+
+  private toPredictionPosition(position: PredictionPositionSnapshot): Record<string, unknown> {
+    return {
+      id: position.id,
+      slug: position.slug,
+      marketId: position.marketId,
+      question: position.question,
+      eventTitle: position.eventTitle,
+      icon: position.icon,
+      outcome: position.outcome,
+      outcomeName: position.outcomeName,
+      qty: this.qty(position.qty),
+      entryPrice: this.price(position.entryPrice),
+      markPrice: this.price(position.markPrice),
+      costBasis: this.money(position.costBasis),
+      currentValue: this.money(position.currentValue),
+      unrealizedPnl: this.money(position.unrealizedPnl),
+      roe: position.roe.toFixed(6),
+      status: position.status,
+      createdAt: position.createdAt,
+      updatedAt: position.updatedAt,
+    };
+  }
+
+  private toPredictionOrder(order: PredictionOrderSnapshot): Record<string, unknown> {
+    return {
+      orderId: order.orderId,
+      slug: order.slug,
+      marketId: order.marketId,
+      question: order.question,
+      outcome: order.outcome,
+      outcomeName: order.outcomeName,
+      action: order.action,
+      qty: this.qty(order.qty),
+      price: this.price(order.price),
+      notional: this.money(order.notional),
+      realizedPnl: this.money(order.realizedPnl),
+      status: order.status,
+      positionId: order.positionId,
+      createdAt: order.createdAt,
+    };
+  }
+
+  private toPredictionResult(result: PredictionPlaceResult): Record<string, unknown> {
+    return {
+      orderId: result.order.orderId,
+      status: result.order.status,
+      price: this.price(result.order.price),
+      qty: this.qty(result.order.qty),
+      notional: this.money(result.order.notional),
+      realizedPnl: this.money(result.order.realizedPnl),
+      positionId: result.position?.id || result.order.positionId || undefined,
+      order: this.toPredictionOrder({
+        orderId: result.order.orderId,
+        slug: result.order.slug,
+        marketId: result.order.marketId,
+        question: result.order.question,
+        outcome: result.order.outcome,
+        outcomeName: result.order.outcomeName,
+        action: result.order.action,
+        qty: result.order.qty,
+        price: result.order.price,
+        notional: result.order.notional,
+        realizedPnl: result.order.realizedPnl,
+        status: result.order.status,
+        positionId: result.order.positionId,
+        createdAt: result.order.createdAt,
+      }),
     };
   }
 

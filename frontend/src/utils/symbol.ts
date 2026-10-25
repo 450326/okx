@@ -1,4 +1,4 @@
-export type ExchangeId = 'okx' | 'binance' | 'coinbase' | 'uniswap' | 'polymarket';
+export type ExchangeId = 'okx' | 'binance' | 'coinbase' | 'uniswap';
 
 /** 从任意交易所格式中取基础币：BTC-USDT-SWAP / BTCUSDT / BTC-USD -> BTC */
 export function extractBase(symbol?: string): string {
@@ -11,8 +11,6 @@ export function extractBase(symbol?: string): string {
 /** 把交易对转换为目标交易所的原生格式。 */
 export function toExchangeSymbol(symbol: string | undefined, exchange: ExchangeId): string {
   const raw = String(symbol || 'BTC-USDT-SWAP').toUpperCase();
-  if (exchange === 'polymarket') return raw;
-
   const base = extractBase(raw) || 'BTC';
   if (exchange === 'okx') return `${base}-USDT-SWAP`;
   if (exchange === 'binance') return `${base}USDT`;

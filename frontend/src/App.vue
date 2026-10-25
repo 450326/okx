@@ -34,6 +34,7 @@ const showGlobalHeader = computed(() => route.name !== 'login');
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 10px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: var(--bg-body);
@@ -43,6 +44,7 @@ const showGlobalHeader = computed(() => route.name !== 'login');
 .header-left {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .logo {
@@ -55,12 +57,40 @@ const showGlobalHeader = computed(() => route.name !== 'login');
 .header-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.header-right::-webkit-scrollbar {
+  display: none;
 }
 
 @media (max-width: 960px) {
   .global-header {
     padding: 8px 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  .global-header {
+    padding: 8px 12px;
+  }
+
+  .logo {
+    font-size: 17px;
+  }
+
+  .header-right {
+    gap: 6px;
+  }
+
+  .header-right :deep(.curr-btn),
+  .header-right :deep(.locale-btn) {
+    padding: 4px 6px;
+    font-size: 11px;
   }
 }
 </style>

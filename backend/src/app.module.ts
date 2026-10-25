@@ -12,6 +12,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AccountModule } from './modules/account/account.module';
 // 引入行情数据模块
 import { MarketModule } from './modules/market/market.module';
+// 引入预测市场模块
+import { PredictionModule } from './modules/prediction/prediction.module';
 // 引入订单管理模块
 import { OrdersModule } from './modules/orders/orders.module';
 // 引入持仓管理模块
@@ -40,6 +42,7 @@ import { SimulationExceptionFilter } from './modules/simulation/simulation-excep
     AuthModule,
     AccountModule,
     MarketModule,
+    PredictionModule,
     OrdersModule,
     PositionsModule,
     ExchangeModule,

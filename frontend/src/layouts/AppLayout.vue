@@ -84,6 +84,7 @@ const modeConfirmOpen = ref(false);
 const navItems = [
   { to: '/', labelKey: 'nav.home' },
   { to: '/markets', labelKey: 'nav.explore' },
+  { to: '/prediction', labelKey: 'nav.prediction' },
   { to: '/trade/BTC-USDT-SWAP', labelKey: 'nav.trade' },
   { to: '/positions', labelKey: 'nav.positions' },
   { to: '/assets', labelKey: 'nav.assets' },

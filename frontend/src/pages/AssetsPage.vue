@@ -22,6 +22,16 @@
             <div class="stat-label">{{ $t('assets.orderMargin') }}</div>
             <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.orderMargin) }}</div>
           </div>
+          <div>
+            <div class="stat-label">{{ $t('assets.predictionValue') }}</div>
+            <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.predictionValue) }}</div>
+          </div>
+          <div>
+            <div class="stat-label">{{ $t('assets.predictionPnl') }}</div>
+            <div :class="['stat-value', getTrendClass(assetStore.snapshot?.predictionUnrealizedPnl)]">
+              {{ formatSignedCurrency(assetStore.snapshot?.predictionUnrealizedPnl) }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -139,7 +149,7 @@ import { useAssetStore } from '../stores/assets';
 import { useExchangeStore } from '../stores/exchange';
 import { useModeStore } from '../stores/mode';
 import type { ExchangeAccount, ExchangeAccountPayload } from '../api/types';
-import { formatCurrency, formatSignedValue, getTrendClass } from '../utils/format';
+import { formatCurrency, formatSignedCurrency, formatSignedValue, getTrendClass } from '../utils/format';
 
 const assetStore = useAssetStore();
 const exchangeStore = useExchangeStore();

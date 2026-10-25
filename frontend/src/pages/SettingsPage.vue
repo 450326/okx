@@ -127,10 +127,9 @@ const exchanges = [
   { value: 'binance' as const, label: 'Binance' },
   { value: 'coinbase' as const, label: 'Coinbase' },
   { value: 'uniswap' as const, label: 'Uniswap' },
-  { value: 'polymarket' as const, label: 'Polymarket' },
 ];
 
-function switchExchange(exch: 'okx' | 'binance' | 'coinbase' | 'uniswap' | 'polymarket') {
+function switchExchange(exch: 'okx' | 'binance' | 'coinbase' | 'uniswap') {
   marketStore.setExchange(exch);
 }
 

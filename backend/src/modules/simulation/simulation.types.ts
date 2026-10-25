@@ -19,6 +19,8 @@ export type SimLedgerType =
   | 'close_fee'
   | 'realized_pnl'
   | 'liquidation'
+  | 'prediction_buy'
+  | 'prediction_sell'
   | 'reset';
 
 /** 一次行情快照，由 SimulationState 从 OKX 行情服务获取后传给引擎。 */
@@ -104,6 +106,119 @@ export interface SimLedgerEntry {
   createdAt: string;
 }
 
+/* ==================== 预测市场模拟交易 ==================== */
+
+export type SimPredictionOutcome = 'yes' | 'no';
+export type SimPredictionAction = 'buy' | 'sell';
+
+/** 预测份额持仓：完全用钱包现金买入，不占用保证金、不加杠杆。 */
+export interface SimPredictionPosition {
+  id: string;
+  slug: string;
+  marketId: string;
+  question: string;
+  eventTitle: string;
+  icon: string;
+  outcome: SimPredictionOutcome;
+  outcomeName: string;
+  tokenId: string;
+  qty: number;
+  /** 开仓均价，概率价格 0-1。 */
+  entryPrice: number;
+  status: 'open';
+  openedAt: string;
+  updatedAt: string;
+}
+
+/** 预测市场成交记录。 */
+export interface SimPredictionOrder {
+  orderId: string;
+  slug: string;
+  marketId: string;
+  question: string;
+  outcome: SimPredictionOutcome;
+  outcomeName: string;
+  action: SimPredictionAction;
+  qty: number;
+  price: number;
+  notional: number;
+  realizedPnl: number;
+  status: 'filled';
+  positionId: string;
+  createdAt: string;
+}
+
+/** 预测市场行情快照，由 SimulationState 从 Polymarket 服务获取后传入引擎。 */
+export interface PredictionMarketSnapshot {
+  slug: string;
+  marketId: string;
+  question: string;
+  eventTitle: string;
+  icon: string;
+  yesPrice: number;
+  noPrice: number;
+  bestBid: number | null;
+  bestAsk: number | null;
+  yesName: string;
+  noName: string;
+  yesTokenId: string;
+  noTokenId: string;
+  closed: boolean;
+  ts: number;
+}
+
+export interface PredictionOrderInput {
+  mode?: string;
+  slug: string;
+  outcome: SimPredictionOutcome;
+  action: SimPredictionAction;
+  qty: string | number;
+}
+
+export interface PredictionPositionSnapshot {
+  id: string;
+  slug: string;
+  marketId: string;
+  question: string;
+  eventTitle: string;
+  icon: string;
+  outcome: SimPredictionOutcome;
+  outcomeName: string;
+  qty: number;
+  entryPrice: number;
+  markPrice: number;
+  costBasis: number;
+  currentValue: number;
+  unrealizedPnl: number;
+  /** 收益率，返回小数（0.15 表示 15%）。 */
+  roe: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PredictionOrderSnapshot {
+  orderId: string;
+  slug: string;
+  marketId: string;
+  question: string;
+  outcome: SimPredictionOutcome;
+  outcomeName: string;
+  action: SimPredictionAction;
+  qty: number;
+  price: number;
+  notional: number;
+  realizedPnl: number;
+  status: string;
+  positionId: string;
+  createdAt: string;
+}
+
+export interface PredictionPlaceResult {
+  order: SimPredictionOrder;
+  position?: SimPredictionPosition;
+}
+
 export interface EquityPoint {
   ts: number;
   equity: number;
@@ -119,10 +234,15 @@ export interface SimAccountState {
   totalFee: number;
   positions: SimPosition[];
   orders: SimOrder[];
+  /** 预测市场持仓（与合约持仓分开，共用同一个钱包余额）。 */
+  predictionPositions: SimPredictionPosition[];
+  predictionOrders: SimPredictionOrder[];
   ledger: SimLedgerEntry[];
   equityHistory: EquityPoint[];
   nextOrderId: number;
   nextPositionId: number;
+  nextPredictionOrderId: number;
+  nextPredictionPositionId: number;
   nextLedgerId: number;
   updatedAt: string;
 }
@@ -136,6 +256,10 @@ export interface AccountSnapshot {
   realizedPnl: number;
   equity: number;
   totalFee: number;
+  /** 预测持仓按当前概率计算的市值。 */
+  predictionValue: number;
+  /** 预测持仓浮动盈亏（已包含在 unrealizedPnl 中）。 */
+  predictionUnrealizedPnl: number;
   updatedAt: string;
 }
 

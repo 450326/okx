@@ -37,7 +37,6 @@
             <option value="binance">Binance</option>
             <option value="coinbase">Coinbase</option>
             <option value="uniswap">Uniswap</option>
-            <option value="polymarket">Polymarket</option>
           </select>
         </div>
       </div>

@@ -16,7 +16,7 @@ function normalizeDepth(levels: [string, string][], reverse = false): DepthLevel
 const WS_EXCHANGES = ['okx', 'binance'];
 
 export const useMarketStore = defineStore('market', () => {
-  const exchange = ref<'okx' | 'binance' | 'coinbase' | 'uniswap' | 'polymarket'>('okx');
+  const exchange = ref<'okx' | 'binance' | 'coinbase' | 'uniswap'>('okx');
   const symbols = ref<MarketSymbol[]>([]);
   const tickers = ref<TickerItem[]>([]);
   // 股票代币来自 OKX instCategory=3，和当前加密货币交易所分开保存。
@@ -193,7 +193,7 @@ export const useMarketStore = defineStore('market', () => {
   // 创建 store 时自动启动全局行情轮询
   startGlobalTickerPoll();
 
-  function setExchange(exch: 'okx' | 'binance' | 'coinbase' | 'uniswap' | 'polymarket') {
+  function setExchange(exch: 'okx' | 'binance' | 'coinbase' | 'uniswap') {
     if (exchange.value === exch) return;
     exchange.value = exch;
     // 切换交易所时先清空上一家的数据，避免短暂把 Binance 的币种显示在 Coinbase 页面。

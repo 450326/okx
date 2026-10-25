@@ -8,6 +8,10 @@ import AppLayout from '../layouts/AppLayout.vue';
 import HomePage from '../pages/HomePage.vue';
 // 引入行情页面组件
 import MarketsPage from '../pages/MarketsPage.vue';
+// 引入预测市场页面组件
+import PredictionPage from '../pages/PredictionPage.vue';
+// 引入预测市场详情页面组件
+import PredictionDetailPage from '../pages/PredictionDetailPage.vue';
 // 引入交易页面组件
 import TradePage from '../pages/TradePage.vue';
 // 引入持仓页面组件
@@ -39,6 +43,8 @@ const router = createRouter({
       children: [
         { path: '', name: 'home', component: HomePage },                    // 首页
         { path: 'markets', name: 'markets', component: MarketsPage },       // 行情页
+        { path: 'prediction', name: 'prediction', component: PredictionPage },  // 预测市场页
+        { path: 'prediction/:slug', name: 'prediction-detail', component: PredictionDetailPage, props: true },  // 预测市场详情
         { path: 'trade/:symbol?', name: 'trade', component: TradePage, props: true },  // 交易页（可选交易对参数）
         { path: 'positions', name: 'positions', component: PositionsPage }, // 持仓页
         { path: 'assets', name: 'assets', component: AssetsPage },          // 资产页

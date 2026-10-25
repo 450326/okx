@@ -7,6 +7,11 @@ import {
   OrderSnapshot,
   PlaceOrderResult,
   PositionSnapshot,
+  PredictionMarketSnapshot,
+  PredictionOrderInput,
+  PredictionOrderSnapshot,
+  PredictionPlaceResult,
+  PredictionPositionSnapshot,
   PreviewResult,
   ProcessResult,
   SIM_ERROR,
@@ -17,6 +22,8 @@ import {
   SimOrderSource,
   SimOrderStatus,
   SimPosition,
+  SimPredictionOrder,
+  SimPredictionPosition,
   SimulationError,
   SimulationOrderInput,
 } from './simulation.types';
@@ -24,6 +31,7 @@ import {
 const EPS = 1e-9;
 const MAX_HISTORY = 5000;
 const MAX_LEDGER = 5000;
+const MAX_PREDICTION_ORDERS = 2000;
 const EQUITY_INTERVAL_MS = 60_000;
 
 export function round(value: number, digits = 8): number {
@@ -50,6 +58,8 @@ export function createInitialState(initialWallet = DEFAULT_ENGINE_CONFIG.initial
     totalFee: 0,
     positions: [],
     orders: [],
+    predictionPositions: [],
+    predictionOrders: [],
     ledger: [
       {
         id: 'ledger_1001',
@@ -63,6 +73,8 @@ export function createInitialState(initialWallet = DEFAULT_ENGINE_CONFIG.initial
     equityHistory: [{ ts: Date.now(), equity: round(initialWallet, 2) }],
     nextOrderId: 1001,
     nextPositionId: 1001,
+    nextPredictionOrderId: 1001,
+    nextPredictionPositionId: 1001,
     nextLedgerId: 1002,
     updatedAt: now,
   };
@@ -114,6 +126,41 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
       }))
     : [];
 
+  const predictionPositions = Array.isArray(input.predictionPositions)
+    ? input.predictionPositions
+        .filter((p) => p && p.slug && p.qty > EPS && p.entryPrice > 0)
+        .map<SimPredictionPosition>((p) => ({
+          id: String(p.id || ''),
+          slug: String(p.slug || ''),
+          marketId: String(p.marketId || ''),
+          question: String(p.question || ''),
+          eventTitle: String(p.eventTitle || ''),
+          icon: String(p.icon || ''),
+          outcome: p.outcome === 'no' ? 'no' : 'yes',
+          outcomeName: String(p.outcomeName || (p.outcome === 'no' ? 'No' : 'Yes')),
+          tokenId: String(p.tokenId || ''),
+          qty: round(Number(p.qty) || 0),
+          entryPrice: round(Number(p.entryPrice) || 0),
+          status: 'open',
+          openedAt: p.openedAt || now,
+          updatedAt: p.updatedAt || now,
+        }))
+    : [];
+
+  const predictionOrders = Array.isArray(input.predictionOrders)
+    ? input.predictionOrders.slice(-MAX_PREDICTION_ORDERS).map<SimPredictionOrder>((o) => ({
+        ...o,
+        outcome: o.outcome === 'no' ? 'no' : 'yes',
+        action: o.action === 'sell' ? 'sell' : 'buy',
+        qty: round(Number(o.qty) || 0),
+        price: round(Number(o.price) || 0),
+        notional: round(Number(o.notional) || 0),
+        realizedPnl: round(Number(o.realizedPnl) || 0),
+        status: 'filled',
+        createdAt: o.createdAt || now,
+      }))
+    : [];
+
   return {
     version: 2,
     walletBalance: round(Number(input.walletBalance) || fallback.walletBalance, 2),
@@ -121,6 +168,8 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
     totalFee: round(Number(input.totalFee) || 0),
     positions,
     orders,
+    predictionPositions,
+    predictionOrders,
     ledger: Array.isArray(input.ledger) && input.ledger.length ? input.ledger : fallback.ledger,
     equityHistory:
       Array.isArray(input.equityHistory) && input.equityHistory.length
@@ -130,6 +179,8 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
         : fallback.equityHistory,
     nextOrderId: Math.max(1001, Number(input.nextOrderId) || 1001),
     nextPositionId: Math.max(1001, Number(input.nextPositionId) || 1001),
+    nextPredictionOrderId: Math.max(1001, Number(input.nextPredictionOrderId) || 1001),
+    nextPredictionPositionId: Math.max(1001, Number(input.nextPredictionPositionId) || 1001),
     nextLedgerId: Math.max(1002, Number(input.nextLedgerId) || 1002),
     updatedAt: input.updatedAt || now,
   };
@@ -148,6 +199,10 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
 export class SimulationEngine {
   private state: SimAccountState;
   private readonly config: EngineConfig;
+  /** 最近一次预测市场行情，用于给预测持仓估值。 */
+  private predictionMarks: Record<string, PredictionMarketSnapshot> = {};
+  /** 最近一次合约行情，更新预测行情时用它重新计算权益。 */
+  private lastMarkets: Record<string, MarketSnapshot> = {};
 
   constructor(state?: SimAccountState, config?: Partial<EngineConfig>) {
     this.config = { ...DEFAULT_ENGINE_CONFIG, ...(config || {}) };
@@ -174,6 +229,15 @@ export class SimulationEngine {
       positionMargin += position.margin;
     }
 
+    // 预测份额是全额买入的资产：钱包里已经扣掉成本，权益里按当前概率加回市值。
+    let predictionValue = 0;
+    let predictionUnrealizedPnl = 0;
+    for (const position of this.openPredictionPositions()) {
+      const mark = this.predictionMarkPrice(position);
+      predictionValue += mark * position.qty;
+      predictionUnrealizedPnl += (mark - position.entryPrice) * position.qty;
+    }
+
     const orderMargin = this.orderMargin();
     const walletBalance = round(this.state.walletBalance, 8);
     let availableBalance = round(walletBalance - positionMargin - orderMargin, 8);
@@ -184,10 +248,12 @@ export class SimulationEngine {
       availableBalance,
       positionMargin: round(positionMargin, 8),
       orderMargin: round(orderMargin, 8),
-      unrealizedPnl: round(unrealizedPnl, 8),
+      unrealizedPnl: round(unrealizedPnl + predictionUnrealizedPnl, 8),
       realizedPnl: round(this.state.realizedPnl, 8),
-      equity: round(walletBalance + unrealizedPnl, 8),
+      equity: round(walletBalance + unrealizedPnl + predictionValue, 8),
       totalFee: round(this.state.totalFee, 8),
+      predictionValue: round(predictionValue, 8),
+      predictionUnrealizedPnl: round(predictionUnrealizedPnl, 8),
       updatedAt: this.state.updatedAt,
     };
   }
@@ -223,6 +289,82 @@ export class SimulationEngine {
           updatedAt: position.updatedAt,
         };
       });
+  }
+
+  // ---------------------------------------------------------------- 预测持仓视图
+
+  listPredictionPositions(): PredictionPositionSnapshot[] {
+    return this.openPredictionPositions()
+      .sort((a, b) => a.openedAt.localeCompare(b.openedAt))
+      .map((position) => {
+        const mark = this.predictionMarkPrice(position);
+        const costBasis = position.entryPrice * position.qty;
+        const pnl = (mark - position.entryPrice) * position.qty;
+        return {
+          id: position.id,
+          slug: position.slug,
+          marketId: position.marketId,
+          question: position.question,
+          eventTitle: position.eventTitle,
+          icon: position.icon,
+          outcome: position.outcome,
+          outcomeName: position.outcomeName,
+          qty: position.qty,
+          entryPrice: position.entryPrice,
+          markPrice: mark,
+          costBasis: round(costBasis, 8),
+          currentValue: round(mark * position.qty, 8),
+          unrealizedPnl: round(pnl, 8),
+          roe: costBasis > EPS ? round(pnl / costBasis, 10) : 0,
+          status: position.status,
+          createdAt: position.openedAt,
+          updatedAt: position.updatedAt,
+        };
+      });
+  }
+
+  getPredictionOrderSnapshots(slug?: string): PredictionOrderSnapshot[] {
+    const list = slug
+      ? this.state.predictionOrders.filter((order) => order.slug === slug)
+      : this.state.predictionOrders;
+    return [...list]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((order) => ({
+        orderId: order.orderId,
+        slug: order.slug,
+        marketId: order.marketId,
+        question: order.question,
+        outcome: order.outcome,
+        outcomeName: order.outcomeName,
+        action: order.action,
+        qty: order.qty,
+        price: order.price,
+        notional: order.notional,
+        realizedPnl: order.realizedPnl,
+        status: order.status,
+        positionId: order.positionId,
+        createdAt: order.createdAt,
+      }));
+  }
+
+  getPredictionPosition(id: string): SimPredictionPosition | undefined {
+    return this.findPredictionPositionById(id);
+  }
+
+  trackedPredictionSlugs(): string[] {
+    return Array.from(new Set(this.openPredictionPositions().map((position) => position.slug)));
+  }
+
+  /** 刷新预测行情并记录权益；供预测模块的定时任务调用。 */
+  updatePredictionMarks(marks: Record<string, PredictionMarketSnapshot>): boolean {
+    this.predictionMarks = { ...this.predictionMarks, ...marks };
+    // 如果合约持仓还没有对应行情，先不记录权益，避免用开仓价低估合约浮盈亏。
+    const missingFuturesMark = this.openPositions().some(
+      (position) => !this.lastMarkets[position.symbol],
+    );
+    const changed = missingFuturesMark ? false : this.recordEquity(this.lastMarkets);
+    if (changed) this.touch();
+    return changed;
   }
 
   getOrderSnapshots(kind: 'open' | 'history' | 'fills', symbol?: string): OrderSnapshot[] {
@@ -428,6 +570,161 @@ export class SimulationEngine {
     return { order, position: this.findPositionById(position.id) };
   }
 
+  // ---------------------------------------------------------------- 预测市场下单/卖出
+
+  placePredictionOrder(input: PredictionOrderInput, market: PredictionMarketSnapshot): PredictionPlaceResult {
+    if (!input.slug) throw new SimulationError(SIM_ERROR.BAD_REQUEST, '预测市场不能为空');
+    if (input.outcome !== 'yes' && input.outcome !== 'no') {
+      throw new SimulationError(SIM_ERROR.BAD_REQUEST, '预测结果必须是 yes 或 no');
+    }
+    if (input.action !== 'buy' && input.action !== 'sell') {
+      throw new SimulationError(SIM_ERROR.BAD_REQUEST, '交易方向必须是 buy 或 sell');
+    }
+
+    const qty = this.parseQty(input.qty);
+    const outcome = input.outcome;
+    const action = input.action;
+    const price = this.predictionFillPrice(market, outcome, action);
+    if (price <= 0 || price >= 1) {
+      throw new SimulationError(SIM_ERROR.MARKET_UNAVAILABLE, '预测价格暂不可用，请稍后重试');
+    }
+
+    // 先刷新最新概率，后面记录权益时使用
+    this.predictionMarks[market.slug] = market;
+
+    const existing = this.findPredictionPosition(input.slug, outcome);
+    const notional = round(qty * price, 8);
+
+    if (action === 'buy') {
+      if (this.availableBalance() + EPS < notional) {
+        throw new SimulationError(
+          SIM_ERROR.INSUFFICIENT_BALANCE,
+          `可用余额不足，需要 ${notional.toFixed(2)} USDT，当前可用 ${this.availableBalance().toFixed(2)} USDT`,
+        );
+      }
+
+      let position = existing;
+      if (position) {
+        const totalQty = position.qty + qty;
+        position.entryPrice = round(
+          (position.entryPrice * position.qty + price * qty) / totalQty,
+          8,
+        );
+        position.qty = round(totalQty, 8);
+        position.updatedAt = iso();
+      } else {
+        position = {
+          id: `ppos_${this.state.nextPredictionPositionId++}`,
+          slug: market.slug,
+          marketId: market.marketId,
+          question: market.question,
+          eventTitle: market.eventTitle,
+          icon: market.icon,
+          outcome,
+          outcomeName: outcome === 'yes' ? market.yesName : market.noName,
+          tokenId: outcome === 'yes' ? market.yesTokenId : market.noTokenId,
+          qty,
+          entryPrice: price,
+          status: 'open',
+          openedAt: iso(),
+          updatedAt: iso(),
+        };
+        this.state.predictionPositions.push(position);
+      }
+
+      this.state.walletBalance = round(this.state.walletBalance - notional, 8);
+      const order = this.newPredictionOrder({
+        market,
+        outcome,
+        action,
+        qty,
+        price,
+        notional,
+        realizedPnl: 0,
+        positionId: position.id,
+      });
+      this.state.predictionOrders.push(order);
+      this.trimPredictionOrders();
+
+      this.addLedger('prediction_buy', -notional, this.state.walletBalance, {
+        symbol: `${outcome.toUpperCase()} ${market.question}`.slice(0, 90),
+        orderId: order.orderId,
+        positionId: position.id,
+        remark: `买入 ${outcome.toUpperCase()} 预测份额`,
+      });
+
+      this.recordEquity(this.lastMarkets);
+      this.touch();
+      return { order, position };
+    }
+
+    // 卖出：只能卖已持有的份额
+    if (!existing) {
+      throw new SimulationError(SIM_ERROR.POSITION_NOT_FOUND, '当前结果没有可卖出的预测份额');
+    }
+    if (qty > existing.qty + EPS) {
+      throw new SimulationError(
+        SIM_ERROR.INVALID_QTY,
+        `可卖数量不足，当前持有 ${existing.qty} 份`,
+      );
+    }
+
+    const realizedPnl = round((price - existing.entryPrice) * qty, 8);
+    this.state.walletBalance = round(this.state.walletBalance + notional, 8);
+    this.state.realizedPnl = round(this.state.realizedPnl + realizedPnl, 8);
+    existing.qty = round(existing.qty - qty, 8);
+    existing.updatedAt = iso();
+    if (existing.qty <= EPS) {
+      existing.qty = 0;
+      this.state.predictionPositions = this.state.predictionPositions.filter(
+        (position) => position.id !== existing.id,
+      );
+    }
+
+    const order = this.newPredictionOrder({
+      market,
+      outcome,
+      action,
+      qty,
+      price,
+      notional,
+      realizedPnl,
+      positionId: existing.id,
+    });
+    this.state.predictionOrders.push(order);
+
+    this.addLedger('prediction_sell', notional, this.state.walletBalance, {
+      symbol: `${outcome.toUpperCase()} ${market.question}`.slice(0, 90),
+      orderId: order.orderId,
+      positionId: existing.id,
+      remark: `卖出 ${outcome.toUpperCase()} 预测份额，盈亏 ${realizedPnl >= 0 ? '+' : ''}${realizedPnl.toFixed(2)} USDT`,
+    });
+
+    this.trimPredictionOrders();
+    this.recordEquity(this.lastMarkets);
+    this.touch();
+    return { order, position: existing.qty > EPS ? existing : undefined };
+  }
+
+  closePredictionPosition(
+    positionId: string,
+    qtyInput: string | number | undefined,
+    market: PredictionMarketSnapshot,
+  ): PredictionPlaceResult {
+    const position = this.findPredictionPositionById(positionId);
+    if (!position) throw new SimulationError(SIM_ERROR.POSITION_NOT_FOUND, '预测持仓不存在');
+
+    return this.placePredictionOrder(
+      {
+        slug: position.slug,
+        outcome: position.outcome,
+        action: 'sell',
+        qty: qtyInput === undefined || qtyInput === null || qtyInput === '' ? position.qty : qtyInput,
+      },
+      market,
+    );
+  }
+
   updateRisk(
     positionId: string,
     takeProfitPrice: string | number | null | undefined,
@@ -450,6 +747,8 @@ export class SimulationEngine {
   reset(): AccountSnapshot {
     const nextOrderId = this.state.nextOrderId;
     const nextPositionId = this.state.nextPositionId;
+    const nextPredictionOrderId = this.state.nextPredictionOrderId;
+    const nextPredictionPositionId = this.state.nextPredictionPositionId;
     const nextLedgerId = this.state.nextLedgerId;
     const now = iso();
     const wallet = round(this.config.initialWallet, 2);
@@ -458,6 +757,8 @@ export class SimulationEngine {
       ...createInitialState(wallet),
       nextOrderId,
       nextPositionId,
+      nextPredictionOrderId,
+      nextPredictionPositionId,
       ledger: [
         {
           id: `ledger_${nextLedgerId}`,
@@ -471,6 +772,7 @@ export class SimulationEngine {
       equityHistory: [{ ts: Date.now(), equity: wallet }],
       nextLedgerId: nextLedgerId + 1,
     };
+    this.predictionMarks = {};
 
     return this.snapshot();
   }
@@ -481,9 +783,14 @@ export class SimulationEngine {
    * 用一批最新行情驱动：限价单撮合、止盈止损、强平。
    * 只有真正发生成交/强平/权益快照时才返回 changed=true。
    */
-  processMarkets(markets: Record<string, MarketSnapshot>): ProcessResult {
+  processMarkets(
+    markets: Record<string, MarketSnapshot>,
+    predictionMarks: Record<string, PredictionMarketSnapshot> = {},
+  ): ProcessResult {
     const events: string[] = [];
     let changed = false;
+    this.lastMarkets = markets;
+    this.predictionMarks = { ...this.predictionMarks, ...predictionMarks };
 
     const pendingOrders = this.state.orders.filter((o) => o.status === 'pending');
     for (const order of pendingOrders) {
@@ -1000,6 +1307,83 @@ export class SimulationEngine {
 
   private findPositionById(id: string): SimPosition | undefined {
     return this.state.positions.find((p) => p.id === id && p.status === 'open');
+  }
+
+  private openPredictionPositions(): SimPredictionPosition[] {
+    return this.state.predictionPositions.filter((p) => p.status === 'open' && p.qty > EPS);
+  }
+
+  private findPredictionPosition(
+    slug: string,
+    outcome: 'yes' | 'no',
+  ): SimPredictionPosition | undefined {
+    return this.state.predictionPositions.find(
+      (p) => p.slug === slug && p.outcome === outcome && p.status === 'open',
+    );
+  }
+
+  private findPredictionPositionById(id: string): SimPredictionPosition | undefined {
+    return this.state.predictionPositions.find((p) => p.id === id && p.status === 'open');
+  }
+
+  private predictionMarkPrice(position: SimPredictionPosition): number {
+    const market = this.predictionMarks[position.slug];
+    if (!market) return position.entryPrice;
+    const price = position.outcome === 'yes' ? market.yesPrice : market.noPrice;
+    return Number.isFinite(price) ? Math.min(1, Math.max(0, price)) : position.entryPrice;
+  }
+
+  private predictionFillPrice(
+    market: PredictionMarketSnapshot,
+    outcome: 'yes' | 'no',
+    action: 'buy' | 'sell',
+  ): number {
+    let price: number;
+    if (outcome === 'yes') {
+      price = action === 'buy' ? market.bestAsk ?? market.yesPrice : market.bestBid ?? market.yesPrice;
+    } else {
+      const noAsk = market.bestBid != null ? 1 - market.bestBid : market.noPrice;
+      const noBid = market.bestAsk != null ? 1 - market.bestAsk : market.noPrice;
+      price = action === 'buy' ? noAsk : noBid;
+    }
+    return round(Math.min(0.999, Math.max(0.001, price)), 4);
+  }
+
+  private newPredictionOrder(input: {
+    market: PredictionMarketSnapshot;
+    outcome: 'yes' | 'no';
+    action: 'buy' | 'sell';
+    qty: number;
+    price: number;
+    notional: number;
+    realizedPnl: number;
+    positionId: string;
+  }): SimPredictionOrder {
+    return {
+      orderId: `pord_${this.state.nextPredictionOrderId++}`,
+      slug: input.market.slug,
+      marketId: input.market.marketId,
+      question: input.market.question,
+      outcome: input.outcome,
+      outcomeName: input.outcome === 'yes' ? input.market.yesName : input.market.noName,
+      action: input.action,
+      qty: input.qty,
+      price: input.price,
+      notional: input.notional,
+      realizedPnl: input.realizedPnl,
+      status: 'filled',
+      positionId: input.positionId,
+      createdAt: iso(),
+    };
+  }
+
+  private trimPredictionOrders(): void {
+    if (this.state.predictionOrders.length > MAX_PREDICTION_ORDERS) {
+      this.state.predictionOrders.splice(
+        0,
+        this.state.predictionOrders.length - MAX_PREDICTION_ORDERS,
+      );
+    }
   }
 
   private availableBalance(): number {

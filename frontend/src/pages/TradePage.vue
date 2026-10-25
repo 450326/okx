@@ -334,7 +334,6 @@ const exchangeLabel = computed(() => {
     binance: 'Binance',
     coinbase: 'Coinbase',
     uniswap: 'Uniswap',
-    polymarket: 'Polymarket',
   };
   return labels[marketStore.exchange] || marketStore.exchange;
 });

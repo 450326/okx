@@ -46,10 +46,11 @@ let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<'Candlestick'> | null = null;
 let volumeSeries: ISeriesApi<'Histogram'> | null = null;
 let isInitialLoad = true;
+let lastSymbol = '';
 
 const intervals = computed(() => [
-  { label: $t('chart.interval1s'), value: '1s', disabled: props.exchange === 'binance' || props.exchange === 'coinbase' || props.exchange === 'uniswap' || props.exchange === 'polymarket' },
-  { label: $t('chart.interval30s'), value: '30s', disabled: props.exchange === 'binance' || props.exchange === 'coinbase' || props.exchange === 'uniswap' || props.exchange === 'polymarket' },
+  { label: $t('chart.interval1s'), value: '1s', disabled: props.exchange === 'binance' || props.exchange === 'coinbase' || props.exchange === 'uniswap' },
+  { label: $t('chart.interval30s'), value: '30s', disabled: props.exchange === 'binance' || props.exchange === 'coinbase' || props.exchange === 'uniswap' },
   { label: $t('chart.interval1m'), value: '1m', disabled: false },
   { label: $t('chart.interval5m'), value: '5m', disabled: false },
   { label: $t('chart.interval15m'), value: '15m', disabled: false },
@@ -60,8 +61,6 @@ const intervals = computed(() => [
 ]);
 
 const isSecondsInterval = computed(() => props.modelValue === '1s' || props.modelValue === '30s');
-
-const isLiveInterval = computed(() => ['1s', '30s', '1m', '5m'].includes(props.modelValue));
 
 function buildCandleData(items: KlineItem[]): CandlestickData[] {
   return items.map((k) => ({
@@ -105,6 +104,22 @@ function initChart() {
     },
     crosshair: {
       mode: 0,
+    },
+    // 允许鼠标拖拽平移、滚轮缩放，触屏也支持拖动
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: true,
+    },
+    handleScale: {
+      axisPressedMouseMove: true,
+      mouseWheel: true,
+      pinch: true,
+    },
+    kineticScroll: {
+      mouse: true,
+      touch: true,
     },
     rightPriceScale: {
       borderColor: isDark ? '#2a3140' : '#d7deea',
@@ -173,7 +188,9 @@ function updateChartData() {
   const volumes = buildVolumeData(props.klines).reverse();
   candleSeries.setData(candles);
   volumeSeries.setData(volumes);
-  if (isInitialLoad || isLiveInterval.value) {
+  // 只在首次加载/切换品种时自动定位到最新一根 K 线；
+  // 后续实时刷新不要抢回用户拖拽后看到的位置。
+  if (isInitialLoad) {
     chart?.timeScale().scrollToPosition(0, false);
     isInitialLoad = false;
   }
@@ -197,6 +214,10 @@ function applyTimeScaleOptions() {
 }
 
 watch(() => [props.klines, props.symbol, props.modelValue], () => {
+  if (props.symbol !== lastSymbol) {
+    lastSymbol = props.symbol;
+    isInitialLoad = true;
+  }
   nextTick(updateChartData);
 }, { deep: false });
 
@@ -286,5 +307,12 @@ onBeforeUnmount(() => {
 .chart-container {
   width: 100%;
   min-height: 460px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.chart-container:active {
+  cursor: grabbing;
 }
 </style>

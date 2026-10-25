@@ -14,6 +14,7 @@
 - Binance：USDT 本位永续，当前 522 个合约
 - Coinbase：USD 现货，当前 8 个主流交易对
 - K 线：`1m / 5m / 15m / 30m / 1h / 4h / 1d`
+- K 线支持鼠标拖拽平移、滚轮缩放；实时刷新不会抢回用户拖拽后的位置
 - 盘口深度、最近成交、24H 涨跌/成交量
 - OKX/Binance 实时 WebSocket；Coinbase 使用 REST 轮询
 - 交易页顶部可切换 OKX / Binance / Coinbase，路由和 K 线同步切换
@@ -25,6 +26,17 @@
 - 首页有独立“股票代币”板块；行情页有“股票代币”分类
 - 股票代币交易页显示“股票代币”徽标，并禁用 Binance/Coinbase（这两家当前没有这些标的）
 - 常见股票使用品牌图标；没有稳定图标的标的用蓝色渐变字母块，不会出现白圈
+
+### 预测市场（独立模块）
+
+- 数据源：Polymarket（Gamma 市场元数据 / CLOB 盘口与价格历史 / Data API 成交）
+- 独立后端模块 `prediction`，接口前缀 `/api/v1/prediction`，与合约行情完全解耦
+- 独立前端页面 `/prediction`，侧边栏“预测市场”入口
+- 支持关键词搜索，按 24H 成交量 / 流动性 / 即将结算 / 最新上线排序
+- 市场详情：YES/NO 概率、概率走势、订单簿、最近成交、市场说明与相关市场
+- 模拟交易：买入/卖出 YES/NO 份额，全额使用同一份模拟资金，不占保证金、不加杠杆
+- 预测持仓按当前概率估值，支持浮动盈亏、部分卖出和平仓，并计入账户权益和资金流水
+- 当前不接入 Polymarket 真实下单（需要钱包与 CLOB 签名）
 
 ### 模拟交易
 
@@ -69,7 +81,7 @@
 | 数据 | 开发期 JSON 持久化；`prisma/schema.prisma` 预留给后续 SQLite/Prisma 迁移 |
 | 桌面 | Electron、electron-builder、electron-updater |
 | 移动端 | Capacitor Android |
-| 测试 | `ts-node` 纯引擎自测（21 项） |
+| 测试 | `ts-node` 纯引擎自测（26 项，含预测盘交易） |
 
 ## 目录结构
 
@@ -78,6 +90,7 @@
 ├── backend/                 # NestJS 后端
 │   ├── src/modules/
 │   │   ├── market/          # OKX / Binance / Coinbase 行情、K线、盘口、成交
+│   │   ├── prediction/      # 预测市场（Polymarket 行情、概率、盘口、成交）
 │   │   ├── simulation/      # 模拟盘账务引擎、撮合、持久化
 │   │   ├── orders/          # 下单、试算、撤单
 │   │   ├── positions/       # 持仓、平仓、止盈止损
@@ -192,6 +205,20 @@ GET /api/v1/market/depth?symbol=AAPL-USDT-SWAP&exchange=okx
 GET /api/v1/market/trades?symbol=AAPL-USDT-SWAP&exchange=okx
 ```
 
+预测市场接口（独立模块）：
+
+```text
+GET /api/v1/prediction/markets?limit=24&sort=volume&keyword=bitcoin
+GET /api/v1/prediction/markets/:slug
+GET /api/v1/prediction/markets/:slug/history?interval=1w
+GET /api/v1/prediction/markets/:slug/orderbook?depth=20
+GET /api/v1/prediction/markets/:slug/trades?limit=50
+GET /api/v1/prediction/positions
+GET /api/v1/prediction/orders?slug=:slug
+POST /api/v1/prediction/orders
+POST /api/v1/prediction/positions/:id/close
+```
+
 接口设计详见 [前后端接口设计.md](前后端接口设计.md)。
 
 ## 模拟盘规则
@@ -216,7 +243,7 @@ GET /api/v1/market/trades?symbol=AAPL-USDT-SWAP&exchange=okx
 ## 测试与构建
 
 ```bash
-# 模拟盘账务自测（21 项）
+# 模拟盘账务自测（26 项，含预测盘交易）
 cd backend
 npm run test:simulation
 
@@ -236,6 +263,7 @@ npm run build
 - 运行时使用 JSON 持久化，Prisma schema 尚未接入实际业务
 - 实盘 API 目前只支持查询余额/持仓/委托，**没有真实下单/撤单**
 - 股票代币只有 OKX 提供；Binance/Coinbase 当前没有
+- 预测市场支持模拟买卖，但不接入真实下单（需要钱包与 CLOB 签名）
 - Coinbase 没有批量 ticker 接口，先接入 8 个主流 USD 对，避免全量请求被限流
 - 资金费率、按品种动态杠杆、后台管理系统尚未实现
 

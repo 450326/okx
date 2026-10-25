@@ -23,6 +23,17 @@ import type {
   KlineResponse,
   RecentTradeListResponse,
   LoginResponse,
+  PredictionHistoryInterval,
+  PredictionHistoryResponse,
+  PredictionMarketDetailResponse,
+  PredictionMarketListResponse,
+  PredictionOrderBookResponse,
+  PredictionOrderListResponse,
+  PredictionOrderPayload,
+  PredictionOrderResult,
+  PredictionPositionListResponse,
+  PredictionSort,
+  PredictionTradeListResponse,
 } from './types';
 
 // 认证相关 API
@@ -91,6 +102,57 @@ export const marketApi = {
   // 获取近期成交
   getTrades(symbol: string, exchange?: string) {
     return get<RecentTradeListResponse>('/market/trades', { symbol, exchange });
+  },
+};
+
+// 预测市场（Polymarket）相关 API
+export const predictionApi = {
+  // 获取预测市场列表
+  getMarkets(params: { limit?: number; offset?: number; sort?: PredictionSort; keyword?: string } = {}) {
+    return get<PredictionMarketListResponse>('/prediction/markets', params);
+  },
+  // 获取单个市场详情（含相关市场）
+  getMarket(slug: string) {
+    return get<PredictionMarketDetailResponse>(`/prediction/markets/${encodeURIComponent(slug)}`);
+  },
+  // 获取 YES 概率走势
+  getHistory(slug: string, interval: PredictionHistoryInterval = '1w') {
+    return get<PredictionHistoryResponse>(`/prediction/markets/${encodeURIComponent(slug)}/history`, {
+      interval,
+    });
+  },
+  // 获取订单簿
+  getOrderBook(slug: string, depth = 20) {
+    return get<PredictionOrderBookResponse>(
+      `/prediction/markets/${encodeURIComponent(slug)}/orderbook`,
+      { depth },
+    );
+  },
+  // 获取最近成交
+  getTrades(slug: string, limit = 50) {
+    return get<PredictionTradeListResponse>(
+      `/prediction/markets/${encodeURIComponent(slug)}/trades`,
+      { limit },
+    );
+  },
+  // 获取预测持仓（与合约模拟盘共用资金）
+  getPositions() {
+    return get<PredictionPositionListResponse>('/prediction/positions');
+  },
+  // 获取预测成交记录
+  getOrders(slug?: string) {
+    return get<PredictionOrderListResponse>('/prediction/orders', { slug });
+  },
+  // 市价买入/卖出预测份额
+  placeOrder(payload: PredictionOrderPayload) {
+    return post<PredictionOrderResult, PredictionOrderPayload>('/prediction/orders', payload);
+  },
+  // 平仓（qty 不传表示全部卖出）
+  closePosition(id: string, qty?: string) {
+    return post<PredictionOrderResult, { qty?: string }>(
+      `/prediction/positions/${encodeURIComponent(id)}/close`,
+      { qty },
+    );
   },
 };
 

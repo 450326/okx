@@ -55,6 +55,8 @@ export interface AssetSnapshot {
   unrealizedPnl: string;    // 未实现盈亏
   realizedPnl: string;      // 已实现盈亏
   equity: string;           // 账户权益
+  predictionValue?: string;        // 预测持仓市值
+  predictionUnrealizedPnl?: string; // 预测持仓浮动盈亏
 }
 
 // 账本流水条目
@@ -83,8 +85,6 @@ export interface MarketSymbol {
   pricePrecision: number;  // 价格精度
   qtyPrecision: number;    // 数量精度
   assetClass?: 'crypto' | 'stock'; // 加密货币 / 股票代币
-  question?: string;       // 预测市场问题（Polymarket）
-  polymarketId?: string;   // Polymarket ID
 }
 
 // 市场交易对列表响应
@@ -105,8 +105,6 @@ export interface TickerItem {
   volume24h: string;            // 24 小时成交量
   priceChangePercent24h: string; // 24 小时涨跌幅
   assetClass?: 'crypto' | 'stock'; // 加密货币 / 股票代币
-  question?: string;            // 预测市场问题
-  polymarketId?: string;        // Polymarket ID
 }
 
 // Ticker 行情列表响应
@@ -276,4 +274,202 @@ export interface ExchangeAccountPayload {
   apiSecret: string;  // API Secret
   passphrase: string; // API Passphrase
   isTestnet: boolean; // 是否测试网
+}
+
+/* ==================== 预测市场（Polymarket） ==================== */
+
+// 预测市场列表排序方式
+export type PredictionSort = 'volume' | 'liquidity' | 'newest' | 'ending';
+
+// 概率走势区间
+export type PredictionHistoryInterval = '1d' | '1w' | '1m' | 'max';
+
+// 二元结果
+export interface PredictionOutcome {
+  name: string;    // 结果名，通常是 Yes / No
+  price: number;   // 概率价格（0-1）
+  tokenId: string; // CLOB token id
+}
+
+// 预测市场
+export interface PredictionMarket {
+  id: string;
+  slug: string;
+  question: string;
+  description: string;
+  image: string;
+  icon: string;
+  eventId: string;
+  eventSlug: string;
+  eventTitle: string;
+  outcomes: PredictionOutcome[];
+  yesPrice: number;          // YES 概率（0-1）
+  noPrice: number | null;    // NO 概率（0-1）
+  change24h: number | null;  // 24h 概率变化，1 表示 100 个百分点
+  bestBid: number | null;
+  bestAsk: number | null;
+  spread: number | null;
+  volume24h: number;
+  volumeTotal: number;
+  liquidity: number;
+  startDate: string | null;
+  endDate: string | null;
+  active: boolean;
+  closed: boolean;
+  acceptingOrders: boolean;
+  negRisk: boolean;
+  resolutionSource: string;
+}
+
+// 预测市场列表响应
+export interface PredictionMarketListResponse {
+  list: PredictionMarket[];
+  total: number | null;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  upstream: boolean;
+  message?: string;
+}
+
+// 相关市场摘要
+export interface PredictionMarketSummary {
+  id: string;
+  slug: string;
+  question: string;
+  icon: string;
+  yesPrice: number;
+  volumeTotal: number;
+  endDate: string | null;
+}
+
+// 市场详情响应
+export interface PredictionMarketDetailResponse {
+  market: PredictionMarket;
+  related: PredictionMarketSummary[];
+}
+
+// 概率历史点
+export interface PredictionHistoryPoint {
+  t: number; // 秒级时间戳
+  p: number; // 概率（0-1）
+}
+
+// 概率历史响应
+export interface PredictionHistoryResponse {
+  slug: string;
+  tokenId: string;
+  interval: string;
+  fidelity: number;
+  points: PredictionHistoryPoint[];
+}
+
+// 盘口档位
+export interface PredictionBookLevel {
+  price: number;
+  size: number;
+}
+
+// 盘口响应
+export interface PredictionOrderBookResponse {
+  slug: string;
+  tokenId: string;
+  midpoint: number | null;
+  spread: number | null;
+  bids: PredictionBookLevel[];
+  asks: PredictionBookLevel[];
+}
+
+// 成交记录
+export interface PredictionTradeItem {
+  id: string;
+  side: 'buy' | 'sell';
+  outcome: string;
+  outcomeIndex: number;
+  price: number;
+  size: number;
+  value: number;
+  ts: number;
+}
+
+// 成交列表响应
+export interface PredictionTradeListResponse {
+  slug: string;
+  list: PredictionTradeItem[];
+}
+
+/* ==================== 预测市场模拟交易 ==================== */
+
+export type PredictionTradeAction = 'buy' | 'sell';
+
+// 预测持仓
+export interface PredictionPositionRecord {
+  id: string;
+  slug: string;
+  marketId: string;
+  question: string;
+  eventTitle: string;
+  icon: string;
+  outcome: 'yes' | 'no';
+  outcomeName: string;
+  qty: string;
+  entryPrice: string;
+  markPrice: string;
+  costBasis: string;
+  currentValue: string;
+  unrealizedPnl: string;
+  roe: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 预测持仓列表响应
+export interface PredictionPositionListResponse {
+  mode: TradeMode;
+  list: PredictionPositionRecord[];
+}
+
+// 预测成交记录
+export interface PredictionOrderRecord {
+  orderId: string;
+  slug: string;
+  marketId: string;
+  question: string;
+  outcome: 'yes' | 'no';
+  outcomeName: string;
+  action: PredictionTradeAction;
+  qty: string;
+  price: string;
+  notional: string;
+  realizedPnl: string;
+  status: string;
+  positionId: string;
+  createdAt: string;
+}
+
+// 预测成交列表响应
+export interface PredictionOrderListResponse {
+  mode: TradeMode;
+  list: PredictionOrderRecord[];
+}
+
+// 预测下单参数
+export interface PredictionOrderPayload {
+  slug: string;
+  outcome: 'yes' | 'no';
+  action: PredictionTradeAction;
+  qty: string;
+}
+
+// 预测下单结果
+export interface PredictionOrderResult {
+  orderId: string;
+  status: string;
+  price: string;
+  qty: string;
+  notional: string;
+  realizedPnl: string;
+  positionId?: string;
+  order: PredictionOrderRecord;
 }

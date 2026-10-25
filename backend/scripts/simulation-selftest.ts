@@ -6,9 +6,39 @@
  */
 import * as assert from 'node:assert/strict';
 import { SimulationEngine } from '../src/modules/simulation/simulation-engine';
-import { MarketSnapshot, SIM_ERROR, SimulationError } from '../src/modules/simulation/simulation.types';
+import {
+  MarketSnapshot,
+  PredictionMarketSnapshot,
+  SIM_ERROR,
+  SimulationError,
+} from '../src/modules/simulation/simulation.types';
 
 const SYMBOL = 'BTC-USDT-SWAP';
+const PREDICTION_SLUG = 'test-prediction-market';
+
+function predictionMarket(
+  yesPrice: number,
+  bestBid = yesPrice,
+  bestAsk = yesPrice,
+): PredictionMarketSnapshot {
+  return {
+    slug: PREDICTION_SLUG,
+    marketId: 'pm_1',
+    question: 'Will the test pass?',
+    eventTitle: 'Test Event',
+    icon: '',
+    yesPrice,
+    noPrice: 1 - yesPrice,
+    bestBid,
+    bestAsk,
+    yesName: 'Yes',
+    noName: 'No',
+    yesTokenId: 'yes-token',
+    noTokenId: 'no-token',
+    closed: false,
+    ts: Date.now(),
+  };
+}
 
 function market(price: number, symbol = SYMBOL): MarketSnapshot {
   return {
@@ -472,6 +502,108 @@ test('试算返回真实保证金、手续费与最大可开数量', () => {
   approx(preview.fee, 0.65, 'fee');
   approx(preview.liquidationPrice, 65000 * (1 - 1 / 10 + 0.005), 'liq');
   assert.ok(preview.maxQty > 0.02, 'max qty');
+});
+
+// ---------------------------------------------------------------- 预测盘模拟交易
+
+test('预测买入用同一钱包全额扣款，权益按当前概率计值', () => {
+  const engine = newEngine();
+  const result = engine.placePredictionOrder(
+    { slug: PREDICTION_SLUG, outcome: 'yes', action: 'buy', qty: '100' },
+    predictionMarket(0.5),
+  );
+  assert.equal(result.order.status, 'filled');
+  approx(Number(result.order.price), 0.5, 'fill price');
+  approx(Number(result.order.notional), 50, 'notional');
+
+  const snapshot = engine.snapshot();
+  approx(snapshot.walletBalance, 99950, 'wallet after buy');
+  approx(snapshot.availableBalance, 99950, 'available after buy');
+  approx(snapshot.predictionValue, 50, 'prediction value');
+  approx(snapshot.equity, 100000, 'equity after buy');
+
+  const positions = engine.listPredictionPositions();
+  assert.equal(positions.length, 1);
+  approx(Number(positions[0].qty), 100, 'position qty');
+  approx(Number(positions[0].entryPrice), 0.5, 'entry price');
+});
+
+test('预测概率上涨后浮动盈亏和权益同步增加', () => {
+  const engine = newEngine();
+  engine.placePredictionOrder(
+    { slug: PREDICTION_SLUG, outcome: 'yes', action: 'buy', qty: '100' },
+    predictionMarket(0.5),
+  );
+  engine.updatePredictionMarks({ [PREDICTION_SLUG]: predictionMarket(0.6) });
+  const snapshot = engine.snapshot();
+  approx(snapshot.predictionValue, 60, 'prediction value at 0.6');
+  approx(snapshot.predictionUnrealizedPnl, 10, 'prediction pnl');
+  approx(snapshot.equity, 100010, 'equity at 0.6');
+});
+
+test('预测卖出收回现金、记录已实现盈亏并按数量递减', () => {
+  const engine = newEngine();
+  engine.placePredictionOrder(
+    { slug: PREDICTION_SLUG, outcome: 'yes', action: 'buy', qty: '100' },
+    predictionMarket(0.5),
+  );
+  engine.updatePredictionMarks({ [PREDICTION_SLUG]: predictionMarket(0.6) });
+  const sold = engine.placePredictionOrder(
+    { slug: PREDICTION_SLUG, outcome: 'yes', action: 'sell', qty: '40' },
+    predictionMarket(0.6),
+  );
+  approx(Number(sold.order.realizedPnl), 4, 'realized pnl');
+
+  const snapshot = engine.snapshot();
+  approx(snapshot.walletBalance, 99974, 'wallet after sell');
+  approx(snapshot.predictionValue, 36, 'remaining value');
+  approx(snapshot.equity, 100010, 'equity after sell');
+  approx(snapshot.realizedPnl, 4, 'realized pnl in account');
+
+  const positions = engine.listPredictionPositions();
+  assert.equal(positions.length, 1);
+  approx(Number(positions[0].qty), 60, 'remaining qty');
+});
+
+test('预测盘余额不足、卖出未持有结果会被拒绝', () => {
+  const engine = newEngine();
+  expectError(
+    () =>
+      engine.placePredictionOrder(
+        { slug: PREDICTION_SLUG, outcome: 'yes', action: 'buy', qty: '1000000' },
+        predictionMarket(0.9),
+      ),
+    SIM_ERROR.INSUFFICIENT_BALANCE,
+    '可用余额不足',
+  );
+
+  engine.placePredictionOrder(
+    { slug: PREDICTION_SLUG, outcome: 'yes', action: 'buy', qty: '10' },
+    predictionMarket(0.5),
+  );
+  expectError(
+    () =>
+      engine.placePredictionOrder(
+        { slug: PREDICTION_SLUG, outcome: 'no', action: 'sell', qty: '10' },
+        predictionMarket(0.5),
+      ),
+    SIM_ERROR.POSITION_NOT_FOUND,
+    '没有可卖出',
+  );
+});
+
+test('预测盘重置会清空预测持仓和成交', () => {
+  const engine = newEngine();
+  engine.placePredictionOrder(
+    { slug: PREDICTION_SLUG, outcome: 'yes', action: 'buy', qty: '100' },
+    predictionMarket(0.5),
+  );
+  engine.reset();
+  assert.equal(engine.listPredictionPositions().length, 0);
+  assert.equal(engine.getPredictionOrderSnapshots().length, 0);
+  const snapshot = engine.snapshot();
+  approx(snapshot.walletBalance, 100000, 'wallet after reset');
+  approx(snapshot.equity, 100000, 'equity after reset');
 });
 
 console.log(`\n全部通过：${passed} 项`);
