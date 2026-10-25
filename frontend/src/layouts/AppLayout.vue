@@ -31,6 +31,13 @@
         </div>
       </header>
 
+      <!-- 手机端非首页的导航；首页使用底部 dock -->
+      <nav v-if="route.name !== 'home'" class="mobile-nav">
+        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" class="mobile-nav-item">
+          {{ $t(item.labelKey) }}
+        </RouterLink>
+      </nav>
+
       <div v-if="globalError" class="status-text">{{ globalError }}</div>
 
       <main class="main-view">
@@ -55,7 +62,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import ConfirmModal from '../components/common/ConfirmModal.vue';
 import { useAssetStore } from '../stores/assets';
 import { useAuthStore } from '../stores/auth';
@@ -71,6 +78,7 @@ const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
 const currencyStore = useCurrencyStore();
 const router = useRouter();
+const route = useRoute();
 const modeConfirmOpen = ref(false);
 
 const navItems = [
@@ -236,5 +244,75 @@ function handleLogout() {
 .status-text {
   font-size: 12px;
   color: var(--text-secondary);
+}
+</style>
+
+<style scoped>
+/* 手机端：隐藏左侧栏，内容占满宽度；首页保留底部 dock 导航 */
+.mobile-nav {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    display: block;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .content {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .topbar {
+    padding: 10px 12px;
+    overflow-x: auto;
+  }
+
+  .topbar-stats {
+    gap: 14px;
+    min-width: max-content;
+  }
+
+  .stat-label {
+    font-size: 9px;
+  }
+
+  .stat-value {
+    font-size: 12px;
+  }
+
+  .mobile-nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 2px 2px 4px;
+    scrollbar-width: none;
+  }
+
+  .mobile-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-nav-item {
+    flex: 0 0 auto;
+    padding: 7px 11px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .mobile-nav-item.router-link-active {
+    border-color: rgba(187, 255, 39, 0.36);
+    background: rgba(187, 255, 39, 0.12);
+    color: #bbff27;
+  }
 }
 </style>

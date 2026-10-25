@@ -1,21 +1,53 @@
 <template>
   <!-- 首页容器 -->
   <div class="page home-page">
-    <!-- 移动端外壳 -->
-    <section class="mobile-shell">
-      <!-- 移动端顶部栏 -->
-      <header class="mobile-topbar">
-      </header>
+    <section class="home-content">
+      <!-- 顶栏：标题 + 搜索 -->
+      <div class="home-toolbar">
+        <div class="toolbar-copy">
+          <h1 class="home-title">交易看板</h1>
+          <p class="home-subtitle">模拟盘 · {{ modeStore.modeLabel }} · 实时行情</p>
+        </div>
 
-      <!-- 搜索栏 -->
-      <div class="search-bar">
-        <span class="search-icon">⌕</span>
-        <input v-model="searchQuery" class="search-input" placeholder="搜索币种..." />
-        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">✕</button>
+        <div class="search-wrap">
+          <div class="search-bar">
+            <span class="search-icon">⌕</span>
+            <input
+              v-model="searchQuery"
+              class="search-input"
+              placeholder="搜索币种，例如 BTC / ETH"
+              @focus="searchFocused = true"
+              @blur="handleSearchBlur"
+              @keydown.enter.prevent="handleSearchEnter"
+              @keydown.esc="clearSearch"
+            />
+            <button v-if="searchQuery" class="search-clear" @click="clearSearch">✕</button>
+          </div>
+
+          <div v-if="showSearchResults" class="search-results">
+            <button
+              v-for="item in searchResults"
+              :key="item.symbol"
+              type="button"
+              class="search-result"
+              @mousedown.prevent="goSearchResult(item.symbol)"
+            >
+              <div class="search-result-main">
+                <strong>{{ splitSymbol(item.symbol).base }}</strong>
+                <span>/ {{ splitSymbol(item.symbol).quote }}</span>
+              </div>
+              <div class="search-result-price">{{ item.lastPrice }}</div>
+              <div :class="['search-result-change', getTrendClass(item.priceChangePercent24h)]">
+                {{ formatPercent(item.priceChangePercent24h) }}
+              </div>
+            </button>
+            <div v-if="!searchResults.length" class="search-empty">没有匹配的合约</div>
+          </div>
+        </div>
       </div>
 
       <!-- 总资产卡片 -->
-      <section class="hero-card">
+      <section class="card hero-card">
         <div class="hero-copy">
           <div class="hero-label">
             {{ $t('home.totalAssets') }}
@@ -31,6 +63,15 @@
               ({{ yieldPercent }})
             </span>
           </div>
+        </div>
+
+        <div class="hero-actions">
+          <RouterLink class="action-btn action-primary" :to="`/trade/${currentTicker?.symbol || 'BTC-USDT-SWAP'}`">
+            {{ $t('nav.trade') }}
+          </RouterLink>
+          <RouterLink class="action-btn action-secondary" to="/positions">
+            {{ $t('nav.positions') }}
+          </RouterLink>
         </div>
       </section>
 
@@ -49,7 +90,12 @@
               {{ formatPercent(currentTicker?.priceChangePercent24h) }}
             </span>
           </div>
-          <div class="hero-mode-text">{{ $t('trade.currentMode') }}：{{ modeStore.modeLabel }}</div>
+          <div class="hero-side">
+            <div class="hero-mode-text">{{ $t('trade.currentMode') }}：{{ modeStore.modeLabel }}</div>
+            <RouterLink class="ghost-btn" :to="`/trade/${currentTicker?.symbol || 'BTC-USDT-SWAP'}`">
+              {{ $t('nav.trade') }}
+            </RouterLink>
+          </div>
         </div>
         <div class="hero-compact-row">
           <div class="price-large">{{ currentTicker?.lastPrice || '--' }}</div>
@@ -69,22 +115,13 @@
         </div>
       </section>
 
-      <!-- 行情排行榜切换标签 -->
-      <section class="market-tabs">
-        <button v-for="tab in rankingTabs" :key="tab" :class="['tab-chip', { active: tab === '热门榜' }]">
-          {{ tab }}
-        </button>
-        <button class="tab-arrow">›</button>
-      </section>
-
-      <!-- 现货 / 合约切换 -->
-      <section class="spot-switch">
-        <button class="spot-pill active">现货</button>
-        <button class="spot-pill">合约</button>
-      </section>
-
       <!-- 热门市场列表 -->
-      <section class="market-list">
+      <section class="card market-panel">
+        <div class="section-head">
+          <h2 class="section-title">{{ $t('home.hotRank') }}</h2>
+          <RouterLink class="ghost-btn" to="/markets">{{ $t('common.all') }}</RouterLink>
+        </div>
+        <div class="market-list">
         <RouterLink v-for="item in featuredMarkets" :key="item.symbol" :to="`/trade/${item.symbol}`" class="market-row">
           <div class="market-meta">
             <div :class="['coin-avatar', coinTone(item.symbol)]">{{ coinLabel(item.symbol) }}</div>
@@ -96,17 +133,18 @@
 
           <div class="market-price">
             <div>{{ item.lastPrice }}</div>
-            <div class="market-turnover">{{ formatTurnover(item.volume24h) }}</div>
+            <div class="market-turnover">{{ formatTurnover(item.volume24h, item.lastPrice) }}</div>
           </div>
 
           <div :class="['market-change', getTrendClass(item.priceChangePercent24h)]">
             {{ formatPercent(item.priceChangePercent24h) }}
           </div>
         </RouterLink>
+        </div>
       </section>
 
       <!-- 持仓列表 -->
-      <section class="card">
+      <section class="card positions-panel">
         <div class="section-head">
           <h2 class="section-title">{{ $t('home.positionsSnapshot') }}</h2>
           <RouterLink v-if="recentPositions.length" class="ghost-btn" to="/positions">{{ $t('common.all') }}</RouterLink>
@@ -168,7 +206,7 @@
     <!-- 辅助信息区域（桌面端） -->
     <section class="support-grid">
       <!-- 最近订单 -->
-      <div class="card">
+      <div class="card recent-orders">
         <div class="section-head">
           <h2 class="section-title">{{ $t('home.recentOrders') }}</h2>
           <RouterLink class="ghost-btn" to="/orders/history">{{ $t('common.all') }}</RouterLink>
@@ -196,7 +234,7 @@
       </div>
 
       <!-- 账户摘要 -->
-      <div class="card">
+      <div class="card account-summary">
         <h2 class="section-title">{{ $t('home.accountSummary') }}</h2>
         <div class="summary-grid">
           <div class="summary-item">
@@ -252,23 +290,31 @@ const modeStore = useModeStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
 
-// 排行榜标签列表
-const rankingTabs = ['自选', '热门榜', '新币榜', 'TradFi', 'DEX'];
-
 // 搜索
 const searchQuery = ref('');
+const searchFocused = ref(false);
 
-// 热门市场（按 24h 成交量排序，取前 8 条，支持搜索）
-const featuredMarkets = computed(() => {
-  let list = [...marketStore.tickers].sort(
-    (a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0),
-  );
-  if (searchQuery.value) {
-    const q = searchQuery.value.toUpperCase();
-    list = list.filter((t) => t.symbol.toUpperCase().includes(q));
-  }
-  return list.slice(0, 8);
+// 热门市场（按 24h 成交量排序，取前 8 条）
+const featuredMarkets = computed(() =>
+  [...marketStore.tickers]
+    .sort((a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0))
+    .slice(0, 8),
+);
+
+// 搜索结果：按成交量排序，最多 8 条
+const searchResults = computed(() => {
+  const keyword = searchQuery.value.trim().toUpperCase();
+  if (!keyword) return [];
+  return [...marketStore.tickers]
+    .filter((ticker) => ticker.symbol.toUpperCase().includes(keyword))
+    .sort((a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0))
+    .slice(0, 8);
 });
+
+// 输入框聚焦且有关键词时展示下拉结果
+const showSearchResults = computed(
+  () => searchFocused.value && searchQuery.value.trim().length > 0,
+);
 // 利用 WebSocket 实时行情重算持仓盈亏
 const livePositions = computed(() =>
   positionStore.positions.map((p) => {
@@ -320,9 +366,9 @@ function formatVolumeCompact(value?: string) {
   return `₮${amount.toFixed(2)}`;
 }
 
-// 格式化成交易额
-function formatTurnover(value?: string) {
-  const amount = Number(value || 0) * 18.85;
+// 格式化成交易额（24H 成交量 × 最新价）
+function formatTurnover(volume?: string, price?: string) {
+  const amount = Number(volume || 0) * Number(price || 0);
 
   if (amount >= 1000000) {
     return `₮${(amount / 1000000).toFixed(2)}M`;
@@ -370,6 +416,31 @@ function formatOpenTime(iso?: string) {
 
 function goTrade(symbol: string) {
   router.push(`/trade/${symbol}`);
+}
+
+// 点击搜索结果：跳转到对应交易页
+function goSearchResult(symbol: string) {
+  searchQuery.value = '';
+  searchFocused.value = false;
+  router.push(`/trade/${symbol}`);
+}
+
+// 回车直接进入第一条搜索结果
+function handleSearchEnter() {
+  const first = searchResults.value[0];
+  if (first) goSearchResult(first.symbol);
+}
+
+// 清空搜索词
+function clearSearch() {
+  searchQuery.value = '';
+}
+
+// 失焦后延迟收起，给结果的 mousedown 留出点击时间
+function handleSearchBlur() {
+  window.setTimeout(() => {
+    searchFocused.value = false;
+  }, 120);
 }
 
 async function handleClose(item: { id: string; symbol: string }) {
@@ -1004,6 +1075,453 @@ watch(
 
   .quick-actions {
     flex-direction: column;
+  }
+}
+</style>
+
+<style scoped>
+/* ============================================================
+   桌面端首页布局
+   原来的样式是移动端外壳（760px 居中、底部 dock），
+   这里用桌面网格覆盖，同时保留 <=760px 的手机布局。
+   ============================================================ */
+
+.home-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* 让原移动端外壳和辅助区在桌面端变成 grid 容器，不额外产生包裹层 */
+.home-content,
+.support-grid {
+  display: contents;
+}
+
+.home-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.toolbar-copy {
+  min-width: 0;
+}
+
+.home-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.home-subtitle {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.search-wrap {
+  position: relative;
+  width: min(460px, 100%);
+  flex: 0 1 460px;
+}
+
+.search-bar {
+  margin: 0;
+  padding: 9px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+
+.search-icon {
+  font-size: 18px;
+}
+
+.search-input {
+  font-size: 14px;
+}
+
+.search-clear {
+  width: 24px;
+  height: 24px;
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  left: 0;
+  z-index: 60;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: 0 18px 40px rgba(2, 6, 12, 0.35);
+}
+
+.search-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 68px;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-result:hover {
+  background: var(--bg-soft);
+}
+
+.search-result-main {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.search-result-main strong {
+  font-size: 14px;
+}
+
+.search-result-main span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.search-result-price {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.search-result-change {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.search-empty {
+  padding: 16px;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 13px;
+}
+
+/* 资产卡 */
+.hero-card {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0;
+  padding: 22px;
+}
+
+.hero-label {
+  font-size: 13px;
+}
+
+.hero-balance {
+  margin-top: 8px;
+  font-size: clamp(32px, 4vw, 48px);
+}
+
+.hero-yield {
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hero-actions .action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+/* 当前品种卡 */
+.hero-market-card {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+  padding: 18px 20px;
+}
+
+.hero-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.hero-side .ghost-btn {
+  padding: 7px 12px;
+  font-size: 12px;
+}
+
+.hero-symbol {
+  font-size: 22px;
+}
+
+.hero-compact-row {
+  margin-top: 8px;
+}
+
+.price-large {
+  font-size: 30px;
+}
+
+/* 权益曲线 */
+.equity-curve-card {
+  grid-column: 1;
+  grid-row: 3;
+  margin: 0;
+  padding: 18px;
+}
+
+/* 热门市场 */
+.market-panel {
+  grid-column: 2;
+  grid-row: 3 / span 2;
+  margin: 0;
+  padding: 18px;
+}
+
+.market-panel .section-head {
+  margin-bottom: 4px;
+}
+
+.market-list {
+  gap: 0;
+  margin: 0;
+}
+
+.market-row {
+  grid-template-columns: minmax(0, 1fr) auto 82px;
+  gap: 10px;
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.market-row:last-child {
+  border-bottom: none;
+}
+
+.coin-avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 14px;
+}
+
+.market-meta {
+  gap: 10px;
+}
+
+.market-symbol {
+  font-size: 14px;
+}
+
+.market-sub,
+.market-turnover {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.market-price {
+  font-size: 13px;
+  text-align: right;
+}
+
+.market-change {
+  justify-self: end;
+  min-width: 72px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* 持仓 / 委托 / 账户摘要 */
+.positions-panel {
+  grid-column: 1;
+  grid-row: 4;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.positions-panel .table th,
+.positions-panel .table td,
+.recent-orders .table th,
+.recent-orders .table td {
+  padding: 10px 6px;
+  font-size: 12px;
+}
+
+.recent-orders {
+  grid-column: 1;
+  grid-row: 5;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.account-summary {
+  grid-column: 2;
+  grid-row: 5;
+}
+
+.account-summary .summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-item {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+.summary-item span {
+  font-size: 11px;
+}
+
+.summary-item strong {
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+/* 桌面端隐藏手机底部导航 */
+.bottom-dock {
+  display: none;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-head .section-title {
+  margin-bottom: 0;
+}
+
+/* 中等宽度：单列堆叠 */
+@media (max-width: 1180px) {
+  .home-page {
+    grid-template-columns: 1fr;
+  }
+
+  .home-toolbar,
+  .hero-card,
+  .hero-market-card,
+  .equity-curve-card,
+  .market-panel,
+  .positions-panel,
+  .recent-orders,
+  .account-summary {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .hero-card,
+  .hero-market-card,
+  .equity-curve-card,
+  .market-panel,
+  .positions-panel {
+    margin-top: 0;
+  }
+}
+
+/* 手机端：恢复单列 + 底部 dock */
+@media (max-width: 760px) {
+  .home-page {
+    display: block;
+  }
+
+  .home-content {
+    display: block;
+  }
+
+  .support-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .home-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .search-wrap {
+    width: 100%;
+    flex: none;
+  }
+
+  .hero-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .hero-balance {
+    font-size: 42px;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-actions .action-btn {
+    width: 100%;
+  }
+
+  .hero-market-card,
+  .equity-curve-card,
+  .market-panel,
+  .positions-panel {
+    margin-top: 16px;
+  }
+
+  .market-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .market-price {
+    display: none;
+  }
+
+  .bottom-dock {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 28px;
+    padding: 14px 12px 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
   }
 }
 </style>
