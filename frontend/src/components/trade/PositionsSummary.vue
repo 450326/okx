@@ -32,6 +32,7 @@
       </tbody>
     </table>
     <div v-if="!positions.length" class="empty-state">{{ $t('summary.noPosition') }}</div>
+    <div v-if="errorMessage" class="status-text summary-error">{{ errorMessage }}</div>
   </section>
 
   <!-- 当前委托摘要卡片 -->
@@ -45,6 +46,7 @@
           <th>{{ $t('summary.price') }}</th>
           <th>{{ $t('summary.qty') }}</th>
           <th>{{ $t('summary.status') }}</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -54,6 +56,11 @@
           <td>{{ item.price || '--' }}</td>
           <td>{{ item.qty }}</td>
           <td>{{ item.status }}</td>
+          <td>
+            <button class="close-btn" :disabled="cancellingId === item.orderId" @click="handleCancel(item)">
+              {{ cancellingId === item.orderId ? '...' : $t('summary.cancel') }}
+            </button>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -65,21 +72,27 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { $t } from '../../utils/i18n';
-import type { OrderItem, PositionItem } from '../../api/types';
+import type { OrderItem, PositionItem, TradeMode } from '../../api/types';
 import { positionApi } from '../../api/services';
+import { useOrderStore } from '../../stores/orders';
 import { formatSignedValue, getTrendClass } from '../../utils/format';
 
 const props = defineProps<{
   positions: PositionItem[];
   openOrders: OrderItem[];
+  mode: TradeMode;
 }>();
 
 const emit = defineEmits<{
   (e: 'closed'): void;
+  (e: 'cancelled'): void;
 }>();
 
 const router = useRouter();
+const orderStore = useOrderStore();
 const closingId = ref('');
+const cancellingId = ref('');
+const errorMessage = ref('');
 
 function formatOpenTime(iso?: string) {
   if (!iso) return '--';
@@ -94,13 +107,28 @@ function goTrade(symbol: string) {
 async function handleClose(item: PositionItem) {
   if (closingId.value) return;
   closingId.value = item.id;
+  errorMessage.value = '';
   try {
     await positionApi.closePosition(item.id, { symbol: item.symbol });
     emit('closed');
-  } catch {
-    // ignore
+  } catch (error) {
+    errorMessage.value = (error as Error).message || '平仓失败';
+  } finally {
+    closingId.value = '';
   }
-  closingId.value = '';
+}
+
+async function handleCancel(item: OrderItem) {
+  if (cancellingId.value) return;
+  cancellingId.value = item.orderId;
+  errorMessage.value = '';
+  const success = await orderStore.cancelOrder(item.orderId, props.mode);
+  if (success) {
+    emit('cancelled');
+  } else {
+    errorMessage.value = orderStore.error || '撤单失败';
+  }
+  cancellingId.value = '';
 }
 </script>
 
@@ -139,5 +167,11 @@ async function handleClose(item: PositionItem) {
 .close-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.summary-error {
+  margin-top: 8px;
+  color: var(--color-down);
+  font-size: 12px;
 }
 </style>

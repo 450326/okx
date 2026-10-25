@@ -10,6 +10,7 @@ import type {
   ExchangeAccount,
   ExchangeAccountListResponse,
   ExchangeAccountPayload,
+  OrderItem,
   OrderListResponse,
   OrderPayload,
   OrderPreviewPayload,
@@ -99,9 +100,16 @@ export const positionApi = {
   getPositions(mode: TradeMode, symbol?: string) {
     return get<PositionListResponse>('/positions', { mode, symbol });
   },
-  // 平仓
-  closePosition(id: string, payload: { symbol: string; qty?: string }) {
-    return post<{ positionId: string; status: string }, { symbol: string; qty?: string }>(`/positions/${id}/close`, payload);
+  // 平仓（qty 不传表示全部平仓）
+  closePosition(id: string, payload: { symbol?: string; qty?: string } = {}) {
+    return post<{ orderId: string; status: string }, { symbol?: string; qty?: string }>(`/positions/${id}/close`, payload);
+  },
+  // 设置止盈止损
+  updateRisk(id: string, payload: { takeProfitPrice?: string | null; stopLossPrice?: string | null }) {
+    return put<{ id: string }, { takeProfitPrice?: string | null; stopLossPrice?: string | null }>(
+      `/positions/${id}/risk`,
+      payload,
+    );
   },
 };
 
@@ -122,6 +130,10 @@ export const orderApi = {
   // 获取历史委托
   getHistory(mode: TradeMode, symbol?: string) {
     return get<OrderListResponse>('/orders/history', { mode, symbol });
+  },
+  // 撤销未成交委托
+  cancel(orderId: string, mode: TradeMode) {
+    return post<OrderItem, { mode: TradeMode }>(`/orders/${orderId}/cancel`, { mode });
   },
 };
 

@@ -203,10 +203,17 @@ function initChart() {
 function updateChart() {
   if (!lineSeries || !points.value.length) return;
 
-  const data: LineData[] = points.value.map((p) => ({
-    time: (p.ts / 1000) as Time,
-    value: p.equity,
-  }));
+  // lightweight-charts 只接受整数秒且时间必须严格递增，同一秒保留最后一条。
+  const bySecond = new Map<number, EquityPoint>();
+  for (const point of points.value) {
+    bySecond.set(Math.floor(point.ts / 1000), point);
+  }
+  const data: LineData[] = Array.from(bySecond.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([time, point]) => ({
+      time: time as Time,
+      value: point.equity,
+    }));
   lineSeries.setData(data);
 
   if (chart) chart.timeScale().fitContent();

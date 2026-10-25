@@ -1,37 +1,8 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Post, Put, Query, Logger } from '@nestjs/common';
-import { ok, fail } from '../../common/api-response';
+import { Body, Controller, Get, Logger, Post, Put, Query } from '@nestjs/common';
+import { fail, ok } from '../../common/api-response';
 import { OkxApiService } from './okx-api.service';
 import { AccountStore } from './account-store';
 import { SimulationState } from '../simulation/simulation-state';
-
-function generateEquityPoints(mode: string, days: number) {
-  const now = Date.now();
-  const msPerPoint = days <= 1 ? 60000 : days <= 7 ? 3600000 : 86400000;
-  const count = days <= 1 ? 96 : days <= 7 ? 168 : Math.min(days, 365);
-  const base = mode === 'simulation' ? 100000 : 105000;
-  const volatility = mode === 'simulation' ? 0.003 : 0.005;
-  let price = base;
-
-  const points: { ts: number; equity: number }[] = [];
-
-  for (let i = count; i >= 0; i--) {
-    const drift = (Math.random() - 0.48) * volatility * base;
-    price = price + drift;
-    if (price < base * 0.7) price = base * 0.7;
-    if (price > base * 1.5) price = base * 1.5;
-    points.push({ ts: now - i * msPerPoint, equity: Math.round(price * 100) / 100 });
-  }
-
-  return points;
-}
-
-const RANGE_MAP: Record<string, number> = {
-  '1d': 1,
-  '7d': 7,
-  '30d': 30,
-  '90d': 90,
-  '1y': 365,
-};
 
 @Controller('account')
 export class AccountController {
@@ -45,6 +16,7 @@ export class AccountController {
 
   @Get('mode')
   getMode() {
+    // 模式本身仍由前端保存；这里只保证模拟盘默认模式。
     return ok({ mode: 'simulation' });
   }
 
@@ -108,54 +80,27 @@ export class AccountController {
       });
     }
 
-    return ok({
-      mode,
-      currency: 'USDT',
-      walletBalance: String(this.sim.walletBalance.toFixed(2)),
-      availableBalance: String(this.sim.availableBalance.toFixed(2)),
-      positionMargin: String(this.sim.positionMargin.toFixed(2)),
-      orderMargin: '0',
-      unrealizedPnl: '0',
-      realizedPnl: '0',
-      equity: String((this.sim.walletBalance).toFixed(2)),
-    });
+    return ok(await this.sim.getAccountSnapshot());
   }
 
   @Get('equity-history')
-  getEquityHistory(
-    @Query('mode') mode = 'simulation',
-    @Query('range') range = '30d',
-  ) {
+  getEquityHistory(@Query('mode') mode = 'simulation', @Query('range') range = '30d') {
     if (mode === 'live') {
       return ok({ mode, range, points: [] });
     }
-    const days = RANGE_MAP[range] || 30;
-    const points = generateEquityPoints(mode, days);
-    return ok({ mode, range, points });
+    return ok({ mode, range, points: this.sim.getEquityHistory(range) });
   }
 
   @Get('ledger')
   getLedger(@Query('mode') mode = 'simulation') {
-    return ok({
-      mode,
-      list: [
-        {
-          id: 'ledger_1001',
-          type: 'open_fee',
-          amount: '-0.65',
-          balanceAfter: '99999.35',
-          symbol: 'BTC-USDT-SWAP',
-          createdAt: new Date().toISOString(),
-        },
-      ],
-    });
+    return ok({ mode, list: this.sim.getLedger(mode) });
   }
 
   @Post('simulation/reset')
   resetSimulation(@Body() body: { confirm: boolean }) {
-    return ok({
-      reset: body.confirm,
-      walletBalance: '100000.00',
-    });
+    if (!body?.confirm) {
+      return fail('请确认重置模拟账户', 4001);
+    }
+    return ok({ reset: true, ...this.sim.reset() });
   }
 }

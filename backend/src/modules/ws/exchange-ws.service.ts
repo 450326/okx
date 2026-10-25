@@ -1,7 +1,7 @@
 // 引入 NestJS 可注入和服务日志装饰器
 import { Injectable, Logger } from '@nestjs/common';
-// 引入 WebSocket 库
-import WebSocket from 'ws';
+// 引入 WebSocket 库（ws 是 CommonJS 导出，使用 import = require 避免默认导入在运行时变成 undefined）
+import WebSocket = require('ws');
 import * as crypto from 'crypto';
 import { AccountStore, StoredAccount } from '../account/account-store';
 
@@ -72,7 +72,7 @@ export class ExchangeWsService {
       return;
     }
 
-    const ws = this.createSocket(exchange, requiresAuth);
+    const ws = this.createSocket(exchange, requiresAuth, channel);
     const conn: ConnectionInfo = {
       ws,
       refCount: 1,
@@ -167,7 +167,7 @@ export class ExchangeWsService {
     conn.authenticated = false;
     conn.awaitingLogin = false;
 
-    const ws = this.createSocket(conn.exchange, conn.requiresAuth);
+    const ws = this.createSocket(conn.exchange, conn.requiresAuth, conn.channel);
     conn.ws = ws;
 
     this.attachHandlers(conn);
@@ -192,9 +192,9 @@ export class ExchangeWsService {
     this.sendSubscribe(conn.ws, conn.exchange, conn.channel, conn.symbol);
   }
 
-  private createSocket(exchange: string, requiresAuth: boolean): WebSocket {
+  private createSocket(exchange: string, requiresAuth: boolean, channel = ''): WebSocket {
     const okxAccount = exchange === 'okx' ? this.accountStore.getActiveOkx() : undefined;
-    const wsUrl = this.getWsUrl(exchange, requiresAuth, okxAccount?.isTestnet);
+    const wsUrl = this.getWsUrl(exchange, requiresAuth, okxAccount?.isTestnet, channel);
     if (exchange === 'okx') {
       this.logger.log(`WS 创建: ${wsUrl} ${okxAccount?.isTestnet ? '(模拟网)' : ''}`);
     }
@@ -211,7 +211,7 @@ export class ExchangeWsService {
   }
 
   // 获取交易所 WebSocket 地址
-  private getWsUrl(exchange: string, requiresAuth = false, isTestnet?: boolean): string {
+  private getWsUrl(exchange: string, requiresAuth = false, isTestnet?: boolean, channel = ''): string {
     if (exchange === 'binance') {
       return 'wss://fstream.binance.com/ws';
     }
@@ -220,6 +220,12 @@ export class ExchangeWsService {
         return isTestnet
           ? 'wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999'
           : 'wss://ws.okx.com:8443/ws/v5/private';
+      }
+      // OKX 的 candle 频道挂在 business 端点，而不是 public 端点。
+      if (channel.startsWith('candle')) {
+        return isTestnet
+          ? 'wss://wspap.okx.com:8443/ws/v5/business?brokerId=9999'
+          : 'wss://ws.okx.com:8443/ws/v5/business';
       }
       return isTestnet
         ? 'wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999'

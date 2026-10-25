@@ -101,7 +101,13 @@
     </section>
 
     <!-- 持仓 + 委托汇总（盈亏实时更新） -->
-    <PositionsSummary :positions="livePositions" :open-orders="orderStore.openOrders" @closed="handlePositionClosed" />
+    <PositionsSummary
+      :positions="livePositions"
+      :open-orders="orderStore.openOrders"
+      :mode="modeStore.mode"
+      @closed="handlePositionClosed"
+      @cancelled="handlePositionClosed"
+    />
   </div>
 </template>
 
@@ -120,6 +126,8 @@ import OrderForm from '../components/trade/OrderForm.vue';
 import PositionsSummary from '../components/trade/PositionsSummary.vue';
 // 行情状态管理
 import { useMarketStore } from '../stores/market';
+// 资产状态管理
+import { useAssetStore } from '../stores/assets';
 // 交易模式管理
 import { useModeStore } from '../stores/mode';
 // 订单状态管理
@@ -136,6 +144,7 @@ const props = defineProps<{ symbol?: string }>();
 
 // 各 Store 实例
 const marketStore = useMarketStore();
+const assetStore = useAssetStore();
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
@@ -162,6 +171,7 @@ const livePositions = computed(() =>
     const entry = Number(p.entryPrice);
     const mark = Number(ticker.markPrice || ticker.lastPrice);
     const qty = Number(p.qty);
+    const margin = Number(p.initialMargin || 0);
     const pnl =
       p.side === 'long' ? (mark - entry) * qty : (entry - mark) * qty;
     return {
@@ -169,18 +179,24 @@ const livePositions = computed(() =>
       unrealizedPnl: pnl.toFixed(2),
       markPrice: ticker.markPrice || ticker.lastPrice,
       lastPrice: ticker.lastPrice,
-      roe: entry ? (((mark - entry) / entry) * 100 * p.leverage).toFixed(2) : '0.00',
+      // 后端返回小数（0.15），这里换算成 ratio 供模板 ×100 展示。
+      roe: margin > 0 ? (pnl / margin).toFixed(6) : '0.000000',
     };
   }),
 );
 
-// 当前品种持仓（取第一个，使用实时价格）
-const currentPosition = computed(() => livePositions.value[0] || null);
+// 当前品种持仓（只取当前 symbol，避免把其他品种的仓位显示过来）
+const currentPosition = computed(
+  () => livePositions.value.find((p) => p.symbol === currentSymbol.value) || null,
+);
 
-// 相关品种行情
+// 相关品种行情：按 24H 成交量排序，避免展示任意几条冷门合约
 const relatedTickers = computed(() => {
   const source = marketStore.tickers.filter((item) => item.symbol !== currentSymbol.value);
-  return source.length ? source.slice(0, 4) : marketStore.tickers.slice(0, 4);
+  const sorted = [...source].sort(
+    (a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0),
+  );
+  return (sorted.length ? sorted : [...marketStore.tickers]).slice(0, 4);
 });
 // 最近成交（取最新 15 条）
 const visibleTrades = computed(() => marketStore.recentTrades.slice(0, 15));
@@ -199,6 +215,7 @@ async function loadTradePageData() {
     marketStore.fetchRecentTrades(currentSymbol.value),
     positionStore.fetchPositions(modeStore.mode, currentSymbol.value),
     orderStore.fetchOpenOrders(modeStore.mode, currentSymbol.value),
+    assetStore.fetchAssets(modeStore.mode),
   ]);
   initWs();
 }
@@ -220,8 +237,12 @@ async function switchExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket'
 }
 
 // 平仓后刷新
-function handlePositionClosed() {
-  positionStore.fetchPositions(modeStore.mode, currentSymbol.value);
+async function handlePositionClosed() {
+  await Promise.all([
+    positionStore.fetchPositions(modeStore.mode, currentSymbol.value),
+    orderStore.fetchOpenOrders(modeStore.mode, currentSymbol.value),
+    assetStore.fetchAssets(modeStore.mode),
+  ]);
 }
 
 // 下单成功后的回调
@@ -229,6 +250,7 @@ async function handleOrderSubmitted() {
   await Promise.all([
     positionStore.fetchPositions(modeStore.mode, currentSymbol.value),
     orderStore.fetchOpenOrders(modeStore.mode, currentSymbol.value),
+    assetStore.fetchAssets(modeStore.mode),
   ]);
 }
 

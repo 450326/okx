@@ -172,11 +172,13 @@ export interface PositionItem {
   maintenanceMargin?: string; // 维持保证金
   liquidationPrice: string;   // 强平价格
   unrealizedPnl: string;      // 未实现盈亏
-  roe: string;                // 收益率
+  realizedPnl?: string;       // 该仓位已实现盈亏
+  roe: string;                // 收益率（小数，0.15 表示 15%）
   takeProfitPrice?: string;   // 止盈价格
   stopLossPrice?: string;     // 止损价格
   status?: string;            // 持仓状态
   createdAt?: string;         // 开仓时间
+  updatedAt?: string;         // 更新时间
 }
 
 // 持仓列表响应
@@ -210,6 +212,9 @@ export interface OrderPreviewResult {
   estimatedFee: string;             // 预估手续费
   estimatedLiquidationPrice: string; // 预估强平价格
   maxQty: string;                   // 最大可开数量
+  markPrice?: string;               // 试算使用的标记价格
+  price?: string;                   // 试算使用的成交/委托价格
+  availableBalance?: string;        // 试算时可用余额
 }
 
 // 下单请求参数（继承预览参数 + 保证金模式）
@@ -226,9 +231,17 @@ export interface OrderItem {
   status: string;               // 订单状态
   orderType: string;            // 订单类型
   price?: string;               // 委托价格
-  avgFillPrice?: string;        // 平均成交价
+  avgFillPrice?: string | null; // 平均成交价
   qty: string;                  // 委托数量
+  filledQty?: string;           // 已成交数量
+  notional?: string;            // 名义价值
   fee?: string;                 // 手续费
+  reduceOnly?: boolean;         // 是否只减仓
+  source?: string;              // user / tp / sl / liquidation
+  rejectReason?: string;        // 拒单原因
+  createdAt?: string;
+  updatedAt?: string;
+  filledAt?: string;
 }
 
 // 订单列表响应

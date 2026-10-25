@@ -83,6 +83,25 @@ export const useOrderStore = defineStore('orders', () => {
     }
   }
 
+  // 清空试算结果（切换开平方向/品种时避免展示旧数据）
+  function clearPreview() {
+    preview.value = null;
+    error.value = '';
+  }
+
+  // 撤销未成交委托
+  async function cancelOrder(orderId: string, mode: TradeMode) {
+    error.value = '';
+    try {
+      await orderApi.cancel(orderId, mode);
+      openOrders.value = openOrders.value.filter((item) => item.orderId !== orderId);
+      return true;
+    } catch (err) {
+      error.value = (err as any)?.message || '撤单失败';
+      return false;
+    }
+  }
+
   // 提交订单
   async function submitOrder(payload: OrderPayload) {
     submitting.value = true;
@@ -112,5 +131,7 @@ export const useOrderStore = defineStore('orders', () => {
     fetchHistory,
     previewOrder,
     submitOrder,
+    cancelOrder,
+    clearPreview,
   };
 });

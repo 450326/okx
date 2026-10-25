@@ -3,5 +3,5 @@
   "compilerOptions": {
     "ignoreDeprecations": "5.0"
   },
-  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "scripts", "**/*.spec.ts"]
 }

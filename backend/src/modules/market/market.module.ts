@@ -7,5 +7,6 @@ import { PolymarketService } from './polymarket.service';
 @Module({
   controllers: [MarketController],
   providers: [MarketService, DexService, PolymarketService],
+  exports: [MarketService],
 })
 export class MarketModule {}

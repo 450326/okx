@@ -25,7 +25,7 @@
             {{ formatCurrency(assetStore.snapshot?.equity) }}
           </div>
           <div class="hero-yield">
-            {{ $t('home.yearlyReturn') }}
+            {{ $t('layout.unrealizedPnl') }}
             <span :class="getTrendClass(assetStore.snapshot?.unrealizedPnl)">
               {{ formatSignedCurrency(assetStore.snapshot?.unrealizedPnl) }}
               ({{ yieldPercent }})
@@ -377,15 +377,24 @@ async function handleClose(item: { id: string; symbol: string }) {
   closingId.value = item.id;
   try {
     await positionApi.closePosition(item.id, { symbol: item.symbol });
-    await positionStore.fetchPositions(modeStore.mode);
+    await Promise.all([
+      positionStore.fetchPositions(modeStore.mode),
+      assetStore.fetchAssets(modeStore.mode),
+    ]);
   } catch {
-    // ignore
+    // 首页只做快捷平仓，失败时保留列表，详细信息可在交易页查看。
   }
   closingId.value = '';
 }
 
-// 行情卡计算属性
-const currentTicker = computed(() => marketStore.tickers[0] || null);
+// 行情卡计算属性：优先 BTC，其次取 24H 成交量最高的品种，避免展示任意一条行情。
+const currentTicker = computed(() => {
+  const btc = marketStore.tickerMap['BTC-USDT-SWAP'];
+  if (btc) return btc;
+  return [...marketStore.tickers].sort(
+    (a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0),
+  )[0] || null;
+});
 const currentBaseSymbol = computed(() => {
   const s = currentTicker.value?.symbol || 'BTC-USDT-SWAP';
   return s.includes('-') ? s.split('-')[0] : s.replace('USDT', '');

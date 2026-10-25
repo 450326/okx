@@ -11,6 +11,12 @@
       <button class="toggle-chip static-chip" disabled>{{ $t('order.isolated') }}</button>
     </div>
 
+    <div class="trade-action-toggle side-toggle">
+      <span class="side-label">{{ $t('summary.direction') }}</span>
+      <button :class="['toggle-chip', { active: form.side === 'long' }]" @click="form.side = 'long'">{{ $t('positions.long') }}</button>
+      <button :class="['toggle-chip', { active: form.side === 'short' }]" @click="form.side = 'short'">{{ $t('positions.short') }}</button>
+    </div>
+
     <div class="compact-form">
       <div class="field-row">
         <div class="field">
@@ -55,8 +61,19 @@
 
     <div class="panel-actions preview-actions">
       <button class="ghost-btn" :disabled="orderStore.submitting" @click="handlePreview()">{{ $t('order.preview') }}</button>
-      <span class="status-text">{{ $t('order.maxQty') }}：{{ orderStore.preview?.maxQty || estimatedMaxQty }}</span>
+      <span class="status-text">
+        {{ $t('order.maxQty') }}：{{ orderStore.preview?.maxQty ?? '--' }}
+        <template v-if="orderStore.preview?.availableBalance">
+          · {{ $t('order.available') }}：{{ orderStore.preview.availableBalance }}
+        </template>
+      </span>
       <button v-if="showPreview" class="ghost-btn" @click="showPreview = false">收起</button>
+    </div>
+
+    <div v-if="showPreview" class="preview-head">
+      {{ form.side === 'long' ? $t('positions.long') : $t('positions.short') }}
+      · {{ form.action === 'open' ? $t('order.open') : $t('order.close') }}
+      · {{ form.orderType === 'limit' ? $t('order.limit') : $t('order.market') }}
     </div>
 
     <div v-if="showPreview" class="preview-grid">
@@ -89,7 +106,7 @@
 
 <script setup lang="ts">
 // 导入 Vue 响应式工具
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { $t } from '../../utils/i18n';
 // 导入交易模式和订单状态管理
 import { useModeStore } from '../../stores/mode';
@@ -118,6 +135,7 @@ const qtyPresets = [25, 50, 75, 100];
 // 下单表单响应式数据
 const form = reactive({
   action: 'open' as 'open' | 'close',
+  side: 'long' as 'long' | 'short',
   orderType: 'market' as 'market' | 'limit',
   leverage: 10,
   price: '',
@@ -130,18 +148,71 @@ const form = reactive({
 const localMessage = ref('');
 // 试算结果展开状态
 const showPreview = ref(false);
-// 根据杠杆估算最大可下数量
-const estimatedMaxQty = computed(() => (Number(form.leverage) * 0.125).toFixed(3));
 // 做多按钮文本：开仓/平多
 const longActionText = computed(() => form.action === 'open' ? $t('order.openLong') : $t('order.closeLong'));
 // 做空按钮文本：开空/平空
 const shortActionText = computed(() => form.action === 'open' ? $t('order.openShort') : $t('order.closeShort'));
 
-// 监听交易对变化，清空本地消息
+// 自动化试算的防抖计时器
+let previewTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 校验当前表单是否具备试算条件
+function canPreview(): boolean {
+  if (!form.qty || Number(form.qty) <= 0) return false;
+  if (form.orderType === 'limit' && (!form.price || Number(form.price) <= 0)) return false;
+  return true;
+}
+
+// 构建试算/下单请求参数
+function buildPreviewPayload(side: 'long' | 'short'): OrderPreviewPayload {
+  return {
+    mode: modeStore.mode,
+    symbol: props.symbol,
+    side,
+    action: form.action,
+    orderType: form.orderType,
+    leverage: form.leverage,
+    qty: form.qty,
+    price: form.orderType === 'limit' ? form.price : null,
+    reduceOnly: form.action === 'close',
+    takeProfitPrice: form.action === 'open' ? form.takeProfitPrice : undefined,
+    stopLossPrice: form.action === 'open' ? form.stopLossPrice : undefined,
+  };
+}
+
+// 拉取一次真实施算结果（不自动展开面板）
+async function refreshPreview(side: 'long' | 'short' = form.side) {
+  if (!canPreview()) return;
+  await orderStore.previewOrder(buildPreviewPayload(side));
+}
+
+// 表单变化后延迟试算，避免每个按键都打后端
+function schedulePreview() {
+  if (previewTimer) clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    void refreshPreview();
+  }, 350);
+}
+
+// 监听交易对变化，清空旧试算并重新试算
 watch(
   () => props.symbol,
   () => {
     localMessage.value = '';
+    showPreview.value = false;
+    orderStore.clearPreview();
+    if (form.action === 'open') schedulePreview();
+  },
+);
+
+// 开/平仓切换时清空旧试算，避免把开仓数字当成可平数量
+watch(
+  () => form.action,
+  () => {
+    localMessage.value = '';
+    showPreview.value = false;
+    orderStore.clearPreview();
+    if (form.action === 'open') schedulePreview();
   },
 );
 
@@ -157,38 +228,39 @@ watch(
   },
 );
 
+// 表单关键字段变化后自动刷新试算；平仓在用户打开试算前不主动请求，避免“无持仓”报错刷屏
+watch(
+  () => [form.side, form.orderType, form.leverage, form.price, form.qty] as const,
+  () => {
+    localMessage.value = '';
+    if (form.action === 'close' && !showPreview.value) return;
+    schedulePreview();
+  },
+);
+
 // 按百分比预设快速设置数量
 function applyQtyPreset(preset: number) {
-  const maxQty = Number(orderStore.preview?.maxQty || estimatedMaxQty.value || 0.1);
-  form.qty = ((maxQty * preset) / 100).toFixed(3);
+  const maxQty = Number(orderStore.preview?.maxQty || 0);
+  if (maxQty <= 0) {
+    localMessage.value = '请先试算，当前可开/可平数量为 0';
+    return;
+  }
+  const next = (maxQty * preset) / 100;
+  form.qty = next.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-// 构建试算/下单请求参数
-function buildPreviewPayload(side: 'long' | 'short'): OrderPreviewPayload {
-  return {
-    mode: modeStore.mode,
-    symbol: props.symbol,
-    side,
-    action: form.action,
-    orderType: form.orderType,
-    leverage: form.leverage,
-    qty: form.qty,
-    price: form.orderType === 'limit' ? form.price : null,
-    takeProfitPrice: form.takeProfitPrice,
-    stopLossPrice: form.stopLossPrice,
-  };
-}
-
-// 执行试算
-async function handlePreview() {
+// 执行试算并展开面板
+async function handlePreview(side: 'long' | 'short' = form.side) {
+  form.side = side;
   localMessage.value = '';
   showPreview.value = true;
-  await orderStore.previewOrder(buildPreviewPayload('long'));
+  await refreshPreview(side);
 }
 
 // 执行下单提交
 async function handleSubmit(side: 'long' | 'short') {
   localMessage.value = '';
+  form.side = side;
 
   const previewPayload = buildPreviewPayload(side);
   const payload: OrderPayload = {
@@ -201,8 +273,20 @@ async function handleSubmit(side: 'long' | 'short') {
   if (result) {
     localMessage.value = `${$t('order.orderSuccess')} ${result.orderId}`;
     emit('submitted');
+    if (form.action === 'open') {
+      // 成交后可用余额、最大可开数量都会变化，刷新一次试算。
+      void refreshPreview(side);
+    } else {
+      // 全部平仓后已经无仓位，继续试算只会报“没有可平仓位”。
+      orderStore.clearPreview();
+      showPreview.value = false;
+    }
   }
 }
+
+onMounted(() => {
+  if (form.action === 'open') void refreshPreview();
+});
 </script>
 
 <style scoped>
@@ -261,6 +345,24 @@ async function handleSubmit(side: 'long' | 'short') {
 .static-chip {
   cursor: default;
   opacity: 0.7;
+}
+
+.side-toggle {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.side-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.preview-head {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .compact-form {

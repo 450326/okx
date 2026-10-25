@@ -1,5 +1,7 @@
 // 引入 NestJS 模块装饰器
 import { Module } from '@nestjs/common';
+// 引入全局异常过滤器注册令牌
+import { APP_FILTER } from '@nestjs/core';
 // 引入环境变量配置模块
 import { ConfigModule } from '@nestjs/config';
 // 引入健康检查模块
@@ -26,6 +28,8 @@ import { LedgerModule } from './modules/ledger/ledger.module';
 import { SimulationModule } from './modules/simulation/simulation.module';
 // 引入 WebSocket 模块
 import { WsModule } from './modules/ws/ws.module';
+// 引入模拟盘业务异常过滤器
+import { SimulationExceptionFilter } from './modules/simulation/simulation-exception.filter';
 
 // 应用根模块，汇总所有子模块
 @Module({
@@ -44,6 +48,10 @@ import { WsModule } from './modules/ws/ws.module';
     LedgerModule,
     SimulationModule,
     WsModule,
+  ],
+  providers: [
+    // 模拟盘业务错误统一返回 { code, message, data }，避免 Nest 默认 400 结构丢失业务码。
+    { provide: APP_FILTER, useClass: SimulationExceptionFilter },
   ],
 })
 export class AppModule {}
