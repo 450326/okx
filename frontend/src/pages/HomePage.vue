@@ -30,11 +30,13 @@
               :key="item.symbol"
               type="button"
               class="search-result"
-              @mousedown.prevent="goSearchResult(item.symbol)"
+              @mousedown.prevent="goSearchResult(item)"
             >
+              <CoinIcon :symbol="item.symbol" :size="24" :asset-class="item.assetClass" />
               <div class="search-result-main">
                 <strong>{{ splitSymbol(item.symbol).base }}</strong>
                 <span>/ {{ splitSymbol(item.symbol).quote }}</span>
+                <em v-if="item.assetClass === 'stock'" class="asset-badge">股票</em>
               </div>
               <div class="search-result-price">{{ item.lastPrice }}</div>
               <div :class="['search-result-change', getTrendClass(item.priceChangePercent24h)]">
@@ -84,6 +86,11 @@
       <section class="card hero-market-card">
         <div class="hero-head">
           <div class="hero-symbol-line">
+            <CoinIcon
+              :symbol="currentTicker?.symbol || 'BTC-USDT-SWAP'"
+              :asset-class="currentTicker?.assetClass"
+              :size="26"
+            />
             <h1 class="hero-symbol">{{ currentBaseSymbol }}</h1>
             <span class="hero-quote">/ {{ currentQuoteSymbol }}</span>
             <span :class="['hero-change', getTrendClass(currentTicker?.priceChangePercent24h)]">
@@ -124,7 +131,7 @@
         <div class="market-list">
         <RouterLink v-for="item in featuredMarkets" :key="item.symbol" :to="`/trade/${item.symbol}`" class="market-row">
           <div class="market-meta">
-            <div :class="['coin-avatar', coinTone(item.symbol)]">{{ coinLabel(item.symbol) }}</div>
+            <CoinIcon :symbol="item.symbol" :size="34" :asset-class="item.assetClass" />
             <div>
               <div class="market-symbol">{{ splitSymbol(item.symbol).base }} <span>/ {{ splitSymbol(item.symbol).quote }}</span></div>
               <div class="market-sub">{{ formatVolumeCompact(item.volume24h) }}</div>
@@ -164,7 +171,10 @@
            </thead>
            <tbody>
              <tr v-for="item in recentPositions" :key="item.id" class="pos-row" @click="goTrade(item.symbol)">
-               <td>{{ item.symbol }}</td>
+               <td>
+                  {{ item.symbol }}
+                  <em v-if="stockSymbolSet.has(item.symbol)" class="asset-badge">股票</em>
+                </td>
                <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? '多' : '空' }}</td>
                <td>{{ item.leverage }}x</td>
                <td>{{ item.qty }}</td>
@@ -224,7 +234,10 @@
           <tbody>
             <tr v-for="item in recentOrders" :key="item.orderId">
               <td>{{ item.orderId }}</td>
-              <td>{{ item.symbol }}</td>
+              <td>
+                  {{ item.symbol }}
+                  <em v-if="stockSymbolSet.has(item.symbol)" class="asset-badge">股票</em>
+                </td>
               <td>{{ item.orderType }}</td>
               <td>{{ item.side === 'long' ? '多' : '空' }}</td>
               <td>{{ item.status }}</td>
@@ -256,6 +269,40 @@
         </div>
       </div>
     </section>
+
+    <!-- 股票代币：与加密货币完全分开 -->
+    <section class="card stock-panel">
+      <div class="section-head">
+        <div class="stock-heading">
+          <h2 class="section-title">股票代币</h2>
+          <span class="asset-badge">OKX · {{ marketStore.stockTickers.length }} 个</span>
+        </div>
+        <RouterLink class="ghost-btn" :to="{ path: '/markets', query: { category: 'stock' } }">
+          全部股票代币
+        </RouterLink>
+      </div>
+
+      <div class="stock-grid">
+        <RouterLink
+          v-for="item in topStockTickers"
+          :key="item.symbol"
+          :to="{ path: `/trade/${item.symbol}`, query: { asset: 'stock' } }"
+          class="stock-row"
+          @click="ensureOkx"
+        >
+          <CoinIcon :symbol="item.symbol" :asset-class="'stock'" :size="28" />
+          <div class="stock-meta">
+            <div class="stock-symbol">{{ splitSymbol(item.symbol).base }}</div>
+            <div class="stock-sub">{{ item.symbol }}</div>
+          </div>
+          <div class="stock-price">{{ item.lastPrice }}</div>
+          <div :class="['stock-change', getTrendClass(item.priceChangePercent24h)]">
+            {{ formatPercent(item.priceChangePercent24h) }}
+          </div>
+        </RouterLink>
+      </div>
+      <div v-if="!topStockTickers.length" class="empty-state">股票代币行情加载中...</div>
+    </section>
   </div>
 </template>
 
@@ -276,10 +323,15 @@ import { useOrderStore } from '../stores/orders';
 import { usePositionStore } from '../stores/positions';
 // 资金曲线图组件
 import EquityChart from '../components/trade/EquityChart.vue';
+// 币种图标组件
+import CoinIcon from '../components/common/CoinIcon.vue';
 // 国际化
 import { $t } from '../utils/i18n';
+// 交易对格式转换
+import { toExchangeSymbol } from '../utils/symbol';
 // API
 import { positionApi } from '../api/services';
+import type { TickerItem } from '../api/types';
 // 数值格式化与涨跌颜色工具函数
 import { formatPercent, formatSignedValue, formatSignedCurrency, formatCurrency, formatCompactVolume, getTrendClass } from '../utils/format';
 
@@ -289,23 +341,59 @@ const marketStore = useMarketStore();
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
+const stockSymbolSet = computed(() => new Set(marketStore.stockTickers.map((item) => item.symbol)));
 
 // 搜索
 const searchQuery = ref('');
 const searchFocused = ref(false);
 
-// 热门市场（按 24h 成交量排序，取前 8 条）
+// 热门加密货币（排除股票代币，股票代币单独一个板块）
 const featuredMarkets = computed(() =>
   [...marketStore.tickers]
+    .filter((ticker) => ticker.assetClass !== 'stock')
     .sort((a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0))
     .slice(0, 8),
 );
 
-// 搜索结果：按成交量排序，最多 8 条
+// 股票代币：OKX 独立行情；首页优先展示常见标的，其余按成交量排序
+const STOCK_PRIORITY: Record<string, number> = {
+  AAPL: 0,
+  TSLA: 1,
+  NVDA: 2,
+  MSFT: 3,
+  AMZN: 4,
+  GOOGL: 5,
+  META: 6,
+  SPY: 7,
+  QQQ: 8,
+  AMD: 9,
+  NFLX: 10,
+  PLTR: 11,
+  COIN: 12,
+  MSTR: 13,
+  AVGO: 14,
+  TSM: 15,
+};
+const topStockTickers = computed(() =>
+  [...marketStore.stockTickers]
+    .sort((a, b) => {
+      const pa = STOCK_PRIORITY[splitSymbol(a.symbol).base] ?? 999;
+      const pb = STOCK_PRIORITY[splitSymbol(b.symbol).base] ?? 999;
+      if (pa !== pb) return pa - pb;
+      return Number(b.volume24h || 0) - Number(a.volume24h || 0);
+    })
+    .slice(0, 12),
+);
+
+// 搜索结果：加密货币 + 股票代币一起搜，按成交量排序
 const searchResults = computed(() => {
   const keyword = searchQuery.value.trim().toUpperCase();
   if (!keyword) return [];
-  return [...marketStore.tickers]
+  const pool = new Map<string, TickerItem>();
+  for (const ticker of [...marketStore.tickers, ...marketStore.stockTickers]) {
+    if (!pool.has(ticker.symbol)) pool.set(ticker.symbol, ticker);
+  }
+  return [...pool.values()]
     .filter((ticker) => ticker.symbol.toUpperCase().includes(keyword))
     .sort((a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0))
     .slice(0, 8);
@@ -381,30 +469,6 @@ function formatTurnover(volume?: string, price?: string) {
   return `₮${amount.toFixed(0)}`;
 }
 
-// 品种图标首字母
-function coinLabel(symbol: string) {
-  return splitSymbol(symbol).base.slice(0, 1);
-}
-
-// 品种图标色调
-function coinTone(symbol: string) {
-  const base = splitSymbol(symbol).base;
-
-  if (base === 'BTC') {
-    return 'coin-btc';
-  }
-
-  if (base === 'ETH') {
-    return 'coin-eth';
-  }
-
-  if (base === 'SOL') {
-    return 'coin-sol';
-  }
-
-  return 'coin-alt';
-}
-
 const router = useRouter();
 const closingId = ref('');
 
@@ -418,17 +482,27 @@ function goTrade(symbol: string) {
   router.push(`/trade/${symbol}`);
 }
 
-// 点击搜索结果：跳转到对应交易页
-function goSearchResult(symbol: string) {
+// 点击搜索结果：股票代币固定走 OKX
+function goSearchResult(item: TickerItem) {
   searchQuery.value = '';
   searchFocused.value = false;
-  router.push(`/trade/${symbol}`);
+  if (item.assetClass === 'stock') {
+    if (marketStore.exchange !== 'okx') marketStore.setExchange('okx');
+    router.push({ path: `/trade/${item.symbol}`, query: { asset: 'stock' } });
+    return;
+  }
+  router.push(`/trade/${item.symbol}`);
 }
 
 // 回车直接进入第一条搜索结果
 function handleSearchEnter() {
   const first = searchResults.value[0];
-  if (first) goSearchResult(first.symbol);
+  if (first) goSearchResult(first);
+}
+
+// 打开股票代币前先切回 OKX（股票代币只有 OKX 有）
+function ensureOkx() {
+  if (marketStore.exchange !== 'okx') marketStore.setExchange('okx');
 }
 
 // 清空搜索词
@@ -458,9 +532,9 @@ async function handleClose(item: { id: string; symbol: string }) {
   closingId.value = '';
 }
 
-// 行情卡计算属性：优先 BTC，其次取 24H 成交量最高的品种，避免展示任意一条行情。
+// 行情卡计算属性：优先当前交易所的 BTC，其次取 24H 成交量最高的品种。
 const currentTicker = computed(() => {
-  const btc = marketStore.tickerMap['BTC-USDT-SWAP'];
+  const btc = marketStore.tickerMap[toExchangeSymbol('BTC-USDT-SWAP', marketStore.exchange)];
   if (btc) return btc;
   return [...marketStore.tickers].sort(
     (a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0),
@@ -470,7 +544,9 @@ const currentBaseSymbol = computed(() => {
   const s = currentTicker.value?.symbol || 'BTC-USDT-SWAP';
   return s.includes('-') ? s.split('-')[0] : s.replace('USDT', '');
 });
-const currentQuoteSymbol = computed(() => 'USDT');
+const currentQuoteSymbol = computed(
+  () => splitSymbol(currentTicker.value?.symbol || 'BTC-USDT-SWAP').quote,
+);
 const priceRangeProgress = computed(() => {
   const high = Number(currentTicker.value?.high24h || 0);
   const low = Number(currentTicker.value?.low24h || 0);
@@ -484,6 +560,7 @@ async function loadPageData() {
   await Promise.all([
     assetStore.fetchAssets(modeStore.mode),
     marketStore.fetchTickers(),
+    marketStore.fetchStockMarkets(),
     positionStore.fetchPositions(modeStore.mode),
     orderStore.fetchHistory(modeStore.mode),
   ]);
@@ -1167,8 +1244,8 @@ watch(
 
 .search-result {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 68px;
-  gap: 12px;
+  grid-template-columns: 26px minmax(0, 1fr) auto 68px;
+  gap: 10px;
   align-items: center;
   width: 100%;
   padding: 10px;
@@ -1390,6 +1467,82 @@ watch(
   grid-row: 5;
 }
 
+/* 股票代币：独立全宽板块 */
+.stock-panel {
+  grid-column: 1 / -1;
+  grid-row: 6;
+}
+
+.stock-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stock-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.stock-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  transition: border-color 0.15s ease;
+}
+
+.stock-row:hover {
+  border-color: rgba(187, 255, 39, 0.35);
+}
+
+.stock-meta {
+  min-width: 0;
+}
+
+.stock-symbol {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.stock-sub {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-price {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-change {
+  min-width: 62px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.asset-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.16);
+  color: #60a5fa;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .account-summary .summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1439,6 +1592,7 @@ watch(
   .equity-curve-card,
   .market-panel,
   .positions-panel,
+  .stock-panel,
   .recent-orders,
   .account-summary {
     grid-column: 1;
@@ -1449,8 +1603,13 @@ watch(
   .hero-market-card,
   .equity-curve-card,
   .market-panel,
-  .positions-panel {
+  .positions-panel,
+  .stock-panel {
     margin-top: 0;
+  }
+
+  .stock-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1504,8 +1663,13 @@ watch(
   .hero-market-card,
   .equity-curve-card,
   .market-panel,
-  .positions-panel {
+  .positions-panel,
+  .stock-panel {
     margin-top: 16px;
+  }
+
+  .stock-grid {
+    grid-template-columns: 1fr;
   }
 
   .market-row {

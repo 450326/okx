@@ -16,9 +16,13 @@ function normalizeDepth(levels: [string, string][], reverse = false): DepthLevel
 const WS_EXCHANGES = ['okx', 'binance'];
 
 export const useMarketStore = defineStore('market', () => {
-  const exchange = ref<'okx' | 'binance' | 'uniswap' | 'polymarket'>('okx');
+  const exchange = ref<'okx' | 'binance' | 'coinbase' | 'uniswap' | 'polymarket'>('okx');
   const symbols = ref<MarketSymbol[]>([]);
   const tickers = ref<TickerItem[]>([]);
+  // 股票代币来自 OKX instCategory=3，和当前加密货币交易所分开保存。
+  const stockSymbols = ref<MarketSymbol[]>([]);
+  const stockTickers = ref<TickerItem[]>([]);
+  const stockLoading = ref(false);
   const depthBids = ref<DepthLevel[]>([]);
   const depthAsks = ref<DepthLevel[]>([]);
   const klines = ref<KlineItem[]>([]);
@@ -55,7 +59,7 @@ export const useMarketStore = defineStore('market', () => {
   function startPolling(sym: string, interval: string) {
     stopPolling();
     pollTimer = setInterval(() => {
-      fetchTickers();
+      fetchTickers([sym]);
       fetchDepth(sym);
       fetchRecentTrades(sym);
     }, 3000);
@@ -189,8 +193,16 @@ export const useMarketStore = defineStore('market', () => {
   // 创建 store 时自动启动全局行情轮询
   startGlobalTickerPoll();
 
-  function setExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket') {
+  function setExchange(exch: 'okx' | 'binance' | 'coinbase' | 'uniswap' | 'polymarket') {
+    if (exchange.value === exch) return;
     exchange.value = exch;
+    // 切换交易所时先清空上一家的数据，避免短暂把 Binance 的币种显示在 Coinbase 页面。
+    symbols.value = [];
+    tickers.value = [];
+    klines.value = [];
+    depthBids.value = [];
+    depthAsks.value = [];
+    recentTrades.value = [];
   }
 
   async function fetchSymbols(params?: { keyword?: string; category?: string }) {
@@ -228,6 +240,27 @@ export const useMarketStore = defineStore('market', () => {
       return [];
     } finally {
       loading.value = false;
+    }
+  }
+
+  // 拉取 OKX 股票代币（与当前加密货币交易所切换互不影响）
+  async function fetchStockMarkets() {
+    stockLoading.value = true;
+    try {
+      const [symbolData, tickerData] = await Promise.all([
+        marketApi.getSymbols({ exchange: 'okx' }),
+        marketApi.getTickers(undefined, 'okx'),
+      ]);
+      stockSymbols.value = symbolData.list.filter((item) => item.assetClass === 'stock');
+      stockTickers.value = tickerData.list.filter((item) => item.assetClass === 'stock');
+      return stockTickers.value;
+    } catch (err) {
+      error.value = (err as Error)?.message || '获取股票代币失败';
+      stockSymbols.value = [];
+      stockTickers.value = [];
+      return [];
+    } finally {
+      stockLoading.value = false;
     }
   }
 
@@ -282,10 +315,10 @@ export const useMarketStore = defineStore('market', () => {
   }
 
   return {
-    exchange, symbols, tickers, depthBids, depthAsks, klines, recentTrades,
-    loading, depthLoading, chartLoading, tradesLoading, error, tickerMap,
+    exchange, symbols, tickers, stockSymbols, stockTickers, depthBids, depthAsks, klines, recentTrades,
+    loading, stockLoading, depthLoading, chartLoading, tradesLoading, error, tickerMap,
     setExchange, connectWs, disconnectWs,
     startGlobalTickerPoll, stopGlobalTickerPoll,
-    fetchSymbols, fetchTickers, fetchDepth, fetchKlines, fetchRecentTrades,
+    fetchSymbols, fetchTickers, fetchStockMarkets, fetchDepth, fetchKlines, fetchRecentTrades,
   };
 });

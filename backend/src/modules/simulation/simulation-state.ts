@@ -227,24 +227,38 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 批量拉取行情。OKX 的 tickers 接口一次返回全量，指定 symbols 只是本地过滤，
-   * 因此这里一次请求即可覆盖所有持仓/挂单，避免逐个 symbol 请求造成 N+1。
+   * 批量拉取行情。按交易对格式自动识别交易所：
+   * - BTC-USDT-SWAP -> OKX
+   * - BTCUSDT       -> Binance
+   * - BTC-USD       -> Coinbase
+   *
+   * 这样模拟盘可以在三个交易所行情上下单，持仓按各自 symbol 独立保存。
    */
   private async fetchMarkets(symbols: string[]): Promise<Record<string, MarketSnapshot>> {
     const unique = Array.from(new Set(symbols.filter(Boolean)));
     if (!unique.length) return {};
 
-    let tickers: OkxTickerLike[] = [];
-    try {
-      tickers = (await this.marketService.getTickers(unique, 'okx')) as OkxTickerLike[];
-    } catch (error) {
-      this.logger.warn(`拉取 OKX 行情失败，将使用最近缓存: ${(error as Error).message}`);
+    const groups: Record<'okx' | 'binance' | 'coinbase', string[]> = {
+      okx: [],
+      binance: [],
+      coinbase: [],
+    };
+    for (const symbol of unique) {
+      groups[this.inferExchange(symbol)].push(symbol);
     }
 
     const now = Date.now();
-    for (const ticker of tickers || []) {
-      const market = this.toMarket(ticker, now);
-      if (market) this.priceCache.set(market.symbol, { market, ts: now });
+    for (const exchange of ['okx', 'binance', 'coinbase'] as const) {
+      if (!groups[exchange].length) continue;
+      try {
+        const tickers = (await this.marketService.getTickers(groups[exchange], exchange)) as OkxTickerLike[];
+        for (const ticker of tickers || []) {
+          const market = this.toMarket(ticker, now);
+          if (market) this.priceCache.set(market.symbol, { market, ts: now });
+        }
+      } catch (error) {
+        this.logger.warn(`拉取 ${exchange} 行情失败，将使用最近缓存: ${(error as Error).message}`);
+      }
     }
 
     const result: Record<string, MarketSnapshot> = {};
@@ -255,6 +269,13 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       }
     }
     return result;
+  }
+
+  private inferExchange(symbol: string): 'okx' | 'binance' | 'coinbase' {
+    const value = String(symbol || '').toUpperCase();
+    if (value.endsWith('-USD') || value.endsWith('-USDC')) return 'coinbase';
+    if (!value.includes('-')) return 'binance';
+    return 'okx';
   }
 
   private toMarket(ticker: OkxTickerLike, ts: number): MarketSnapshot | null {

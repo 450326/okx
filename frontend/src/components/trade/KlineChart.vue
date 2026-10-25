@@ -48,15 +48,15 @@ let volumeSeries: ISeriesApi<'Histogram'> | null = null;
 let isInitialLoad = true;
 
 const intervals = computed(() => [
-  { label: $t('chart.interval1s'), value: '1s', disabled: props.exchange === 'binance' || props.exchange === 'uniswap' || props.exchange === 'polymarket' },
-  { label: $t('chart.interval30s'), value: '30s', disabled: props.exchange === 'binance' || props.exchange === 'uniswap' || props.exchange === 'polymarket' },
+  { label: $t('chart.interval1s'), value: '1s', disabled: props.exchange === 'binance' || props.exchange === 'coinbase' || props.exchange === 'uniswap' || props.exchange === 'polymarket' },
+  { label: $t('chart.interval30s'), value: '30s', disabled: props.exchange === 'binance' || props.exchange === 'coinbase' || props.exchange === 'uniswap' || props.exchange === 'polymarket' },
   { label: $t('chart.interval1m'), value: '1m', disabled: false },
   { label: $t('chart.interval5m'), value: '5m', disabled: false },
   { label: $t('chart.interval15m'), value: '15m', disabled: false },
   { label: $t('chart.interval30m'), value: '30m', disabled: false },
-  { label: $t('chart.interval1h'), value: '1H', disabled: false },
-  { label: $t('chart.interval4h'), value: '4H', disabled: props.exchange === 'uniswap' },
-  { label: $t('chart.interval1d'), value: '1D', disabled: false },
+  { label: $t('chart.interval1h'), value: '1h', disabled: false },
+  { label: $t('chart.interval4h'), value: '4h', disabled: props.exchange === 'uniswap' },
+  { label: $t('chart.interval1d'), value: '1d', disabled: false },
 ]);
 
 const isSecondsInterval = computed(() => props.modelValue === '1s' || props.modelValue === '30s');

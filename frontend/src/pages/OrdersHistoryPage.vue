@@ -21,7 +21,12 @@
         <tbody>
           <tr v-for="item in orderStore.historyOrders" :key="item.orderId">
             <td>{{ item.orderId }}</td>
-            <td>{{ item.symbol }}</td>
+            <td>
+              <div class="symbol-cell">
+                <CoinIcon :symbol="item.symbol" :size="22" />
+                <span>{{ item.symbol }}</span>
+              </div>
+            </td>
             <td :class="item.side === 'long' ? 'up' : 'down'">{{ formatDirection(item) }}</td>
             <td>{{ item.orderType }}</td>
             <td>{{ item.price || '-' }}</td>
@@ -39,6 +44,7 @@
 
 <script setup lang="ts">
 import { watch } from 'vue';
+import CoinIcon from '../components/common/CoinIcon.vue';
 import { useModeStore } from '../stores/mode';
 import { useOrderStore } from '../stores/orders';
 import type { OrderItem } from '../api/types';
@@ -69,3 +75,12 @@ watch(
   { immediate: true },
 );
 </script>
+
+<style scoped>
+.symbol-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+</style>

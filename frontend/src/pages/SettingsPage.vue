@@ -125,11 +125,12 @@ const router = useRouter();
 const exchanges = [
   { value: 'okx' as const, label: 'OKX' },
   { value: 'binance' as const, label: 'Binance' },
+  { value: 'coinbase' as const, label: 'Coinbase' },
   { value: 'uniswap' as const, label: 'Uniswap' },
   { value: 'polymarket' as const, label: 'Polymarket' },
 ];
 
-function switchExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket') {
+function switchExchange(exch: 'okx' | 'binance' | 'coinbase' | 'uniswap' | 'polymarket') {
   marketStore.setExchange(exch);
 }
 

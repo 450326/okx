@@ -20,7 +20,12 @@
       <!-- 表体 -->
       <tbody>
         <tr v-for="item in positions" :key="item.id" class="pos-row" @click="goTrade(item.symbol)">
-          <td>{{ item.symbol }}</td>
+          <td>
+            <div class="symbol-cell">
+              <CoinIcon :symbol="item.symbol" :size="22" />
+              <span>{{ item.symbol }}</span>
+            </div>
+          </td>
           <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? $t('summary.long') : $t('summary.short') }}</td>
           <td>{{ item.leverage }}x</td>
           <td>{{ item.qty }}</td>
@@ -74,6 +79,7 @@ import { useRouter } from 'vue-router';
 import { $t } from '../../utils/i18n';
 import type { OrderItem, PositionItem, TradeMode } from '../../api/types';
 import { positionApi } from '../../api/services';
+import CoinIcon from '../common/CoinIcon.vue';
 import { useOrderStore } from '../../stores/orders';
 import { formatSignedValue, getTrendClass } from '../../utils/format';
 
@@ -133,6 +139,13 @@ async function handleCancel(item: OrderItem) {
 </script>
 
 <style scoped>
+.symbol-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .pos-row {
   cursor: pointer;
   transition: background 0.12s;

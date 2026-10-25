@@ -1,11 +1,53 @@
 // 引入 NestJS 可注入装饰器
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+import * as https from 'https';
 import { DexService } from './dex.service';
 import { PolymarketService } from './polymarket.service';
 
 const OKX_BASE = 'https://www.okx.com/api/v5';
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
+const COINBASE_BASE = 'https://api.exchange.coinbase.com';
+
+/** Coinbase 没有全量 ticker 接口，默认只拉这些主流 USD 交易对。 */
+const COINBASE_MAJORS = [
+  'BTC-USD',
+  'ETH-USD',
+  'SOL-USD',
+  'XRP-USD',
+  'DOGE-USD',
+  'ADA-USD',
+  'AVAX-USD',
+  'LINK-USD',
+];
+
+function baseCoinOf(symbol: string): string {
+  const value = String(symbol || '').toUpperCase();
+  if (value.includes('-')) return value.split('-')[0];
+  return value.replace(/(USDT|USDC|USD)$/, '');
+}
+
+/** 把任意交易所格式统一成 OKX USDT 永续。 */
+function toOkxSymbol(symbol: string): string {
+  const value = String(symbol || '').toUpperCase();
+  if (value.endsWith('-USDT-SWAP')) return value;
+  if (value.endsWith('-USDT')) return `${value}-SWAP`;
+  return `${baseCoinOf(value)}-USDT-SWAP`;
+}
+
+/** 把任意交易所格式统一成 Binance USDT 永续。 */
+function toBinanceSymbol(symbol: string): string {
+  const value = String(symbol || '').toUpperCase();
+  if (!value.includes('-')) return value;
+  return `${baseCoinOf(value)}USDT`;
+}
+
+/** 把任意交易所格式统一成 Coinbase 现货产品。 */
+function toCoinbaseProduct(symbol: string): string {
+  const value = String(symbol || '').toUpperCase();
+  if (value.includes('-') && !value.endsWith('-SWAP')) return value;
+  return `${baseCoinOf(value)}-USD`;
+}
 
 const OKX_INTERVAL_MAP: Record<string, string> = {
   '1s': '1s',
@@ -68,6 +110,35 @@ interface BinanceDepth {
   asks: string[][];
 }
 
+interface CoinbaseProduct {
+  id: string;
+  base_currency: string;
+  quote_currency: string;
+  status: string;
+  trading_disabled: boolean;
+}
+
+interface CoinbaseStats {
+  open: string;
+  high: string;
+  low: string;
+  volume: string;
+  last: string;
+}
+
+interface CoinbaseBook {
+  bids: string[][];
+  asks: string[][];
+}
+
+interface CoinbaseTrade {
+  trade_id: number;
+  price: string;
+  size: string;
+  side: string;
+  time: string;
+}
+
 type KnownSymbol = {
   symbol: string;
   baseCoin: string;
@@ -76,6 +147,8 @@ type KnownSymbol = {
   minQty: string;
   pricePrecision: number;
   qtyPrecision: number;
+  /** OKX 用 instCategory=3 标识股票代币，需要与加密货币分开展示。 */
+  assetClass?: 'crypto' | 'stock';
 };
 
 const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
@@ -110,6 +183,12 @@ const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
 @Injectable()
 export class MarketService {
   private readonly logger = new Logger(MarketService.name);
+  private coinbaseProductsCache: { at: number; list: CoinbaseProduct[] } | null = null;
+  private coinbaseTickerCache = new Map<string, { at: number; value: any }>();
+  private binanceSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
+  private okxSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
+  private readonly coinbaseAgent = new https.Agent({ keepAlive: true, maxSockets: 2 });
+  private readonly binanceAgent = new https.Agent({ keepAlive: true, maxSockets: 4 });
 
   constructor(
     // 注入去中心化交易所服务
@@ -149,6 +228,8 @@ export class MarketService {
       const res = await axios.get<T>(`${BINANCE_BASE}${path}`, {
         params,
         timeout: 8000,
+        httpsAgent: this.binanceAgent,
+        proxy: false,
       });
       return res.data;
     } catch {
@@ -164,10 +245,21 @@ export class MarketService {
     if (exchange === 'okx') {
       return this.getOkxSymbols();
     }
+    if (exchange === 'coinbase') {
+      return this.getCoinbaseSymbols();
+    }
+    if (exchange === 'binance') {
+      return this.getBinanceSymbols();
+    }
     return SYMBOLS_BY_EXCHANGE[exchange] || SYMBOLS_BY_EXCHANGE['okx'];
   }
 
   private async getOkxSymbols(): Promise<KnownSymbol[]> {
+    const now = Date.now();
+    if (this.okxSymbolsCache && now - this.okxSymbolsCache.at < 60_000) {
+      return this.okxSymbolsCache.list;
+    }
+
     try {
       const res = await axios.get<{ code: string; data: any[] }>(`${OKX_BASE}/public/instruments`, {
         params: { instType: 'SWAP' },
@@ -180,9 +272,7 @@ export class MarketService {
         return [];
       }
 
-      this.logger.log(`OKX instruments 加载 ${instruments.length} 个合约`);
-
-      return instruments
+      const list = instruments
         .filter((inst) => inst.ctType === 'linear' && inst.instId.endsWith('-USDT-SWAP'))
         .map((inst: any) => {
           const base = inst.uly?.replace('-USDT', '') || inst.instId.split('-')[0];
@@ -196,13 +286,142 @@ export class MarketService {
             minQty: inst.minSz || lotSz,
             pricePrecision: tickSz.includes('.') ? tickSz.split('.')[1].length : 0,
             qtyPrecision: lotSz.includes('.') ? lotSz.split('.')[1].length : 0,
+            // OKX 用 instCategory=3 标识股票代币。
+            assetClass: inst.instCategory === '3' ? ('stock' as const) : ('crypto' as const),
           };
         })
         .filter((s) => s.symbol.endsWith('-USDT-SWAP'));
+
+      const stockCount = list.filter((item) => item.assetClass === 'stock').length;
+      this.logger.log(`OKX instruments 加载 ${list.length} 个合约（股票代币 ${stockCount} 个）`);
+      this.okxSymbolsCache = { at: now, list };
+      return list;
     } catch (err) {
       this.logger.error(`获取 OKX instruments 失败: ${(err as Error).message}`);
       return [];
     }
+  }
+
+  // ---------------------------------------------------------------- Coinbase
+
+  private async getCoinbaseProducts(): Promise<CoinbaseProduct[]> {
+    const now = Date.now();
+    if (this.coinbaseProductsCache && now - this.coinbaseProductsCache.at < 60_000) {
+      return this.coinbaseProductsCache.list;
+    }
+
+    try {
+      const res = await axios.get<CoinbaseProduct[]>(`${COINBASE_BASE}/products`, {
+        timeout: 12000,
+        httpsAgent: this.coinbaseAgent,
+        proxy: false,
+      });
+      const list = (res.data || []).filter(
+        (product) =>
+          product.status === 'online' &&
+          !product.trading_disabled &&
+          ['USD', 'USDT', 'USDC'].includes(product.quote_currency),
+      );
+      this.coinbaseProductsCache = { at: now, list };
+      return list;
+    } catch (error) {
+      this.logger.warn(`获取 Coinbase products 失败: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  private async getCoinbaseSymbols(): Promise<KnownSymbol[]> {
+    const products = await this.getCoinbaseProducts();
+    if (!products.length) {
+      return COINBASE_MAJORS.map((symbol) => ({
+        symbol,
+        baseCoin: symbol.split('-')[0],
+        quoteCoin: symbol.split('-')[1] || 'USD',
+        maxLeverage: 1,
+        minQty: '0.00000001',
+        pricePrecision: 8,
+        qtyPrecision: 8,
+      }));
+    }
+
+    // Coinbase 没有全量 ticker 接口；只保留能稳定拉到行情的 USD 主流对。
+    const byId = new Map(products.map((product) => [product.id, product]));
+    return COINBASE_MAJORS.map((id) => byId.get(id))
+      .filter((product): product is CoinbaseProduct => Boolean(product))
+      .map((product) => ({
+        symbol: product.id,
+        baseCoin: product.base_currency,
+        quoteCoin: product.quote_currency,
+        maxLeverage: 1,
+        minQty: '0.00000001',
+        pricePrecision: 8,
+        qtyPrecision: 8,
+      }));
+  }
+
+  private async getCoinbaseTickers(symbols?: string[]) {
+    const requested = Array.from(
+      new Set((symbols?.length ? symbols.map(toCoinbaseProduct) : COINBASE_MAJORS).filter(Boolean)),
+    ).slice(0, 30);
+
+    const results: any[] = [];
+    for (let index = 0; index < requested.length; index += 1) {
+      const productId = requested[index];
+      const now = Date.now();
+      const cached = this.coinbaseTickerCache.get(productId);
+      if (cached && now - cached.at < 15_000) {
+        results.push(cached.value);
+        continue;
+      }
+
+      let stats: CoinbaseStats | null = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const res = await axios.get<CoinbaseStats>(`${COINBASE_BASE}/products/${productId}/stats`, {
+            timeout: 8000,
+            httpsAgent: this.coinbaseAgent,
+            proxy: false,
+          });
+          stats = res.data;
+          break;
+        } catch (error) {
+          if (attempt === 1) {
+            this.logger.warn(`获取 Coinbase ${productId} 行情失败: ${(error as Error).message}`);
+          } else {
+            await new Promise((resolve) => setTimeout(resolve, 600));
+          }
+        }
+      }
+
+      if (!stats) continue;
+      const last = Number(stats.last);
+      if (!Number.isFinite(last) || last <= 0) continue;
+
+      const open = Number(stats.open) || last;
+      const changePct = open ? (((last - open) / open) * 100).toFixed(2) : '0.00';
+      const ticker = {
+        symbol: productId,
+        lastPrice: String(last),
+        markPrice: String(last),
+        indexPrice: String(last),
+        bidPrice: String(last),
+        askPrice: String(last),
+        high24h: String(Number(stats.high) || last),
+        low24h: String(Number(stats.low) || last),
+        volume24h: String(Number(stats.volume) || 0),
+        priceChangePercent24h: changePct,
+        assetClass: 'crypto',
+      };
+      this.coinbaseTickerCache.set(productId, { at: now, value: ticker });
+      results.push(ticker);
+
+      // Coinbase 对并发 TLS 连接比较敏感，串行拉取并留一点间隔。
+      if (index < requested.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+    }
+
+    return results;
   }
 
   // 获取行情 ticker 数据，支持多交易所
@@ -210,6 +429,7 @@ export class MarketService {
     switch (exchange) {
       case 'polymarket': return this.polymarketService.getTickers(symbols);
       case 'binance':    return this.getBinanceTickers(symbols);
+      case 'coinbase':   return this.getCoinbaseTickers(symbols);
       case 'uniswap':    return this.dexService.getTickers(symbols);
       default:           return this.getOkxTickers(symbols);
     }
@@ -219,12 +439,18 @@ export class MarketService {
   private async getOkxTickers(symbols?: string[]) {
     // 获取所有 SWAP 合约 ticker
     const all = await this.fetchOkxList<OkxTicker>('/market/tickers', { instType: 'SWAP' });
-    // 如果指定了交易对则过滤
-    const tickers = symbols?.length
-      ? all.filter((t) => symbols.includes(t.instId))
+    // 如果指定了交易对则过滤（允许前端传 Binance/Coinbase 格式）
+    const requested = symbols?.map(toOkxSymbol);
+    const tickers = requested?.length
+      ? all.filter((t) => requested.includes(t.instId))
       : all;
 
     if (!tickers.length) return [];
+
+    const okxSymbols = await this.getOkxSymbols();
+    const stockSet = new Set(
+      okxSymbols.filter((item) => item.assetClass === 'stock').map((item) => item.symbol),
+    );
 
     // 映射为标准 ticker 格式
     return tickers.map((t) => {
@@ -244,8 +470,59 @@ export class MarketService {
         low24h: t.low24h,
         volume24h: t.vol24h,
         priceChangePercent24h: changePct,
+        assetClass: stockSet.has(t.instId) ? 'stock' : 'crypto',
       };
     });
+  }
+
+  // 获取 Binance USDT 永续合约列表
+  private async getBinanceSymbols(): Promise<KnownSymbol[]> {
+    const now = Date.now();
+    if (this.binanceSymbolsCache && now - this.binanceSymbolsCache.at < 60_000) {
+      return this.binanceSymbolsCache.list;
+    }
+
+    try {
+      let response: { symbols: any[] } | null = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const res = await axios.get<{ symbols: any[] }>(`${BINANCE_BASE}/exchangeInfo`, {
+            timeout: 15000,
+            httpsAgent: this.binanceAgent,
+            proxy: false,
+          });
+          response = res.data;
+          break;
+        } catch (error) {
+          if (attempt === 1) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        }
+      }
+      const list = (response?.symbols || [])
+        .filter(
+          (symbol) =>
+            symbol.contractType === 'PERPETUAL' &&
+            symbol.quoteAsset === 'USDT' &&
+            symbol.status === 'TRADING',
+        )
+        .map((symbol) => {
+          const lotSize = (symbol.filters || []).find((filter: any) => filter.filterType === 'LOT_SIZE');
+          return {
+            symbol: symbol.symbol,
+            baseCoin: symbol.baseAsset,
+            quoteCoin: symbol.quoteAsset,
+            maxLeverage: 50,
+            minQty: lotSize?.minQty || '0.001',
+            pricePrecision: Number(symbol.pricePrecision ?? 2),
+            qtyPrecision: Number(symbol.quantityPrecision ?? 3),
+          };
+        });
+      this.binanceSymbolsCache = { at: now, list };
+      return list;
+    } catch (error) {
+      this.logger.warn(`获取 Binance exchangeInfo 失败: ${(error as Error).message}`);
+      return SYMBOLS_BY_EXCHANGE['binance'];
+    }
   }
 
   // 获取 Binance 交易所 ticker 数据
@@ -254,11 +531,10 @@ export class MarketService {
     const all = await this.getBinance<BinanceTicker[]>('/ticker/24hr');
     if (!all) return [];
 
-    // 只保留已知交易对
-    const knownSymbols = SYMBOLS_BY_EXCHANGE['binance'].map((s) => s.symbol);
-    const filtered = symbols?.length
-      ? all.filter((t) => symbols.includes(t.symbol))
-      : all.filter((t) => knownSymbols.includes(t.symbol));
+    const requested = symbols?.map(toBinanceSymbol);
+    const filtered = requested?.length
+      ? all.filter((t) => requested.includes(t.symbol))
+      : all.filter((t) => t.symbol.endsWith('USDT'));
 
     if (!filtered.length) return [];
 
@@ -273,6 +549,7 @@ export class MarketService {
       low24h: t.lowPrice,
       volume24h: t.volume,
       priceChangePercent24h: t.priceChangePercent,
+      assetClass: 'crypto',
     }));
   }
 
@@ -287,6 +564,9 @@ export class MarketService {
     if (exchange === 'binance') {
       return this.getBinanceKlines(symbol, interval);
     }
+    if (exchange === 'coinbase') {
+      return this.getCoinbaseKlines(symbol, interval);
+    }
     return this.dexService.getKlines(symbol, interval);
   }
 
@@ -294,7 +574,7 @@ export class MarketService {
   private async getOkxKlines(symbol: string, interval: string) {
     const bar = OKX_INTERVAL_MAP[interval] || interval;
     const raw = await this.fetchOkxList<string[]>('/market/candles', {
-      instId: symbol,
+      instId: toOkxSymbol(symbol),
       bar,
       limit: '200',
     });
@@ -313,20 +593,111 @@ export class MarketService {
   // 获取 Binance K 线数据
   private async getBinanceKlines(symbol: string, interval: string) {
     const raw = await this.getBinance<string[][]>('/klines', {
-      symbol,
+      symbol: toBinanceSymbol(symbol),
       interval,
       limit: 200,
     });
     if (!raw) return [];
 
-    return raw.map((c) => ({
-      openTime: Number(c[0]),
-      open: c[1],
-      high: c[2],
-      low: c[3],
-      close: c[4],
-      volume: c[5],
-    }));
+    // Binance 返回由旧到新；统一成 OKX 的由新到旧，前端 KlineChart 会再 reverse。
+    return raw
+      .map((c) => ({
+        openTime: Number(c[0]),
+        open: c[1],
+        high: c[2],
+        low: c[3],
+        close: c[4],
+        volume: c[5],
+      }))
+      .reverse();
+  }
+
+  // 获取 Coinbase K 线数据
+  private async getCoinbaseKlines(symbol: string, interval: string) {
+    const productId = toCoinbaseProduct(symbol);
+    const config: Record<string, { granularity: number; factor: number }> = {
+      '1m': { granularity: 60, factor: 1 },
+      '5m': { granularity: 300, factor: 1 },
+      '15m': { granularity: 900, factor: 1 },
+      '30m': { granularity: 900, factor: 2 },
+      '1h': { granularity: 3600, factor: 1 },
+      '4h': { granularity: 3600, factor: 4 },
+      '1d': { granularity: 86400, factor: 1 },
+    };
+    const target = config[interval];
+    // Coinbase 不支持秒级 K 线。
+    if (!target) return [];
+
+    const end = Math.floor(Date.now() / 1000);
+    const start = end - target.granularity * 300;
+    try {
+      const res = await axios.get<number[][]>(`${COINBASE_BASE}/products/${productId}/candles`, {
+        params: { granularity: target.granularity, start, end },
+        timeout: 10000,
+        httpsAgent: this.coinbaseAgent,
+        proxy: false,
+      });
+      const rows = (res.data || []).slice().sort((a, b) => a[0] - b[0]);
+      if (!rows.length) return [];
+
+      type CoinbaseCandleRow = {
+        openTime: number;
+        open: number;
+        high: number;
+        low: number;
+        close: number;
+        volume: number;
+      };
+
+      const candles: CoinbaseCandleRow[] = rows.map((c) => ({
+        openTime: c[0] * 1000,
+        low: c[1],
+        high: c[2],
+        open: c[3],
+        close: c[4],
+        volume: c[5],
+      }));
+
+      const aggregated: CoinbaseCandleRow[] = [];
+      if (target.factor <= 1) {
+        aggregated.push(...candles);
+      } else {
+        const bucketMs = target.granularity * 1000 * target.factor;
+        const groups = new Map<number, CoinbaseCandleRow[]>();
+        for (const candle of candles) {
+          const bucket = Math.floor(candle.openTime / bucketMs) * bucketMs;
+          if (!groups.has(bucket)) groups.set(bucket, []);
+          groups.get(bucket)!.push(candle);
+        }
+        for (const [bucket, group] of groups) {
+          aggregated.push({
+            openTime: bucket,
+            open: group[0].open,
+            high: Math.max(...group.map((c) => Number(c.high))),
+            low: Math.min(...group.map((c) => Number(c.low))),
+            close: group[group.length - 1].close,
+            volume: group.reduce((sum, c) => sum + Number(c.volume), 0),
+          });
+        }
+      }
+
+      // 统一成由新到旧，并限制 200 根。
+      return aggregated
+        .sort((a, b) => a.openTime - b.openTime)
+        .reverse()
+        .slice(0, 200)
+        .map((c) => ({
+          openTime: c.openTime,
+          open: String(c.open),
+          high: String(c.high),
+          low: String(c.low),
+          close: String(c.close),
+          volume: String(c.volume),
+        }));
+    } catch (error) {
+      this.logger.warn(`获取 Coinbase ${productId} K 线失败: ${(error as Error).message}`);
+      return [];
+    }
   }
 
   // 获取深度数据，支持多交易所
@@ -334,6 +705,7 @@ export class MarketService {
     switch (exchange) {
       case 'polymarket': return this.polymarketService.getDepth(symbol);
       case 'binance':    return this.getBinanceDepth(symbol, limit);
+      case 'coinbase':   return this.getCoinbaseDepth(symbol, limit);
       case 'uniswap':    return this.dexService.getDepth(symbol);
     }
     return this.getOkxDepth(symbol, limit);
@@ -341,14 +713,15 @@ export class MarketService {
 
   // 获取 OKX 深度数据
   private async getOkxDepth(symbol: string, limit: number) {
+    const instId = toOkxSymbol(symbol);
     const raw = await this.fetchOkx<{ asks: string[]; bids: string[] }>(
       '/market/books',
-      { instId: symbol, sz: String(limit) },
+      { instId, sz: String(limit) },
     );
     if (!raw) return null;
 
     return {
-      symbol,
+      symbol: instId,
       bids: (raw.bids as unknown as string[][]).map((l) => [l[0], l[1]] as [string, string]),
       asks: (raw.asks as unknown as string[][]).map((l) => [l[0], l[1]] as [string, string]),
     };
@@ -356,14 +729,37 @@ export class MarketService {
 
   // 获取 Binance 深度数据
   private async getBinanceDepth(symbol: string, limit: number) {
-    const raw = await this.getBinance<BinanceDepth>('/depth', { symbol, limit });
+    const binanceSymbol = toBinanceSymbol(symbol);
+    const raw = await this.getBinance<BinanceDepth>('/depth', { symbol: binanceSymbol, limit });
     if (!raw) return null;
 
     return {
-      symbol,
+      symbol: binanceSymbol,
       bids: raw.bids.map((l) => [l[0], l[1]] as [string, string]),
       asks: raw.asks.map((l) => [l[0], l[1]] as [string, string]),
     };
+  }
+
+  // 获取 Coinbase 深度数据
+  private async getCoinbaseDepth(symbol: string, limit: number) {
+    const productId = toCoinbaseProduct(symbol);
+    try {
+      const res = await axios.get<CoinbaseBook>(`${COINBASE_BASE}/products/${productId}/book`, {
+        params: { level: 2 },
+        timeout: 10000,
+        httpsAgent: this.coinbaseAgent,
+        proxy: false,
+      });
+      const book = res.data;
+      return {
+        symbol: productId,
+        bids: (book.bids || []).slice(0, limit).map((l) => [l[0], l[1]] as [string, string]),
+        asks: (book.asks || []).slice(0, limit).map((l) => [l[0], l[1]] as [string, string]),
+      };
+    } catch (error) {
+      this.logger.warn(`获取 Coinbase ${productId} 盘口失败: ${(error as Error).message}`);
+      return null;
+    }
   }
 
   // 获取成交数据，支持多交易所
@@ -377,13 +773,16 @@ export class MarketService {
     if (exchange === 'binance') {
       return this.getBinanceTrades(symbol);
     }
+    if (exchange === 'coinbase') {
+      return this.getCoinbaseTrades(symbol);
+    }
     return this.getOkxTrades(symbol);
   }
 
   // 获取 OKX 成交数据
   private async getOkxTrades(symbol: string) {
     const trades = await this.fetchOkxList<OkxTrade>('/market/trades', {
-      instId: symbol,
+      instId: toOkxSymbol(symbol),
       limit: '50',
     });
     if (!trades.length) return [];
@@ -398,7 +797,8 @@ export class MarketService {
 
   // 获取 Binance 成交数据
   private async getBinanceTrades(symbol: string) {
-    const trades = await this.getBinance<BinanceTrade[]>('/trades', { symbol, limit: 50 });
+    const binanceSymbol = toBinanceSymbol(symbol);
+    const trades = await this.getBinance<BinanceTrade[]>('/trades', { symbol: binanceSymbol, limit: 50 });
     if (!trades) return [];
 
     return trades.map((t) => ({
@@ -407,5 +807,27 @@ export class MarketService {
       side: t.isBuyerMaker ? 'sell' : 'buy' as 'buy' | 'sell',
       ts: t.time,
     }));
+  }
+
+  // 获取 Coinbase 成交数据
+  private async getCoinbaseTrades(symbol: string) {
+    const productId = toCoinbaseProduct(symbol);
+    try {
+      const res = await axios.get<CoinbaseTrade[]>(`${COINBASE_BASE}/products/${productId}/trades`, {
+        params: { limit: 50 },
+        timeout: 10000,
+        httpsAgent: this.coinbaseAgent,
+        proxy: false,
+      });
+      return (res.data || []).map((trade) => ({
+        price: trade.price,
+        qty: trade.size,
+        side: trade.side === 'sell' ? 'sell' : ('buy' as 'buy' | 'sell'),
+        ts: Date.parse(trade.time),
+      }));
+    } catch (error) {
+      this.logger.warn(`获取 Coinbase ${productId} 成交失败: ${(error as Error).message}`);
+      return [];
+    }
   }
 }

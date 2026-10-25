@@ -1,0 +1,263 @@
+# OKX Trading · 多交易所行情与模拟合约交易工作台
+
+一个面向学习与演示的期货交易工作台：接入 **OKX / Binance / Coinbase** 实际行情，支持 K 线、盘口、成交、模拟开平仓、限价撮合、止盈止损、强平、资金流水和权益曲线，并把 **股票代币** 与加密货币分开展示。
+
+> ⚠️ 本项目当前定位为模拟交易/行情演示，**不构成投资建议**。真实盘下单尚未接入，请勿用于真实资金交易。
+
+![首页](docs/screenshots/home.png)
+
+## 功能概览
+
+### 行情
+
+- OKX：USDT 本位永续，当前 507 个合约
+- Binance：USDT 本位永续，当前 522 个合约
+- Coinbase：USD 现货，当前 8 个主流交易对
+- K 线：`1m / 5m / 15m / 30m / 1h / 4h / 1d`
+- 盘口深度、最近成交、24H 涨跌/成交量
+- OKX/Binance 实时 WebSocket；Coinbase 使用 REST 轮询
+- 交易页顶部可切换 OKX / Binance / Coinbase，路由和 K 线同步切换
+
+### 股票代币（独立分类）
+
+- 来源：OKX 公共 API，`instCategory = 3` 的 USDT 永续合约
+- 当前 **209 个**股票代币/ETF/Pre-IPO 标的
+- 首页有独立“股票代币”板块；行情页有“股票代币”分类
+- 股票代币交易页显示“股票代币”徽标，并禁用 Binance/Coinbase（这两家当前没有这些标的）
+- 常见股票使用品牌图标；没有稳定图标的标的用蓝色渐变字母块，不会出现白圈
+
+### 模拟交易
+
+- 初始资金 100,000 USDT
+- 逐仓、单向持仓
+- 杠杆 1–50x
+- 市价单、限价单
+- 开多/开空、部分平仓、全部平仓、撤单
+- 止盈止损、后台自动撮合、强制平仓
+- 手续费、保证金冻结/释放、已实现/未实现盈亏
+- 资金流水、权益曲线、模拟账户重置
+- 数据持久化到 `backend/data/simulation.json`
+
+### 界面与工程
+
+- Vue 3 + Vite + Pinia，桌面优先、移动端自适应
+- 中文 / English / 日本語 / 한국어
+- 深色 / 浅色主题、计价货币切换
+- Windows 一键启动/停止脚本
+- Electron 桌面壳、Capacitor Android 构建脚手架
+
+## 截图
+
+### 股票代币独立板块
+
+![首页股票代币](docs/screenshots/home.png)
+
+### 全部股票代币
+
+![股票代币行情](docs/screenshots/markets-stocks.png)
+
+### 股票代币交易页
+
+![AAPL 股票代币](docs/screenshots/trade-aapl.png)
+
+## 技术栈
+
+| 层 | 技术 |
+|---|---|
+| 前端 | Vue 3、Vite、Pinia、Vue Router、lightweight-charts、Socket.IO |
+| 后端 | NestJS 11、TypeScript、Axios、ws、Socket.IO |
+| 数据 | 开发期 JSON 持久化；`prisma/schema.prisma` 预留给后续 SQLite/Prisma 迁移 |
+| 桌面 | Electron、electron-builder、electron-updater |
+| 移动端 | Capacitor Android |
+| 测试 | `ts-node` 纯引擎自测（21 项） |
+
+## 目录结构
+
+```text
+.
+├── backend/                 # NestJS 后端
+│   ├── src/modules/
+│   │   ├── market/          # OKX / Binance / Coinbase 行情、K线、盘口、成交
+│   │   ├── simulation/      # 模拟盘账务引擎、撮合、持久化
+│   │   ├── orders/          # 下单、试算、撤单
+│   │   ├── positions/       # 持仓、平仓、止盈止损
+│   │   ├── account/         # 资产、流水、权益曲线、OKX API 账户
+│   │   └── ws/              # 交易所 WebSocket 转发
+│   └── scripts/
+│       └── simulation-selftest.ts
+├── frontend/                # Vue 3 前端
+│   ├── src/pages/           # 首页、行情、交易、持仓、资产、订单、设置
+│   ├── src/components/      # 图表、下单面板、币种图标等
+│   └── src/stores/          # 行情、订单、持仓、资产、模式
+├── desktop/                 # Electron 桌面打包
+├── docs/screenshots/        # README 截图
+├── scripts/                 # 一键启动/停止 PowerShell 脚本
+├── start-dev.bat            # Windows 一键启动
+├── stop-dev.bat             # Windows 一键停止
+├── *_设计.md                # 产品、接口、数据库、模块设计文档
+└── README.md
+```
+
+## 快速启动（Windows）
+
+### 一键启动
+
+双击根目录的：
+
+```text
+start-dev.bat
+```
+
+脚本会：
+
+1. 检查 Node.js / npm
+2. 检查 `3000`、`5173` 端口
+3. 首次运行自动安装前后端依赖
+4. 新窗口启动后端和前端
+5. 等待端口就绪后打开浏览器
+
+启动后：
+
+- 前端：<http://127.0.0.1:5173/>
+- 后端：<http://127.0.0.1:3000/api/v1/health>
+
+### 一键停止
+
+```text
+stop-dev.bat
+```
+
+会按启动时保存的 PID 结束前后端进程树，并清理 `.dev-pids.json`；如果 PID 文件丢失，会按端口兜底清理。
+
+### 没有安装 Node.js 时
+
+如果机器没有系统级 `node`/`npm`，但依赖已经安装过，脚本会尝试使用 DSH 桌面端自带的 Node 构建后端并启动前端。
+
+如果 `node_modules` 也不存在，脚本会提示先安装 [Node.js 18+](https://nodejs.org/)，然后执行：
+
+```bash
+cd backend
+npm install
+cd ../frontend
+npm install
+```
+
+### 手动启动
+
+```bash
+# 后端
+cd backend
+npm install
+npm run start:dev
+
+# 前端（新终端）
+cd frontend
+npm install
+npm run dev
+```
+
+## 数据与接口
+
+### 行情数据源
+
+| 交易所 | API | 交易对格式 |
+|---|---|---|
+| OKX | `https://www.okx.com/api/v5` | `BTC-USDT-SWAP` |
+| Binance | `https://fapi.binance.com/fapi/v1` | `BTCUSDT` |
+| Coinbase | `https://api.exchange.coinbase.com` | `BTC-USD` |
+
+### 股票代币识别
+
+OKX `/public/instruments?instType=SWAP` 返回的 `instCategory`：
+
+- `1`：加密货币
+- `3`：股票代币
+
+后端会将结果统一成：
+
+```json
+{
+  "symbol": "AAPL-USDT-SWAP",
+  "baseCoin": "AAPL",
+  "assetClass": "stock"
+}
+```
+
+### 常用接口
+
+```text
+GET /api/v1/market/symbols?exchange=okx
+GET /api/v1/market/tickers?exchange=okx
+GET /api/v1/market/klines?symbol=AAPL-USDT-SWAP&interval=5m&exchange=okx
+GET /api/v1/market/klines?symbol=BTCUSDT&interval=5m&exchange=binance
+GET /api/v1/market/klines?symbol=BTC-USD&interval=5m&exchange=coinbase
+GET /api/v1/market/depth?symbol=AAPL-USDT-SWAP&exchange=okx
+GET /api/v1/market/trades?symbol=AAPL-USDT-SWAP&exchange=okx
+```
+
+接口设计详见 [前后端接口设计.md](前后端接口设计.md)。
+
+## 模拟盘规则
+
+| 项目 | 规则 |
+|---|---|
+| 初始资金 | 100,000 USDT |
+| 保证金模式 | 逐仓、单向持仓 |
+| 杠杆 | 1–50x |
+| Taker 手续费 | 0.05% × 名义价值 |
+| Maker 手续费 | 0.02% × 名义价值 |
+| 维持保证金率 | 0.5% × 标记价值 |
+| 市价成交 | 买一/卖一 + 0.02% 滑点 |
+| 限价单 | 冻结保证金，后台每 3 秒撮合，可撤单 |
+| 止盈止损 | 后台按标记价触发市价平仓 |
+| 强平 | `margin + uPnL <= 维持保证金` 时平仓 |
+
+- 可用余额 = 钱包余额 − 持仓保证金 − 挂单冻结
+- 权益 = 钱包余额 + 未实现盈亏
+- 同一币种在不同交易所是独立持仓，例如 `BTC-USDT-SWAP` 与 `BTC-USD` 不互相覆盖
+
+## 测试与构建
+
+```bash
+# 模拟盘账务自测（21 项）
+cd backend
+npm run test:simulation
+
+# 后端类型检查 + 构建
+npx tsc --noEmit
+npm run build
+
+# 前端类型检查 + 构建
+cd ../frontend
+npx vue-tsc --noEmit
+npm run build
+```
+
+## 当前限制
+
+- 当前是**单演示账户**，没有 JWT 登录、用户隔离和多用户并发控制
+- 运行时使用 JSON 持久化，Prisma schema 尚未接入实际业务
+- 实盘 API 目前只支持查询余额/持仓/委托，**没有真实下单/撤单**
+- 股票代币只有 OKX 提供；Binance/Coinbase 当前没有
+- Coinbase 没有批量 ticker 接口，先接入 8 个主流 USD 对，避免全量请求被限流
+- 资金费率、按品种动态杠杆、后台管理系统尚未实现
+
+## 后续路线
+
+1. 接入 JWT + 数据库，完成用户隔离
+2. 增加真实盘下单适配器、订单回报同步和密钥加密
+3. 完善限价撮合、资金费率、动态保证金和风控后台
+4. 优化移动端导航和桌面打包
+5. 增加单元测试、接口测试和 CI
+
+## 文档
+
+- [真实与模拟期货交易平台完整方案](真实与模拟期货交易平台完整方案.md)
+- [前后端接口设计](前后端接口设计.md)
+- [数据库表结构设计](数据库表结构设计.md)
+- [前端页面字段清单](前端页面字段清单.md)
+- [后端模块拆分与开发顺序](后端模块拆分与开发顺序.md)
+
+## License
+
+MIT

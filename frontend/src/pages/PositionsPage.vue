@@ -20,7 +20,12 @@
         </thead>
         <tbody>
           <tr v-for="item in livePositions" :key="item.id">
-            <td>{{ item.symbol }}</td>
+            <td>
+              <div class="symbol-cell">
+                <CoinIcon :symbol="item.symbol" :size="24" />
+                <span>{{ item.symbol }}</span>
+              </div>
+            </td>
             <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? $t('positions.long') : $t('positions.short') }}</td>
             <td>{{ item.leverage }}x</td>
             <td>{{ item.qty }}</td>
@@ -84,6 +89,7 @@ import { useMarketStore } from '../stores/market';
 import { useOrderStore } from '../stores/orders';
 import { usePositionStore } from '../stores/positions';
 import { useAssetStore } from '../stores/assets';
+import CoinIcon from '../components/common/CoinIcon.vue';
 import { positionApi } from '../api/services';
 import type { OrderItem, PositionItem } from '../api/types';
 import { formatSignedValue, getTrendClass } from '../utils/format';
@@ -162,6 +168,13 @@ watch(
 </script>
 
 <style scoped>
+.symbol-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .action-btn {
   padding: 4px 10px;
   border: 1px solid var(--color-down);

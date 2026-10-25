@@ -32,3 +32,6 @@ desktop/.electron-cache/
 *.zip
 OKX-Trading-Setup/
 
+# 一键启动脚本生成的进程信息
+.dev-pids.json
+

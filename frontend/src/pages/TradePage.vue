@@ -1,6 +1,27 @@
 <template>
   <!-- 交易页面容器 -->
   <div class="page trade-page">
+    <!-- 交易所切换：K 线/盘口/成交统一跟随 -->
+    <section class="card exchange-switcher">
+      <div class="exchange-tabs">
+        <button
+          v-for="item in exchanges"
+          :key="item.value"
+          :class="['exchange-tab', { active: marketStore.exchange === item.value }]"
+          :disabled="isStockToken && item.value !== 'okx'"
+          :title="isStockToken && item.value !== 'okx' ? '股票代币目前只支持 OKX' : ''"
+          @click="switchExchange(item.value)"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+      <div class="exchange-meta">
+        <span v-if="isStockToken" class="asset-badge">股票代币</span>
+        <span class="status-text">当前行情：{{ exchangeLabel }}</span>
+        <span class="exchange-symbol">{{ currentSymbol }}</span>
+      </div>
+    </section>
+
     <!-- K 线 + 下单区: 并排 -->
     <section class="kline-order-grid">
       <KlineChart
@@ -54,9 +75,12 @@
         </div>
 
         <RouterLink v-for="item in relatedTickers" :key="item.symbol" :to="`/trade/${item.symbol}`" class="watch-row">
-          <div>
-            <div class="watch-symbol">{{ item.symbol }}</div>
-            <div class="watch-volume">24H 量 {{ item.volume24h }}</div>
+          <div class="watch-left">
+            <CoinIcon :symbol="item.symbol" :size="26" :asset-class="item.assetClass" />
+            <div>
+              <div class="watch-symbol">{{ item.symbol }}</div>
+              <div class="watch-volume">24H 量 {{ item.volume24h }}</div>
+            </div>
           </div>
           <div class="watch-price-block">
             <strong>{{ item.lastPrice }}</strong>
@@ -115,7 +139,9 @@
 // Vue 响应式工具、生命周期与侦听器
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 // Vue Router 导航组件
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
+// 币种图标组件
+import CoinIcon from '../components/common/CoinIcon.vue';
 // 盘口深度组件
 import DepthPanel from '../components/trade/DepthPanel.vue';
 // K 线图组件
@@ -136,6 +162,8 @@ import { useOrderStore } from '../stores/orders';
 import { usePositionStore } from '../stores/positions';
 // 数值格式化与涨跌颜色工具函数
 import { formatPercent, getTrendClass } from '../utils/format';
+// 交易对格式转换
+import { isSymbolForExchange, toExchangeSymbol, type ExchangeId } from '../utils/symbol';
 // 国际化
 import { $t } from '../utils/i18n';
 
@@ -143,24 +171,44 @@ import { $t } from '../utils/i18n';
 const props = defineProps<{ symbol?: string }>();
 
 // 各 Store 实例
+const route = useRoute();
+const router = useRouter();
 const marketStore = useMarketStore();
+
+// 股票代币只有 OKX 有；带着 asset=stock 进入时强制切回 OKX。
+if (route.query.asset === 'stock' && marketStore.exchange !== 'okx') {
+  marketStore.setExchange('okx');
+}
 const assetStore = useAssetStore();
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
 
+// 交易页支持的行情交易所
+const exchanges = [
+  { value: 'okx' as const, label: 'OKX' },
+  { value: 'binance' as const, label: 'Binance' },
+  { value: 'coinbase' as const, label: 'Coinbase' },
+];
+
 // K 线时间间隔
 const klineInterval = ref('5m');
 // K 线点击价格（传递给下单表单）
 const klineClickPrice = ref<number | null>(null);
-// 当前交易品种（根据交易所自适应）
-const currentSymbol = computed(() => {
-  const raw = props.symbol || 'BTC-USDT-SWAP';
-  if (marketStore.exchange === 'uniswap') {
-    return raw.replace('-SWAP', '');
-  }
-  return raw;
-});
+// 当前交易品种：路由里可能是 OKX 格式，按当前交易所转换成 BTCUSDT / BTC-USD
+const currentSymbol = computed(() =>
+  toExchangeSymbol(props.symbol || 'BTC-USDT-SWAP', marketStore.exchange),
+);
+
+// 当前是否股票代币：路由标记或 OKX 元数据
+const isStockToken = computed(
+  () =>
+    route.query.asset === 'stock' ||
+    marketStore.stockSymbols.some((item) => item.symbol === currentSymbol.value) ||
+    marketStore.symbols.some(
+      (item) => item.symbol === currentSymbol.value && item.assetClass === 'stock',
+    ),
+);
 // 当前品种行情数据
 const currentTicker = computed(() => marketStore.tickerMap[currentSymbol.value] || null);
 // 利用 WebSocket 实时行情重算持仓盈亏和标记价
@@ -190,13 +238,18 @@ const currentPosition = computed(
   () => livePositions.value.find((p) => p.symbol === currentSymbol.value) || null,
 );
 
-// 相关品种行情：按 24H 成交量排序，避免展示任意几条冷门合约
+// 相关品种行情：股票代币只显示股票代币，加密货币只显示加密货币
 const relatedTickers = computed(() => {
-  const source = marketStore.tickers.filter((item) => item.symbol !== currentSymbol.value);
-  const sorted = [...source].sort(
-    (a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0),
+  const pool = isStockToken.value ? marketStore.stockTickers : marketStore.tickers;
+  const source = pool.filter(
+    (item) =>
+      item.symbol !== currentSymbol.value &&
+      (item.assetClass === 'stock') === isStockToken.value &&
+      isSymbolForExchange(item.symbol, marketStore.exchange),
   );
-  return (sorted.length ? sorted : [...marketStore.tickers]).slice(0, 4);
+  return [...source]
+    .sort((a, b) => Number(b.volume24h || 0) - Number(a.volume24h || 0))
+    .slice(0, 4);
 });
 // 最近成交（取最新 15 条）
 const visibleTrades = computed(() => marketStore.recentTrades.slice(0, 15));
@@ -210,6 +263,7 @@ async function loadTradePageData() {
   await Promise.all([
     marketStore.fetchSymbols(),
     marketStore.fetchTickers(),
+    marketStore.fetchStockMarkets(),
     marketStore.fetchKlines(currentSymbol.value, klineInterval.value),
     marketStore.fetchDepth(currentSymbol.value),
     marketStore.fetchRecentTrades(currentSymbol.value),
@@ -230,10 +284,13 @@ function handleKlineClickPrice(price: number) {
   klineClickPrice.value = price;
 }
 
-// 切换交易所
-async function switchExchange(exch: 'okx' | 'binance' | 'uniswap' | 'polymarket') {
+// 切换交易所：把当前币种转换成目标交易所的原生 symbol，并更新路由
+async function switchExchange(exch: ExchangeId) {
+  if (marketStore.exchange === exch) return;
+  if (isStockToken.value && exch !== 'okx') return;
+  const target = toExchangeSymbol(currentSymbol.value, exch);
   marketStore.setExchange(exch);
-  await loadTradePageData();
+  await router.replace(`/trade/${target}`);
 }
 
 // 平仓后刷新
@@ -254,7 +311,7 @@ async function handleOrderSubmitted() {
   ]);
 }
 
-// 监听品种或模式变化，重新加载数据
+// 监听品种或模式变化，重新加载数据（切换交易所会同步更新路由 symbol）
 watch(
   () => [props.symbol, modeStore.mode],
   () => {
@@ -275,6 +332,7 @@ const exchangeLabel = computed(() => {
   const labels: Record<string, string> = {
     okx: 'OKX',
     binance: 'Binance',
+    coinbase: 'Coinbase',
     uniswap: 'Uniswap',
     polymarket: 'Polymarket',
   };
@@ -369,6 +427,71 @@ onBeforeUnmount(() => {
   margin-top: 8px;
   color: var(--text-primary);
   line-height: 1.6;
+}
+
+/* 交易所切换条 */
+.exchange-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+}
+
+.exchange-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.exchange-tab {
+  padding: 7px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.exchange-tab.active {
+  border-color: rgba(187, 255, 39, 0.36);
+  background: rgba(187, 255, 39, 0.12);
+  color: #bbff27;
+}
+
+.exchange-tab:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.asset-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.16);
+  color: #60a5fa;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.exchange-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.exchange-symbol {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 自选品种左侧图标 + 文案 */
+.watch-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 /* 摘要行四栏网格 */

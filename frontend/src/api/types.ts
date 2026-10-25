@@ -82,6 +82,7 @@ export interface MarketSymbol {
   minQty: string;          // 最小交易数量
   pricePrecision: number;  // 价格精度
   qtyPrecision: number;    // 数量精度
+  assetClass?: 'crypto' | 'stock'; // 加密货币 / 股票代币
   question?: string;       // 预测市场问题（Polymarket）
   polymarketId?: string;   // Polymarket ID
 }
@@ -103,6 +104,7 @@ export interface TickerItem {
   low24h: string;               // 24 小时最低价
   volume24h: string;            // 24 小时成交量
   priceChangePercent24h: string; // 24 小时涨跌幅
+  assetClass?: 'crypto' | 'stock'; // 加密货币 / 股票代币
   question?: string;            // 预测市场问题
   polymarketId?: string;        // Polymarket ID
 }
