@@ -15,6 +15,11 @@ function normalizeDepth(levels: [string, string][], reverse = false): DepthLevel
 
 const WS_EXCHANGES = ['okx', 'binance'];
 
+// 图表一次加载的历史 K 线根数；200 根太少，向左拖动很快就看不到更早的行情。
+const KLINE_LIMIT = 1000;
+// 前端最多保留的 K 线数量，防止长时间运行后数组无限增长。
+const KLINE_MAX_CANDLES = 2000;
+
 export const useMarketStore = defineStore('market', () => {
   const exchange = ref<'okx' | 'binance' | 'coinbase' | 'uniswap'>('okx');
   const symbols = ref<MarketSymbol[]>([]);
@@ -44,6 +49,8 @@ export const useMarketStore = defineStore('market', () => {
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let klinePollTimer: ReturnType<typeof setInterval> | null = null;
   let globalTickerTimer: ReturnType<typeof setInterval> | null = null;
+  // 1 秒周期等高频刷新下请求可能并发返回，用序号丢弃过期响应
+  let klineRequestSeq = 0;
 
   function stopPolling() {
     if (pollTimer) {
@@ -129,14 +136,18 @@ export const useMarketStore = defineStore('market', () => {
 
     socket.on('kline', (msg: { data: KlineItem }) => {
       if (msg.data) {
-        const idx = klines.value.findIndex((k) => k.openTime === msg.data.openTime);
+        // klines 统一保持「由新到旧」：新 K 线插到最前面，旧 K 线补到末尾。
+        const list = klines.value;
+        const idx = list.findIndex((k) => k.openTime === msg.data.openTime);
         if (idx >= 0) {
-          klines.value[idx] = msg.data;
+          list[idx] = msg.data;
+        } else if (!list.length || msg.data.openTime > list[0].openTime) {
+          list.unshift(msg.data);
         } else {
-          klines.value.push(msg.data);
-          if (klines.value.length > 300) klines.value.shift();
+          list.push(msg.data);
         }
-        klines.value = [...klines.value];
+        if (list.length > KLINE_MAX_CANDLES) list.splice(KLINE_MAX_CANDLES);
+        klines.value = [...list];
       }
     });
 
@@ -283,18 +294,22 @@ export const useMarketStore = defineStore('market', () => {
   }
 
   async function fetchKlines(symbol: string, interval = '5m') {
+    const seq = ++klineRequestSeq;
     chartLoading.value = true;
     error.value = '';
     try {
-      const data = await marketApi.getKlines(symbol, interval, exchange.value);
+      const data = await marketApi.getKlines(symbol, interval, exchange.value, KLINE_LIMIT);
+      // 快速切换周期/品种时，旧请求可能后返回，不能覆盖新数据
+      if (seq !== klineRequestSeq) return klines.value;
       klines.value = data.list;
       return klines.value;
     } catch (err) {
+      if (seq !== klineRequestSeq) return klines.value;
       error.value = (err as Error)?.message || '获取K线失败';
       klines.value = [];
       return [];
     } finally {
-      chartLoading.value = false;
+      if (seq === klineRequestSeq) chartLoading.value = false;
     }
   }
 

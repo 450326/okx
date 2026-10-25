@@ -25,15 +25,28 @@ export class MarketController {
     return ok({ list });
   }
 
-  // 获取 K 线数据，支持指定周期和交易所
+  // 获取 K 线数据，支持指定周期、交易所和历史根数
   @Get('klines')
   async getKlines(
     @Query('symbol') symbol = 'BTC-USDT-SWAP',
     @Query('interval') interval = '5m',
     @Query('exchange') exchange = 'okx',
+    @Query('limit') limit?: string,
   ) {
-    const list = await this.marketService.getKlines(symbol, interval, exchange);
+    const list = await this.marketService.getKlines(
+      symbol,
+      interval,
+      exchange,
+      this.parseLimit(limit),
+    );
     return ok({ symbol, interval, list });
+  }
+
+  // 把 limit 查询参数转成正整数；非法值交给 service 使用默认根数
+  private parseLimit(value?: string): number | undefined {
+    if (value === undefined || value === '') return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : undefined;
   }
 
   // 获取订单簿深度数据

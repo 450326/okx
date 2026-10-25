@@ -92,7 +92,7 @@
         <div class="risk-box">
           <div class="risk-title">交易风险提示</div>
           <div class="risk-copy">
-            实盘前确认杠杆、止盈止损与 API 权限；高波动时优先使用限价单并关注强平价变化。
+            下单前确认杠杆、止盈止损与 API 权限；高波动时优先使用限价单并关注强平价变化。
           </div>
         </div>
       </section>

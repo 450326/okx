@@ -2,7 +2,6 @@
   <section class="card order-panel">
     <div class="order-head">
       <h2 class="section-title">{{ $t('order.title') }}</h2>
-      <span class="mode-badge">{{ modeStore.modeLabel }}</span>
     </div>
 
     <div class="trade-action-toggle">
@@ -309,15 +308,6 @@ onMounted(() => {
 
 .order-head .section-title {
   margin: 0;
-}
-
-.mode-badge {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(187, 255, 39, 0.14);
-  color: #bbff27;
-  font-size: 11px;
-  font-weight: 700;
 }
 
 .trade-action-toggle {

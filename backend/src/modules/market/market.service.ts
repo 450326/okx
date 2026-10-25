@@ -60,6 +60,19 @@ const OKX_INTERVAL_MAP: Record<string, string> = {
   '1d': '1D',
 };
 
+/**
+ * K 线默认返回根数。
+ *
+ * 之前固定 200 根，图表向前拖动很快就会撞到空白，用户会以为拖动失效；
+ * 这里默认一次拉取 1000 根，并允许调用方通过 limit 调整。
+ */
+const DEFAULT_KLINE_LIMIT = 1000;
+const MAX_KLINE_LIMIT = 1500;
+/** OKX /market/candles 单次最多 300 根，超出需要按时间向前翻页。 */
+const OKX_KLINE_PAGE_SIZE = 300;
+/** Coinbase 蜡烛接口单次最多 300 根。 */
+const COINBASE_KLINE_PAGE_SIZE = 300;
+
 interface OkxTicker {
   instId: string;
   last: string;
@@ -537,49 +550,90 @@ export class MarketService {
   }
 
   // 获取 K 线数据，支持多交易所
-  async getKlines(symbol: string, interval: string, exchange: string = 'okx') {
+  async getKlines(
+    symbol: string,
+    interval: string,
+    exchange: string = 'okx',
+    limit?: number,
+  ) {
+    const safeLimit = this.clampKlineLimit(limit);
     if (exchange === 'okx') {
-      return this.getOkxKlines(symbol, interval);
+      return this.getOkxKlines(symbol, interval, safeLimit);
     }
     if (exchange === 'binance') {
-      return this.getBinanceKlines(symbol, interval);
+      return this.getBinanceKlines(symbol, interval, safeLimit);
     }
     if (exchange === 'coinbase') {
-      return this.getCoinbaseKlines(symbol, interval);
+      return this.getCoinbaseKlines(symbol, interval, safeLimit);
     }
     return this.dexService.getKlines(symbol, interval);
   }
 
-  // 获取 OKX K 线数据
-  private async getOkxKlines(symbol: string, interval: string) {
-    const bar = OKX_INTERVAL_MAP[interval] || interval;
-    const raw = await this.fetchOkxList<string[]>('/market/candles', {
-      instId: toOkxSymbol(symbol),
-      bar,
-      limit: '200',
-    });
-    if (!raw.length) return [];
+  // 限制单次 K 线根数，避免异常参数拖垮上游接口
+  private clampKlineLimit(limit?: number): number {
+    if (limit === undefined || limit === null) return DEFAULT_KLINE_LIMIT;
+    const parsed = Math.trunc(Number(limit));
+    if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_KLINE_LIMIT;
+    return Math.min(Math.max(parsed, 1), MAX_KLINE_LIMIT);
+  }
 
-    return raw.map((c) => ({
-      openTime: Number(c[0]),
-      open: c[1],
-      high: c[2],
-      low: c[3],
-      close: c[4],
-      volume: c[5],
-    }));
+  // 获取 OKX K 线数据：单次最多 300 根，按 after 向更早翻页
+  private async getOkxKlines(symbol: string, interval: string, limit: number) {
+    const bar = OKX_INTERVAL_MAP[interval] || interval;
+    const instId = toOkxSymbol(symbol);
+    const collected = new Map<number, string[]>();
+    let after: string | undefined;
+    let previousOldest = Number.POSITIVE_INFINITY;
+
+    while (collected.size < limit) {
+      const pageLimit = Math.min(OKX_KLINE_PAGE_SIZE, limit - collected.size);
+      const params: Record<string, string> = {
+        instId,
+        bar,
+        limit: String(pageLimit),
+      };
+      if (after) params.after = after;
+
+      const raw = await this.fetchOkxList<string[]>('/market/candles', params);
+      if (!raw.length) break;
+
+      let oldest = Number.POSITIVE_INFINITY;
+      for (const candle of raw) {
+        const openTime = Number(candle[0]);
+        if (!Number.isFinite(openTime)) continue;
+        collected.set(openTime, candle);
+        oldest = Math.min(oldest, openTime);
+      }
+
+      // 本页没有带来更早的数据时停止，避免上游忽略 after 造成死循环
+      if (!Number.isFinite(oldest) || oldest >= previousOldest) break;
+      previousOldest = oldest;
+      after = String(oldest);
+    }
+
+    return Array.from(collected.values())
+      .sort((a, b) => Number(b[0]) - Number(a[0]))
+      .slice(0, limit)
+      .map((c) => ({
+        openTime: Number(c[0]),
+        open: c[1],
+        high: c[2],
+        low: c[3],
+        close: c[4],
+        volume: c[5],
+      }));
   }
 
   // 获取 Binance K 线数据
-  private async getBinanceKlines(symbol: string, interval: string) {
+  private async getBinanceKlines(symbol: string, interval: string, limit: number) {
     const raw = await this.getBinance<string[][]>('/klines', {
       symbol: toBinanceSymbol(symbol),
       interval,
-      limit: 200,
+      limit,
     });
     if (!raw) return [];
 
-    // Binance 返回由旧到新；统一成 OKX 的由新到旧，前端 KlineChart 会再 reverse。
+    // Binance 返回由旧到新；统一成 OKX 的由新到旧。
     return raw
       .map((c) => ({
         openTime: Number(c[0]),
@@ -589,11 +643,11 @@ export class MarketService {
         close: c[4],
         volume: c[5],
       }))
-      .reverse();
+      .sort((a, b) => b.openTime - a.openTime);
   }
 
-  // 获取 Coinbase K 线数据
-  private async getCoinbaseKlines(symbol: string, interval: string) {
+  // 获取 Coinbase K 线数据：按时间窗口向前翻页，再按需要聚合
+  private async getCoinbaseKlines(symbol: string, interval: string, limit: number) {
     const productId = toCoinbaseProduct(symbol);
     const config: Record<string, { granularity: number; factor: number }> = {
       '1m': { granularity: 60, factor: 1 },
@@ -608,76 +662,98 @@ export class MarketService {
     // Coinbase 不支持秒级 K 线。
     if (!target) return [];
 
-    const end = Math.floor(Date.now() / 1000);
-    const start = end - target.granularity * 300;
-    try {
-      const res = await axios.get<number[][]>(`${COINBASE_BASE}/products/${productId}/candles`, {
-        params: { granularity: target.granularity, start, end },
-        timeout: 10000,
-        httpsAgent: this.coinbaseAgent,
-        proxy: false,
-      });
-      const rows = (res.data || []).slice().sort((a, b) => a[0] - b[0]);
-      if (!rows.length) return [];
+    type CoinbaseCandleRow = {
+      openTime: number;
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+      volume: number;
+    };
 
-      type CoinbaseCandleRow = {
-        openTime: number;
-        open: number;
-        high: number;
-        low: number;
-        close: number;
-        volume: number;
-      };
+    const collected = new Map<number, CoinbaseCandleRow>();
+    // factor > 1 需要用更细周期的蜡烛聚合，因此按目标根数 * factor 拉取原始蜡烛。
+    const rawTarget = Math.min(limit * target.factor, MAX_KLINE_LIMIT);
+    let cursorEnd = Math.floor(Date.now() / 1000);
 
-      const candles: CoinbaseCandleRow[] = rows.map((c) => ({
-        openTime: c[0] * 1000,
-        low: c[1],
-        high: c[2],
-        open: c[3],
-        close: c[4],
-        volume: c[5],
-      }));
+    while (collected.size < rawTarget) {
+      const start = cursorEnd - target.granularity * (COINBASE_KLINE_PAGE_SIZE - 1);
+      if (start <= 0) break;
 
-      const aggregated: CoinbaseCandleRow[] = [];
-      if (target.factor <= 1) {
-        aggregated.push(...candles);
-      } else {
-        const bucketMs = target.granularity * 1000 * target.factor;
-        const groups = new Map<number, CoinbaseCandleRow[]>();
-        for (const candle of candles) {
-          const bucket = Math.floor(candle.openTime / bucketMs) * bucketMs;
-          if (!groups.has(bucket)) groups.set(bucket, []);
-          groups.get(bucket)!.push(candle);
-        }
-        for (const [bucket, group] of groups) {
-          aggregated.push({
-            openTime: bucket,
-            open: group[0].open,
-            high: Math.max(...group.map((c) => Number(c.high))),
-            low: Math.min(...group.map((c) => Number(c.low))),
-            close: group[group.length - 1].close,
-            volume: group.reduce((sum, c) => sum + Number(c.volume), 0),
+      try {
+        const res = await axios.get<number[][]>(`${COINBASE_BASE}/products/${productId}/candles`, {
+          params: { granularity: target.granularity, start, end: cursorEnd },
+          timeout: 10000,
+          httpsAgent: this.coinbaseAgent,
+          proxy: false,
+        });
+        const rows = (res.data || []).slice().sort((a, b) => a[0] - b[0]);
+        if (!rows.length) break;
+
+        let earliest = Number.POSITIVE_INFINITY;
+        for (const c of rows) {
+          const openTime = Number(c[0]) * 1000;
+          if (!Number.isFinite(openTime)) continue;
+          collected.set(openTime, {
+            openTime,
+            low: c[1],
+            high: c[2],
+            open: c[3],
+            close: c[4],
+            volume: c[5],
           });
+          earliest = Math.min(earliest, Number(c[0]));
         }
-      }
 
-      // 统一成由新到旧，并限制 200 根。
-      return aggregated
-        .sort((a, b) => a.openTime - b.openTime)
-        .reverse()
-        .slice(0, 200)
-        .map((c) => ({
-          openTime: c.openTime,
-          open: String(c.open),
-          high: String(c.high),
-          low: String(c.low),
-          close: String(c.close),
-          volume: String(c.volume),
-        }));
-    } catch (error) {
-      this.logger.warn(`获取 Coinbase ${productId} K 线失败: ${(error as Error).message}`);
-      return [];
+        if (!Number.isFinite(earliest) || earliest >= cursorEnd) break;
+        cursorEnd = earliest - 1;
+      } catch (error) {
+        this.logger.warn(`获取 Coinbase ${productId} K 线失败: ${(error as Error).message}`);
+        // 已经拿到部分历史时继续返回，避免一次失败把整张图清空。
+        if (!collected.size) return [];
+        break;
+      }
     }
+
+    if (!collected.size) return [];
+
+    const candles = Array.from(collected.values()).sort((a, b) => a.openTime - b.openTime);
+    const aggregated: CoinbaseCandleRow[] = [];
+    if (target.factor <= 1) {
+      aggregated.push(...candles);
+    } else {
+      const bucketMs = target.granularity * 1000 * target.factor;
+      const groups = new Map<number, CoinbaseCandleRow[]>();
+      for (const candle of candles) {
+        const bucket = Math.floor(candle.openTime / bucketMs) * bucketMs;
+        if (!groups.has(bucket)) groups.set(bucket, []);
+        groups.get(bucket)!.push(candle);
+      }
+      for (const [bucket, group] of groups) {
+        aggregated.push({
+          openTime: bucket,
+          open: group[0].open,
+          high: Math.max(...group.map((c) => Number(c.high))),
+          low: Math.min(...group.map((c) => Number(c.low))),
+          close: group[group.length - 1].close,
+          volume: group.reduce((sum, c) => sum + Number(c.volume), 0),
+        });
+      }
+    }
+
+    // 统一成由新到旧，最多返回 limit 根。
+    return aggregated
+      .sort((a, b) => a.openTime - b.openTime)
+      .reverse()
+      .slice(0, limit)
+      .map((c) => ({
+        openTime: c.openTime,
+        open: String(c.open),
+        high: String(c.high),
+        low: String(c.low),
+        close: String(c.close),
+        volume: String(c.volume),
+      }));
   }
 
   // 获取深度数据，支持多交易所

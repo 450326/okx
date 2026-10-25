@@ -1,13 +1,11 @@
 // 导入 Vue 响应式 API
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 // 导入 Pinia 状态管理
 import { defineStore } from 'pinia';
 // 导入账户 API
 import { accountApi } from '../api/services';
 // 导入交易模式类型
 import type { TradeMode } from '../api/types';
-// 导入国际化
-import { $t } from '../utils/i18n';
 
 // 交易模式状态 store
 export const useModeStore = defineStore('mode', () => {
@@ -17,9 +15,6 @@ export const useModeStore = defineStore('mode', () => {
   const loading = ref(false);
   // 错误信息
   const error = ref('');
-
-  // 交易模式国际化标签
-  const modeLabel = computed(() => (mode.value === 'simulation' ? $t('equity.simulation') : $t('equity.live')));
 
   // 从服务端获取当前交易模式
   async function fetchMode() {
@@ -66,7 +61,6 @@ export const useModeStore = defineStore('mode', () => {
     mode,
     loading,
     error,
-    modeLabel,
     fetchMode,
     updateMode,
     toggleMode,

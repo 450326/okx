@@ -95,9 +95,9 @@ export const marketApi = {
   getDepth(symbol: string, exchange?: string, limit = 20) {
     return get<DepthResponse>('/market/depth', { symbol, limit, exchange });
   },
-  // 获取 K 线数据
-  getKlines(symbol: string, interval = '5m', exchange?: string) {
-    return get<KlineResponse>('/market/klines', { symbol, interval, exchange });
+  // 获取 K 线数据（默认 1000 根，避免图表向左拖动时没有历史）
+  getKlines(symbol: string, interval = '5m', exchange?: string, limit = 1000) {
+    return get<KlineResponse>('/market/klines', { symbol, interval, exchange, limit });
   },
   // 获取近期成交
   getTrades(symbol: string, exchange?: string) {

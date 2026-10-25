@@ -6,7 +6,7 @@
       <div class="home-toolbar">
         <div class="toolbar-copy">
           <h1 class="home-title">交易看板</h1>
-          <p class="home-subtitle">模拟盘 · {{ modeStore.modeLabel }} · 实时行情</p>
+          <p class="home-subtitle">{{ $t('home.subtitle') }}</p>
         </div>
 
         <div class="search-wrap">
@@ -79,7 +79,7 @@
 
       <!-- 资金曲线图 -->
       <section class="card equity-curve-card">
-        <EquityChart v-model:mode="modeStore.mode" range="30d" />
+        <EquityChart :mode="modeStore.mode" range="30d" />
       </section>
 
       <!-- 紧凑行情卡 -->
@@ -98,7 +98,6 @@
             </span>
           </div>
           <div class="hero-side">
-            <div class="hero-mode-text">{{ $t('trade.currentMode') }}：{{ modeStore.modeLabel }}</div>
             <RouterLink class="ghost-btn" :to="`/trade/${currentTicker?.symbol || 'BTC-USDT-SWAP'}`">
               {{ $t('nav.trade') }}
             </RouterLink>
@@ -250,10 +249,6 @@
       <div class="card account-summary">
         <h2 class="section-title">{{ $t('home.accountSummary') }}</h2>
         <div class="summary-grid">
-          <div class="summary-item">
-            <span>{{ $t('home.currentMode') }}</span>
-            <strong>{{ modeStore.modeLabel }}</strong>
-          </div>
           <div class="summary-item">
             <span>{{ $t('home.availableBalance') }}</span>
             <strong>{{ formatCurrency(assetStore.snapshot?.availableBalance) }}</strong>
@@ -1027,12 +1022,6 @@ watch(
   background: rgba(255, 255, 255, 0.06);
   font-size: 13px;
   font-weight: 800;
-}
-
-.hero-mode-text {
-  margin-top: 6px;
-  color: var(--text-secondary);
-  font-size: 13px;
 }
 
 .hero-compact-row {

@@ -2,6 +2,82 @@
   <div class="page">
     <h1 class="page-title">{{ $t('positions.pageTitle') }}</h1>
 
+    <!-- 预测市场持仓：与合约交易对分开成组，避免和永续持仓混在一起 -->
+    <section class="card prediction-section">
+      <div class="section-head">
+        <div class="section-title-group">
+          <h2 class="section-title">{{ $t('positions.predictionPositions') }}</h2>
+        </div>
+        <div class="prediction-totals">
+          <span>
+            {{ $t('prediction.holdingsValue') }}
+            <strong>{{ formatCurrency(predictionValue) }}</strong>
+          </span>
+          <span>
+            {{ $t('prediction.holdingsPnl') }}
+            <strong :class="getTrendClass(predictionPnl)">{{ formatSignedCurrency(predictionPnl) }}</strong>
+          </span>
+        </div>
+      </div>
+      <p class="status-text prediction-hint">{{ $t('positions.predictionPositionsHint') }}</p>
+
+      <div class="table-scroll">
+        <table class="table prediction-table">
+          <thead>
+            <tr>
+              <th>{{ $t('positions.predictionMarket') }}</th>
+              <th>{{ $t('prediction.outcome') }}</th>
+              <th>{{ $t('positions.qty') }}</th>
+              <th>{{ $t('positions.entryProbability') }}</th>
+              <th>{{ $t('positions.markProbability') }}</th>
+              <th>{{ $t('positions.currentValue') }}</th>
+              <th>{{ $t('positions.pnl') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in predictionStore.positions" :key="item.id">
+              <td>
+                <RouterLink :to="`/prediction/${item.slug}`" class="prediction-market">
+                  <span class="prediction-question">{{ item.question }}</span>
+                  <span v-if="item.eventTitle" class="prediction-event">{{ item.eventTitle }}</span>
+                </RouterLink>
+              </td>
+              <td>
+                <span :class="['outcome-badge', item.outcome]">
+                  {{ item.outcomeName || item.outcome.toUpperCase() }}
+                </span>
+              </td>
+              <td>{{ item.qty }}</td>
+              <td>{{ formatCents(item.entryPrice) }}</td>
+              <td>{{ formatCents(item.markPrice) }}</td>
+              <td>{{ formatCurrency(item.currentValue) }}</td>
+              <td :class="getTrendClass(item.unrealizedPnl)">
+                <div class="pnl-main">{{ formatSignedCurrency(item.unrealizedPnl) }}</div>
+                <div class="pnl-sub">{{ formatRoe(item.roe) }}</div>
+              </td>
+              <td>
+                <button
+                  class="action-btn"
+                  :disabled="closingPredictionId === item.id"
+                  @click="handleClosePrediction(item)"
+                >
+                  {{ closingPredictionId === item.id ? '...' : $t('prediction.closePosition') }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-if="predictionStore.positionsLoading && !predictionStore.positions.length" class="empty-state">
+        {{ $t('common.loading') }}
+      </div>
+      <div v-else-if="!predictionStore.positions.length" class="empty-state">
+        {{ $t('positions.noPredictionPositions') }}
+      </div>
+      <div v-if="predictionError" class="status-text error-text">{{ predictionError }}</div>
+    </section>
+
     <section class="card">
       <h2 class="section-title">{{ $t('positions.currentPositions') }}</h2>
       <table class="table">
@@ -84,26 +160,36 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { RouterLink } from 'vue-router';
 import { useModeStore } from '../stores/mode';
 import { useMarketStore } from '../stores/market';
 import { useOrderStore } from '../stores/orders';
 import { usePositionStore } from '../stores/positions';
+import { usePredictionStore } from '../stores/prediction';
 import { useAssetStore } from '../stores/assets';
 import CoinIcon from '../components/common/CoinIcon.vue';
 import { positionApi } from '../api/services';
-import type { OrderItem, PositionItem } from '../api/types';
-import { formatSignedValue, getTrendClass } from '../utils/format';
+import type { OrderItem, PositionItem, PredictionPositionRecord } from '../api/types';
+import {
+  formatCurrency,
+  formatSignedCurrency,
+  formatSignedValue,
+  getTrendClass,
+} from '../utils/format';
 import { $t } from '../utils/i18n';
 
 const modeStore = useModeStore();
 const marketStore = useMarketStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
+const predictionStore = usePredictionStore();
 const assetStore = useAssetStore();
 
 const closingId = ref('');
+const closingPredictionId = ref('');
 const cancellingId = ref('');
 const errorMessage = ref('');
+const predictionError = ref('');
 
 // 利用 WebSocket 实时行情重算持仓盈亏
 const livePositions = computed(() =>
@@ -123,11 +209,34 @@ const livePositions = computed(() =>
   }),
 );
 
+// 预测持仓总额只统计预测市场，不和合约持仓混算
+const predictionValue = computed(() =>
+  predictionStore.positions.reduce((sum, item) => sum + Number(item.currentValue || 0), 0),
+);
+const predictionPnl = computed(() =>
+  predictionStore.positions.reduce((sum, item) => sum + Number(item.unrealizedPnl || 0), 0),
+);
+
+// 预测价格就是概率，0.635 显示为 63.5¢
+function formatCents(value?: string | number | null): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '--';
+  return `${(numeric * 100).toFixed(1)}¢`;
+}
+
+// 后端的 roe 是小数（0.2 表示 20%）
+function formatRoe(value?: string | number | null): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '--';
+  return `${(numeric * 100).toFixed(2)}%`;
+}
+
 async function loadPageData() {
   await Promise.all([
     positionStore.fetchPositions(modeStore.mode),
     orderStore.fetchOpenOrders(modeStore.mode),
     assetStore.fetchAssets(modeStore.mode),
+    predictionStore.fetchPositions(),
   ]);
 }
 
@@ -142,6 +251,20 @@ async function handleClose(item: PositionItem) {
     errorMessage.value = (error as Error).message || '平仓失败';
   } finally {
     closingId.value = '';
+  }
+}
+
+async function handleClosePrediction(item: PredictionPositionRecord) {
+  if (closingPredictionId.value) return;
+  closingPredictionId.value = item.id;
+  predictionError.value = '';
+  try {
+    await predictionStore.closePosition(item.id);
+    await assetStore.fetchAssets(modeStore.mode);
+  } catch (error) {
+    predictionError.value = (error as Error).message || '平仓失败';
+  } finally {
+    closingPredictionId.value = '';
   }
 }
 
@@ -168,6 +291,113 @@ watch(
 </script>
 
 <style scoped>
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.section-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.section-title-group .section-title {
+  margin-bottom: 0;
+}
+
+.prediction-totals {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.prediction-totals strong {
+  margin-left: 4px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.prediction-hint {
+  margin: 4px 0 6px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.prediction-table {
+  min-width: 760px;
+}
+
+.prediction-market {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.prediction-market:hover .prediction-question {
+  color: #bbff27;
+}
+
+.prediction-question {
+  max-width: 360px;
+  overflow: hidden;
+  display: -webkit-box;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.prediction-event {
+  max-width: 360px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outcome-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.outcome-badge.yes {
+  background: rgba(0, 192, 135, 0.16);
+  color: var(--color-up);
+}
+
+.outcome-badge.no {
+  background: rgba(246, 70, 93, 0.14);
+  color: var(--color-down);
+}
+
+.pnl-main {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-sub {
+  margin-top: 2px;
+  font-size: 10px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
 .symbol-cell {
   display: flex;
   align-items: center;

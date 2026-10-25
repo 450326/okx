@@ -12,20 +12,6 @@
           {{ $t(r.labelKey) }}
         </button>
       </div>
-      <div class="equity-mode-tabs">
-        <button
-          :class="['mode-chip', { active: activeMode === 'simulation' }]"
-          @click="switchMode('simulation')"
-        >
-          {{ $t('equity.simulation') }}
-        </button>
-        <button
-          :class="['mode-chip', { active: activeMode === 'live' }]"
-          @click="switchMode('live')"
-        >
-          {{ $t('equity.live') }}
-        </button>
-      </div>
     </div>
 
     <div class="equity-stats">
@@ -47,9 +33,9 @@
       </div>
     </div>
 
-    <div v-if="points.length" ref="chartContainer" class="chart-container"></div>
-    <div v-else class="chart-container chart-empty">
-      <div class="empty-overlay">
+    <div class="equity-chart-area">
+      <div ref="chartContainer" class="chart-container"></div>
+      <div v-if="!points.length" class="chart-empty-overlay">
         <div class="empty-text">{{ $t('equity.noLiveData') }}</div>
       </div>
     </div>
@@ -57,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { createChart, LineSeries, type IChartApi, type ISeriesApi, type LineData, type Time, ColorType } from 'lightweight-charts';
 import { accountApi } from '../../api/services';
 import { formatSignedValue, getTrendClass } from '../../utils/format';
@@ -73,7 +59,6 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  (e: 'update:mode', val: 'simulation' | 'live'): void;
   (e: 'update:range', val: string): void;
 }>();
 
@@ -86,12 +71,13 @@ const ranges = [
 ];
 
 const activeRange = ref(props.range);
-const activeMode = ref(props.mode);
 const chartContainer = ref<HTMLDivElement | null>(null);
 const points = ref<EquityPoint[]>([]);
 
 let chart: IChartApi | null = null;
 let lineSeries: ISeriesApi<'Line'> | null = null;
+// 快速切换周期/模式时丢弃过期响应
+let requestSeq = 0;
 
 const startEquity = computed(() => points.value[0]?.equity ?? 0);
 const endEquity = computed(() => points.value[points.value.length - 1]?.equity ?? 0);
@@ -106,30 +92,24 @@ function formatEquity(val: number): string {
 }
 
 async function fetchData() {
+  const seq = ++requestSeq;
   try {
-    const data = await accountApi.getEquityHistory(activeMode.value, activeRange.value);
+    const data = await accountApi.getEquityHistory(props.mode, activeRange.value);
+    if (seq !== requestSeq) return;
     points.value = data.points;
-    if (points.value.length) {
-      await nextTick();
-      if (!lineSeries) {
-        initChart();
-      }
-      updateChart();
-    }
   } catch {
+    if (seq !== requestSeq) return;
     points.value = [];
   }
+  // 图表容器始终存在，切换模式/周期后复用同一个实例，
+  // 避免清空数据时 DOM 被销毁导致再切回来画不出来。
+  if (!chart) initChart();
+  updateChart();
 }
 
 function switchRange(key: string) {
   activeRange.value = key;
   emit('update:range', key);
-  void fetchData();
-}
-
-function switchMode(mode: 'simulation' | 'live') {
-  activeMode.value = mode;
-  emit('update:mode', mode);
   void fetchData();
 }
 
@@ -201,7 +181,11 @@ function initChart() {
 }
 
 function updateChart() {
-  if (!lineSeries || !points.value.length) return;
+  if (!lineSeries) return;
+  if (!points.value.length) {
+    lineSeries.setData([]);
+    return;
+  }
 
   // lightweight-charts 只接受整数秒且时间必须严格递增，同一秒保留最后一条。
   const bySecond = new Map<number, EquityPoint>();
@@ -238,11 +222,8 @@ onUnmounted(() => {
   lineSeries = null;
 });
 
-watch(() => props.mode, (val) => {
-  if (val && val !== activeMode.value) {
-    activeMode.value = val;
-    void fetchData();
-  }
+watch(() => props.mode, () => {
+  void fetchData();
 });
 
 watch(() => props.range, (val) => {
@@ -271,8 +252,7 @@ watch(() => props.range, (val) => {
   margin-bottom: 0;
 }
 
-.equity-tabs,
-.equity-mode-tabs {
+.equity-tabs {
   display: flex;
   gap: 4px;
   background: var(--bg-soft);
@@ -280,8 +260,7 @@ watch(() => props.range, (val) => {
   border-radius: 10px;
 }
 
-.range-chip,
-.mode-chip {
+.range-chip {
   padding: 6px 14px;
   border: none;
   border-radius: 8px;
@@ -293,15 +272,13 @@ watch(() => props.range, (val) => {
   transition: all 0.15s;
 }
 
-.range-chip.active,
-.mode-chip.active {
+.range-chip.active {
   background: var(--bg-card);
   color: var(--text-primary);
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
-.range-chip:hover,
-.mode-chip:hover {
+.range-chip:hover {
   color: var(--text-primary);
 }
 
@@ -329,24 +306,26 @@ watch(() => props.range, (val) => {
   color: var(--text-primary);
 }
 
+.equity-chart-area {
+  position: relative;
+  width: 100%;
+  height: 320px;
+}
+
 .chart-container {
   width: 100%;
   height: 320px;
   border-radius: 12px;
   overflow: hidden;
-  position: relative;
 }
 
-.chart-empty {
-  background: var(--bg-soft);
-}
-
-.empty-overlay {
+.chart-empty-overlay {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--bg-soft);
 }
 
 .empty-text {

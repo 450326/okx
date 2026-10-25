@@ -157,7 +157,6 @@
           <section class="card trade-card">
             <div class="card-head">
               <h2 class="section-title">{{ $t('prediction.tradeTitle') }}</h2>
-              <span class="status-text">{{ $t('prediction.simulation') }}</span>
             </div>
 
             <div class="trade-action-tabs">

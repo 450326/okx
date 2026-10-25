@@ -47,6 +47,7 @@ let candleSeries: ISeriesApi<'Candlestick'> | null = null;
 let volumeSeries: ISeriesApi<'Histogram'> | null = null;
 let isInitialLoad = true;
 let lastSymbol = '';
+let lastDataLength = 0;
 
 const intervals = computed(() => [
   { label: $t('chart.interval1s'), value: '1s', disabled: props.exchange === 'binance' || props.exchange === 'coinbase' || props.exchange === 'uniswap' },
@@ -61,6 +62,18 @@ const intervals = computed(() => [
 ]);
 
 const isSecondsInterval = computed(() => props.modelValue === '1s' || props.modelValue === '30s');
+
+// lightweight-charts 要求数据按时间升序且不能重复；请求/实时推送可能乱序，
+// 这里统一去重、排序，避免偶尔一条乱序数据导致整张图渲染失败。
+function normalizeKlines(items: KlineItem[]): KlineItem[] {
+  const byTime = new Map<number, KlineItem>();
+  for (const item of items) {
+    const openTime = Number(item.openTime);
+    if (!Number.isFinite(openTime)) continue;
+    byTime.set(openTime, item);
+  }
+  return Array.from(byTime.values()).sort((a, b) => a.openTime - b.openTime);
+}
 
 function buildCandleData(items: KlineItem[]): CandlestickData[] {
   return items.map((k) => ({
@@ -184,15 +197,28 @@ function initChart() {
 
 function updateChartData() {
   if (!candleSeries || !volumeSeries) return;
-  const candles = buildCandleData(props.klines).reverse();
-  const volumes = buildVolumeData(props.klines).reverse();
-  candleSeries.setData(candles);
-  volumeSeries.setData(volumes);
-  // 只在首次加载/切换品种时自动定位到最新一根 K 线；
-  // 后续实时刷新不要抢回用户拖拽后看到的位置。
-  if (isInitialLoad) {
-    chart?.timeScale().scrollToPosition(0, false);
+  const items = normalizeKlines(props.klines);
+  const timeScale = chart?.timeScale();
+  const rangeBefore = !isInitialLoad ? timeScale?.getVisibleLogicalRange() ?? null : null;
+  const timeRangeBefore = rangeBefore ? timeScale?.getVisibleRange() ?? null : null;
+  // 更新前视口右端是否贴着最新一根 K 线
+  const wasAtLatest = rangeBefore ? rangeBefore.to >= lastDataLength - 2 : true;
+
+  candleSeries.setData(buildCandleData(items));
+  volumeSeries.setData(buildVolumeData(items));
+  lastDataLength = items.length;
+
+  if (!items.length) return;
+
+  // 首次加载/切换品种周期时定位到最新一根；用户拖到历史区域后，
+  // 实时刷新只恢复原来的视口，不能把画面抢回最右侧。
+  if (isInitialLoad || wasAtLatest) {
+    timeScale?.scrollToPosition(0, false);
     isInitialLoad = false;
+  } else if (timeRangeBefore) {
+    timeScale?.setVisibleRange(timeRangeBefore);
+  } else if (rangeBefore) {
+    timeScale?.setVisibleLogicalRange(rangeBefore);
   }
 }
 

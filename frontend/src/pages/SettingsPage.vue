@@ -30,11 +30,8 @@
         <div class="settings-row">
           <span class="settings-label">{{ $t('settings.tradeMode') }}</span>
           <div class="settings-actions-row">
-            <div :class="['tag', { 'tag-live': modeStore.mode === 'live' }]">
-              {{ modeStore.mode === 'simulation' ? $t('equity.simulation') : $t('equity.live') }}
-            </div>
             <button class="ghost-btn" :disabled="modeStore.loading" @click="openModeConfirm()">
-              {{ $t('layout.switchTo') }}{{ modeStore.mode === 'simulation' ? $t('equity.live') : $t('equity.simulation') }}
+              {{ $t('settings.switchAccount') }}
             </button>
           </div>
         </div>
@@ -224,21 +221,6 @@ function handleOpenApiBinding() {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.tag {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: rgba(0, 192, 135, 0.15);
-  color: #00c087;
-  text-transform: uppercase;
-}
-
-.tag-live {
-  background: rgba(246, 70, 93, 0.15);
-  color: #f6465d;
 }
 
 .exch-btn-settings {
