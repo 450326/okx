@@ -129,10 +129,7 @@ stop-dev.bat
 
 会按启动时保存的 PID 结束前后端进程树，并清理 `.dev-pids.json`；如果 PID 文件丢失，会按端口兜底清理。
 
-### 没有安装 Node.js 时
-
-如果机器没有系统级 `node`/`npm`，但依赖已经安装过，脚本会尝试使用 DSH 桌面端自带的 Node 构建后端并启动前端。
-
+### 安装 Node.js 
 如果 `node_modules` 也不存在，脚本会提示先安装 [Node.js 18+](https://nodejs.org/)，然后执行：
 
 ```bash
