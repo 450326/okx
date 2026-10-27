@@ -47,6 +47,7 @@
       <thead>
         <tr>
           <th>{{ $t('summary.orderId') }}</th>
+          <th>{{ $t('summary.symbol') }}</th>
           <th>{{ $t('summary.type') }}</th>
           <th>{{ $t('summary.price') }}</th>
           <th>{{ $t('summary.qty') }}</th>
@@ -57,6 +58,7 @@
       <tbody>
         <tr v-for="item in openOrders" :key="item.orderId">
           <td>{{ item.orderId }}</td>
+          <td>{{ item.symbol }}</td>
           <td>{{ item.orderType }}</td>
           <td>{{ item.price || '--' }}</td>
           <td>{{ item.qty }}</td>
@@ -75,7 +77,6 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
 import { $t } from '../../utils/i18n';
 import type { OrderItem, PositionItem, TradeMode } from '../../api/types';
 import { positionApi } from '../../api/services';
@@ -92,9 +93,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'closed'): void;
   (e: 'cancelled'): void;
+  (e: 'select', symbol: string): void;
 }>();
 
-const router = useRouter();
 const orderStore = useOrderStore();
 const closingId = ref('');
 const cancellingId = ref('');
@@ -107,7 +108,7 @@ function formatOpenTime(iso?: string) {
 }
 
 function goTrade(symbol: string) {
-  router.push(`/trade/${symbol}`);
+  emit('select', symbol);
 }
 
 async function handleClose(item: PositionItem) {

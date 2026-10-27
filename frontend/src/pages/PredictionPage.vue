@@ -220,11 +220,29 @@
         {{ $t('prediction.updatedAt') }} {{ updatedLabel }}
       </span>
     </div>
+
+    <!-- 预测市场接口不可用时给出明确提示，而不是只显示空白列表 -->
+    <div v-if="showUnavailableModal" class="prediction-modal-mask" @click.self="showUnavailableModal = false">
+      <div class="prediction-modal card" role="alertdialog" aria-modal="true">
+        <div class="prediction-modal-icon">!</div>
+        <h2 class="section-title">{{ $t('prediction.unavailableTitle') }}</h2>
+        <p class="prediction-modal-message">{{ store.error || $t('prediction.unavailableHint') }}</p>
+        <p class="prediction-modal-hint status-text">{{ $t('prediction.unavailableHint') }}</p>
+        <div class="prediction-modal-actions">
+          <button class="ghost-btn" type="button" @click="showUnavailableModal = false">
+            {{ $t('common.close') }}
+          </button>
+          <button class="primary-btn" type="button" :disabled="store.loading" @click="retryPrediction">
+            {{ store.loading ? $t('common.loading') : $t('prediction.refresh') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import type { PredictionMarket, PredictionPositionRecord, PredictionSort } from '../api/types';
 import { useAssetStore } from '../stores/assets';
@@ -240,6 +258,24 @@ const modeStore = useModeStore();
 const searchInput = ref(store.keyword);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 const closingId = ref('');
+const showUnavailableModal = ref(false);
+
+// 列表接口报错/上游不可用时弹出提示，避免用户只看到空白页面
+watch(
+  () => store.error,
+  (error) => {
+    showUnavailableModal.value = Boolean(error);
+  },
+  { immediate: true },
+);
+
+async function retryPrediction(): Promise<void> {
+  showUnavailableModal.value = false;
+  await store.fetchMarkets(true);
+  if (!store.error) {
+    await store.fetchPositions();
+  }
+}
 
 const positionValue = computed(() =>
   store.positions.reduce((sum, position) => sum + Number(position.currentValue || 0), 0),
@@ -302,7 +338,9 @@ async function handleClose(position: PredictionPositionRecord): Promise<void> {
   closingId.value = position.id;
   try {
     await store.closePosition(position.id);
-    await assetStore.fetchAssets(modeStore.mode);
+    if (modeStore.mode === 'simulation') {
+      await assetStore.fetchAssets('simulation');
+    }
   } catch {
     // 错误已经保存在 store.tradeError，由详情页展示；列表页保留持仓即可。
   }
@@ -1003,5 +1041,59 @@ onBeforeUnmount(() => {
   .position-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* 预测市场不可用提示弹窗 */
+.prediction-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.prediction-modal {
+  width: min(440px, 100%);
+  padding: 24px;
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.prediction-modal-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: rgba(246, 70, 93, 0.15);
+  color: var(--color-down);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.prediction-modal .section-title {
+  margin-bottom: 8px;
+}
+
+.prediction-modal-message {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.prediction-modal-hint {
+  margin: 0 0 16px;
+}
+
+.prediction-modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 </style>

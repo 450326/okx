@@ -24,8 +24,24 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { createChart, ColorType, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData, type Time } from 'lightweight-charts';
-import type { KlineItem } from '../../api/types';
+import {
+  createChart,
+  createSeriesMarkers,
+  ColorType,
+  CandlestickSeries,
+  HistogramSeries,
+  LineStyle,
+  type AutoscaleInfo,
+  type IChartApi,
+  type IPriceLine,
+  type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type CandlestickData,
+  type HistogramData,
+  type SeriesMarker,
+  type Time,
+} from 'lightweight-charts';
+import type { KlineItem, KlineTradeMarker, PositionItem } from '../../api/types';
 import { $t } from '../../utils/i18n';
 
 const props = defineProps<{
@@ -34,6 +50,10 @@ const props = defineProps<{
   symbol: string;
   exchange?: string;
   modelValue: string;
+  // 当前品种的已成交订单，用于在 K 线上打 B/S 标记
+  tradeMarkers?: KlineTradeMarker[];
+  // 当前品种持仓，用于绘制开仓/强平盈亏虚线
+  position?: PositionItem | null;
 }>();
 
 const emit = defineEmits<{
@@ -45,6 +65,11 @@ const chartContainer = ref<HTMLElement | null>(null);
 let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<'Candlestick'> | null = null;
 let volumeSeries: ISeriesApi<'Histogram'> | null = null;
+let markersApi: ISeriesMarkersPluginApi<Time> | null = null;
+let entryPriceLine: IPriceLine | null = null;
+let liquidationPriceLine: IPriceLine | null = null;
+// 让开仓/强平价也参与价格轴自动缩放，避免价格走远后虚线跑到可视区外
+let positionPriceLevels: number[] = [];
 let isInitialLoad = true;
 let lastSymbol = '';
 let lastDataLength = 0;
@@ -91,6 +116,146 @@ function buildVolumeData(items: KlineItem[]): HistogramData[] {
     value: Number(k.volume),
     color: Number(k.close) >= Number(k.open) ? 'rgba(0,192,135,0.3)' : 'rgba(246,70,93,0.3)',
   }));
+}
+
+// 把成交时间对齐到它所在的 K 线，避免 lightweight-charts 因时间点不存在而不显示标记
+function findBarTime(barTimes: number[], target: number): number | null {
+  if (!barTimes.length || target < barTimes[0]) return null;
+  let low = 0;
+  let high = barTimes.length - 1;
+  let result = barTimes[0];
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (barTimes[mid] <= target) {
+      result = barTimes[mid];
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return result;
+}
+
+function buildTradeMarkers(items: KlineItem[]): SeriesMarker<Time>[] {
+  const trades = props.tradeMarkers ?? [];
+  if (!trades.length || !items.length) return [];
+
+  const barTimes = items.map((k) => Math.floor(k.openTime / 1000));
+  const markers: SeriesMarker<Time>[] = [];
+
+  for (const trade of trades) {
+    const markerTime = Math.floor(Number(trade.time) / 1000);
+    if (!Number.isFinite(markerTime)) continue;
+    const barTime = findBarTime(barTimes, markerTime);
+    if (barTime == null) continue;
+
+    const isBuy = trade.side === 'buy';
+    markers.push({
+      time: barTime as Time,
+      position: isBuy ? 'belowBar' : 'aboveBar',
+      shape: isBuy ? 'arrowUp' : 'arrowDown',
+      color: isBuy ? '#00c087' : '#f6465d',
+      text: isBuy ? 'B' : 'S',
+      size: 1.5,
+    });
+  }
+
+  return markers.sort((a, b) => Number(a.time) - Number(b.time));
+}
+
+function updateTradeMarkers(items: KlineItem[]) {
+  if (!markersApi) return;
+  markersApi.setMarkers(buildTradeMarkers(items));
+}
+
+function formatChartPrice(value: number): string {
+  if (!Number.isFinite(value)) return '--';
+  const abs = Math.abs(value);
+  const digits = abs >= 100 ? 2 : abs >= 1 ? 4 : 6;
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatChartPnl(value: number): string {
+  if (!Number.isFinite(value)) return '--';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
+}
+
+// 把开仓价/强平价纳入价格轴范围，价格波动大时虚线也不会跑出屏幕
+function applyPositionAutoscale() {
+  if (!candleSeries) return;
+  const levels = positionPriceLevels.filter((value) => Number.isFinite(value) && value > 0);
+  candleSeries.applyOptions({
+    autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
+      const info = original();
+      if (!levels.length) return info;
+      const baseMin = info?.priceRange?.minValue;
+      const baseMax = info?.priceRange?.maxValue;
+      const minValue = baseMin == null ? Math.min(...levels) : Math.min(baseMin, ...levels);
+      const maxValue = baseMax == null ? Math.max(...levels) : Math.max(baseMax, ...levels);
+      return { priceRange: { minValue, maxValue }, margins: info?.margins };
+    },
+  });
+}
+
+// 持仓开仓价虚线：颜色跟随盈亏，标题显示当前浮动盈亏
+function updatePositionLines() {
+  if (!candleSeries) return;
+
+  const position = props.position;
+  const entry = Number(position?.entryPrice);
+  const liquidation = Number(position?.liquidationPrice);
+  const pnl = Number(position?.unrealizedPnl || 0);
+
+  const nextLevels = [entry, liquidation].filter((value) => Number.isFinite(value) && value > 0);
+  const levelsChanged =
+    nextLevels.length !== positionPriceLevels.length ||
+    nextLevels.some((value, index) => Math.abs(value - positionPriceLevels[index]) > 1e-9);
+  if (levelsChanged) {
+    positionPriceLevels = nextLevels;
+    applyPositionAutoscale();
+  }
+
+  if (position && Number.isFinite(entry) && entry > 0) {
+    const color = pnl >= 0 ? '#00c087' : '#f6465d';
+    const title = `${$t('kline.entry')} ${formatChartPrice(entry)} · ${$t('kline.pnl')} ${formatChartPnl(pnl)}`;
+    if (!entryPriceLine) {
+      entryPriceLine = candleSeries.createPriceLine({
+        price: entry,
+        color,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title,
+      });
+    } else {
+      entryPriceLine.applyOptions({ price: entry, color, title });
+    }
+  } else if (entryPriceLine) {
+    candleSeries.removePriceLine(entryPriceLine);
+    entryPriceLine = null;
+  }
+
+  if (position && Number.isFinite(liquidation) && liquidation > 0) {
+    const title = `${$t('kline.liquidation')} ${formatChartPrice(liquidation)}`;
+    if (!liquidationPriceLine) {
+      liquidationPriceLine = candleSeries.createPriceLine({
+        price: liquidation,
+        color: '#f5a623',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title,
+      });
+    } else {
+      liquidationPriceLine.applyOptions({ price: liquidation, title });
+    }
+  } else if (liquidationPriceLine) {
+    candleSeries.removePriceLine(liquidationPriceLine);
+    liquidationPriceLine = null;
+  }
 }
 
 function initChart() {
@@ -168,6 +333,9 @@ function initChart() {
     priceScaleId: '',
   });
 
+  // 成交标记插件：B 买 / S 卖
+  markersApi = createSeriesMarkers(candleSeries, []);
+
   volumeSeries.priceScale().applyOptions({
     scaleMargins: { top: 0.8, bottom: 0 },
   });
@@ -193,6 +361,7 @@ function initChart() {
 
   isInitialLoad = true;
   updateChartData();
+  updatePositionLines();
 }
 
 function updateChartData() {
@@ -206,6 +375,7 @@ function updateChartData() {
 
   candleSeries.setData(buildCandleData(items));
   volumeSeries.setData(buildVolumeData(items));
+  updateTradeMarkers(items);
   lastDataLength = items.length;
 
   if (!items.length) return;
@@ -220,6 +390,9 @@ function updateChartData() {
   } else if (rangeBefore) {
     timeScale?.setVisibleLogicalRange(rangeBefore);
   }
+
+  // K 线重绘后再次应用持仓虚线，避免切换交易所/刷新后虚线丢失
+  updatePositionLines();
 }
 
 function handleResize() {
@@ -255,6 +428,16 @@ watch(() => props.modelValue, () => {
   });
 });
 
+// 订单成交后刷新 B/S 标记
+watch(() => props.tradeMarkers, () => {
+  nextTick(() => updateTradeMarkers(normalizeKlines(props.klines)));
+});
+
+// 持仓变化时刷新开仓/强平盈亏虚线
+watch(() => props.position, () => {
+  nextTick(updatePositionLines);
+});
+
 let resizeObserver: ResizeObserver | null = null;
 
 onMounted(() => {
@@ -277,6 +460,10 @@ onBeforeUnmount(() => {
   }
   candleSeries = null;
   volumeSeries = null;
+  markersApi = null;
+  entryPriceLine = null;
+  liquidationPriceLine = null;
+  positionPriceLevels = [];
 });
 </script>
 

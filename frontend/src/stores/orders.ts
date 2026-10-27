@@ -27,42 +27,51 @@ export const useOrderStore = defineStore('orders', () => {
   const submitting = ref(false);
   // 错误信息
   const error = ref('');
+  // 快速切换品种/交易所时丢弃过期响应
+  let openRequestSeq = 0;
+  let historyRequestSeq = 0;
 
   // 获取当前委托，可按交易对筛选
   async function fetchOpenOrders(mode: TradeMode, symbol?: string) {
+    const seq = ++openRequestSeq;
     loading.value = true;
     error.value = '';
 
     try {
       const data = await orderApi.getOpen(mode, symbol);
+      if (seq !== openRequestSeq) return openOrders.value;
       openOrders.value = data.list;
       return openOrders.value;
     } catch (err) {
+      if (seq !== openRequestSeq) return openOrders.value;
       const msg = (err as any)?.message;
       error.value = msg || '获取当前委托失败';
       openOrders.value = [];
       return [];
     } finally {
-      loading.value = false;
+      if (seq === openRequestSeq) loading.value = false;
     }
   }
 
   // 获取历史订单，可按交易对筛选
   async function fetchHistory(mode: TradeMode, symbol?: string) {
+    const seq = ++historyRequestSeq;
     loading.value = true;
     error.value = '';
 
     try {
       const data = await orderApi.getHistory(mode, symbol);
+      if (seq !== historyRequestSeq) return historyOrders.value;
       historyOrders.value = data.list;
       return historyOrders.value;
     } catch (err) {
+      if (seq !== historyRequestSeq) return historyOrders.value;
       const msg = (err as any)?.message;
       error.value = msg || '获取历史订单失败';
       historyOrders.value = [];
       return [];
     } finally {
-      loading.value = false;
+      if (seq === historyRequestSeq) loading.value = false;
     }
   }
 

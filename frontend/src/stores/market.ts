@@ -15,13 +15,29 @@ function normalizeDepth(levels: [string, string][], reverse = false): DepthLevel
 
 const WS_EXCHANGES = ['okx', 'binance'];
 
+// 记住上次选择的交易所，刷新页面后仍停留在同一家，避免 Coinbase/Binance 被重置回 OKX
+const EXCHANGE_STORAGE_KEY = 'market.exchange';
+type ExchangeId = 'okx' | 'binance' | 'coinbase' | 'uniswap';
+
+function loadSavedExchange(): ExchangeId {
+  try {
+    const saved = localStorage.getItem(EXCHANGE_STORAGE_KEY);
+    if (saved === 'okx' || saved === 'binance' || saved === 'coinbase' || saved === 'uniswap') {
+      return saved;
+    }
+  } catch {
+    // localStorage 不可用时保持默认值
+  }
+  return 'okx';
+}
+
 // 图表一次加载的历史 K 线根数；200 根太少，向左拖动很快就看不到更早的行情。
 const KLINE_LIMIT = 1000;
 // 前端最多保留的 K 线数量，防止长时间运行后数组无限增长。
 const KLINE_MAX_CANDLES = 2000;
 
 export const useMarketStore = defineStore('market', () => {
-  const exchange = ref<'okx' | 'binance' | 'coinbase' | 'uniswap'>('okx');
+  const exchange = ref<ExchangeId>(loadSavedExchange());
   const symbols = ref<MarketSymbol[]>([]);
   const tickers = ref<TickerItem[]>([]);
   // 股票代币来自 OKX instCategory=3，和当前加密货币交易所分开保存。
@@ -204,9 +220,14 @@ export const useMarketStore = defineStore('market', () => {
   // 创建 store 时自动启动全局行情轮询
   startGlobalTickerPoll();
 
-  function setExchange(exch: 'okx' | 'binance' | 'coinbase' | 'uniswap') {
+  function setExchange(exch: ExchangeId) {
     if (exchange.value === exch) return;
     exchange.value = exch;
+    try {
+      localStorage.setItem(EXCHANGE_STORAGE_KEY, exch);
+    } catch {
+      // localStorage 不可用时忽略
+    }
     // 切换交易所时先清空上一家的数据，避免短暂把 Binance 的币种显示在 Coinbase 页面。
     symbols.value = [];
     tickers.value = [];

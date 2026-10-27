@@ -143,6 +143,13 @@ export interface KlineResponse {
   list: KlineItem[]; // K 线列表
 }
 
+// K 线成交标记（B/S）
+export interface KlineTradeMarker {
+  time: number;             // 成交时间（毫秒）
+  side: 'buy' | 'sell';     // 买/卖
+  price: number;            // 成交价格
+}
+
 // 近期成交条目
 export interface RecentTradeItem {
   price: string;      // 成交价格

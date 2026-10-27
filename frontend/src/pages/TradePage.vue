@@ -29,11 +29,23 @@
         :loading="marketStore.chartLoading"
         :symbol="currentSymbol"
         :exchange="marketStore.exchange"
+        :trade-markers="klineTradeMarkers"
+        :position="currentPosition"
         v-model="klineInterval"
         @click-price="handleKlineClickPrice"
       />
       <OrderForm :symbol="currentSymbol" :kline-price="klineClickPrice" @submitted="handleOrderSubmitted" />
     </section>
+
+    <!-- 持仓 + 委托汇总：只显示当前交易对，紧跟交易区下方并按 5 秒轮询刷新 -->
+    <PositionsSummary
+      :positions="currentPositions"
+      :open-orders="currentOpenOrders"
+      :mode="modeStore.mode"
+      @closed="handlePositionClosed"
+      @cancelled="handlePositionClosed"
+      @select="handlePositionSelect"
+    />
 
     <!-- 下方面板网格：深度图 + 成交记录 + 市场热度 -->
     <section class="trade-panel-grid">
@@ -123,21 +135,12 @@
         <div class="status-text">按仓位 ROI 估算</div>
       </div>
     </section>
-
-    <!-- 持仓 + 委托汇总（盈亏实时更新） -->
-    <PositionsSummary
-      :positions="livePositions"
-      :open-orders="orderStore.openOrders"
-      :mode="modeStore.mode"
-      @closed="handlePositionClosed"
-      @cancelled="handlePositionClosed"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
 // Vue 响应式工具、生命周期与侦听器
-import { computed, ref, watch, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 // Vue Router 导航组件
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 // 币种图标组件
@@ -166,6 +169,8 @@ import { formatPercent, getTrendClass } from '../utils/format';
 import { isSymbolForExchange, toExchangeSymbol, type ExchangeId } from '../utils/symbol';
 // 国际化
 import { $t } from '../utils/i18n';
+// 类型
+import type { KlineTradeMarker, OrderItem } from '../api/types';
 
 // 接收路由参数：品种符号
 const props = defineProps<{ symbol?: string }>();
@@ -176,8 +181,12 @@ const router = useRouter();
 const marketStore = useMarketStore();
 
 // 股票代币只有 OKX 有；带着 asset=stock 进入时强制切回 OKX。
-if (route.query.asset === 'stock' && marketStore.exchange !== 'okx') {
-  marketStore.setExchange('okx');
+// 普通品种则根据路由里的原生 symbol 恢复对应交易所，避免刷新后 Coinbase/Binance 被重置回 OKX。
+const routeExchange = exchangeOfSymbol(props.symbol || '');
+if (route.query.asset === 'stock') {
+  if (marketStore.exchange !== 'okx') marketStore.setExchange('okx');
+} else if (routeExchange && marketStore.exchange !== routeExchange) {
+  marketStore.setExchange(routeExchange);
 }
 const assetStore = useAssetStore();
 const modeStore = useModeStore();
@@ -238,6 +247,43 @@ const currentPosition = computed(
   () => livePositions.value.find((p) => p.symbol === currentSymbol.value) || null,
 );
 
+// 交易区下方只展示当前交易对的持仓和委托
+const currentPositions = computed(() => (currentPosition.value ? [currentPosition.value] : []));
+const currentOpenOrders = computed(() =>
+  orderStore.openOrders.filter((order) => order.symbol === currentSymbol.value),
+);
+
+// 把订单方向转换成 K 线上的买/卖标记：开多/平空为 B，开空/平多为 S
+function orderTradeSide(order: OrderItem): 'buy' | 'sell' | null {
+  if (!order.side) return null;
+  if (order.action === 'close') {
+    return order.side === 'long' ? 'sell' : 'buy';
+  }
+  return order.side === 'long' ? 'buy' : 'sell';
+}
+
+function orderFillTimestamp(order: OrderItem): number {
+  const raw = order.filledAt || order.updatedAt || order.createdAt;
+  if (!raw) return 0;
+  const time = new Date(raw).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+// 当前品种已成交订单 -> K 线 B/S 标记
+const klineTradeMarkers = computed<KlineTradeMarker[]>(() =>
+  orderStore.historyOrders
+    .filter((order) => order.symbol === currentSymbol.value && order.status === 'filled')
+    .map((order) => {
+      const side = orderTradeSide(order);
+      const time = orderFillTimestamp(order);
+      const price = Number(order.avgFillPrice ?? order.price ?? 0);
+      if (!side || !time || !Number.isFinite(price) || price <= 0) return null;
+      return { time, side, price };
+    })
+    .filter((item): item is KlineTradeMarker => item !== null)
+    .sort((a, b) => a.time - b.time),
+);
+
 // 相关品种行情：股票代币只显示股票代币，加密货币只显示加密货币
 const relatedTickers = computed(() => {
   const pool = isStockToken.value ? marketStore.stockTickers : marketStore.tickers;
@@ -258,6 +304,16 @@ function formatTradeTime(value: number) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+// 刷新账户持仓/委托/成交，供手动操作和定时轮询复用
+async function refreshAccountData() {
+  await Promise.all([
+    positionStore.fetchPositions(modeStore.mode),
+    orderStore.fetchOpenOrders(modeStore.mode),
+    orderStore.fetchHistory(modeStore.mode),
+    assetStore.fetchAssets(modeStore.mode),
+  ]);
+}
+
 // 加载交易页面数据
 async function loadTradePageData() {
   await Promise.all([
@@ -267,9 +323,7 @@ async function loadTradePageData() {
     marketStore.fetchKlines(currentSymbol.value, klineInterval.value),
     marketStore.fetchDepth(currentSymbol.value),
     marketStore.fetchRecentTrades(currentSymbol.value),
-    positionStore.fetchPositions(modeStore.mode, currentSymbol.value),
-    orderStore.fetchOpenOrders(modeStore.mode, currentSymbol.value),
-    assetStore.fetchAssets(modeStore.mode),
+    refreshAccountData(),
   ]);
   initWs();
 }
@@ -288,36 +342,57 @@ function handleKlineClickPrice(price: number) {
 async function switchExchange(exch: ExchangeId) {
   if (marketStore.exchange === exch) return;
   if (isStockToken.value && exch !== 'okx') return;
-  const target = toExchangeSymbol(currentSymbol.value, exch);
+  const target = toExchangeSymbol(props.symbol || currentSymbol.value, exch);
   marketStore.setExchange(exch);
   await router.replace(`/trade/${target}`);
 }
 
+// 从持仓/委托的 symbol 反推交易所，点击下方持仓行时切到对应交易所
+function exchangeOfSymbol(symbol: string): ExchangeId | null {
+  const value = symbol.toUpperCase();
+  if (value.endsWith('-USDT-SWAP')) return 'okx';
+  if (value.endsWith('-USD') || value.endsWith('-USDC')) return 'coinbase';
+  if (!value.includes('-') && value.endsWith('USDT')) return 'binance';
+  if (value.endsWith('-USDT')) return 'uniswap';
+  return null;
+}
+
+async function handlePositionSelect(symbol: string) {
+  const targetExchange = exchangeOfSymbol(symbol);
+  if (targetExchange && marketStore.exchange !== targetExchange) {
+    marketStore.setExchange(targetExchange);
+  }
+  await router.push(`/trade/${symbol}`);
+}
+
 // 平仓后刷新
 async function handlePositionClosed() {
-  await Promise.all([
-    positionStore.fetchPositions(modeStore.mode, currentSymbol.value),
-    orderStore.fetchOpenOrders(modeStore.mode, currentSymbol.value),
-    assetStore.fetchAssets(modeStore.mode),
-  ]);
+  await refreshAccountData();
 }
 
 // 下单成功后的回调
 async function handleOrderSubmitted() {
-  await Promise.all([
-    positionStore.fetchPositions(modeStore.mode, currentSymbol.value),
-    orderStore.fetchOpenOrders(modeStore.mode, currentSymbol.value),
-    assetStore.fetchAssets(modeStore.mode),
-  ]);
+  await refreshAccountData();
 }
 
-// 监听品种或模式变化，重新加载数据（切换交易所会同步更新路由 symbol）
+// 监听品种或模式变化，重新加载数据（currentSymbol 同时覆盖路由 symbol 和交易所变化）
 watch(
-  () => [props.symbol, modeStore.mode],
+  () => [currentSymbol.value, modeStore.mode],
   () => {
     void loadTradePageData();
   },
   { immediate: true },
+);
+
+// 路由里的 symbol 决定交易所，保证刷新/快速切换后图表、持仓和标记一致
+watch(
+  () => props.symbol,
+  (symbol) => {
+    const inferred = exchangeOfSymbol(symbol || '');
+    if (inferred && marketStore.exchange !== inferred) {
+      marketStore.setExchange(inferred);
+    }
+  },
 );
 
 // 监听 K 线间隔变化，重新拉取并重连 WebSocket
@@ -338,8 +413,22 @@ const exchangeLabel = computed(() => {
   return labels[marketStore.exchange] || marketStore.exchange;
 });
 
-// 页面卸载时断开 WebSocket
+// 每 5 秒同步一次持仓/委托/成交：限价单成交、后台强平后页面能自动跟上
+let accountRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+  accountRefreshTimer = setInterval(() => {
+    if (document.hidden) return;
+    void refreshAccountData();
+  }, 5000);
+});
+
+// 页面卸载时断开 WebSocket 并停止轮询
 onBeforeUnmount(() => {
+  if (accountRefreshTimer) {
+    clearInterval(accountRefreshTimer);
+    accountRefreshTimer = null;
+  }
   marketStore.disconnectWs();
 });
 </script>

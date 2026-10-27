@@ -198,7 +198,7 @@
             <div class="trade-meta">
               <span>
                 {{ $t('prediction.available') }}
-                <strong>{{ formatCurrency(assetStore.snapshot?.availableBalance) }}</strong>
+                <strong>{{ formatCurrency(predictionAvailable) }}</strong>
               </span>
               <span v-if="selectedPosition">
                 {{ $t('prediction.position') }}
@@ -382,6 +382,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import ProbabilityChart from '../components/prediction/ProbabilityChart.vue';
 import type { PredictionHistoryInterval, PredictionPositionRecord } from '../api/types';
+import { accountApi } from '../api/services';
 import { useAssetStore } from '../stores/assets';
 import { useModeStore } from '../stores/mode';
 import { usePredictionStore } from '../stores/prediction';
@@ -397,6 +398,25 @@ const props = defineProps<{ slug: string }>();
 const store = usePredictionStore();
 const assetStore = useAssetStore();
 const modeStore = useModeStore();
+
+// 预测交易固定使用模拟钱包，不能跟随实盘/模拟模式，否则实盘模式下可用余额为 0 会导致无法下单
+const predictionAvailable = ref(0);
+
+async function refreshPredictionBalance(): Promise<void> {
+  try {
+    const data = await accountApi.getAssets('simulation');
+    predictionAvailable.value = Number(data.availableBalance || 0);
+  } catch {
+    // 暂时保留上一次余额，避免网络波动把可买数量清空
+  }
+}
+
+// 顶部资产栏仍按当前模式展示；只有模拟模式才用模拟余额刷新，避免覆盖实盘资产
+async function refreshTopbarAssets(): Promise<void> {
+  if (modeStore.mode === 'simulation') {
+    await assetStore.fetchAssets('simulation');
+  }
+}
 
 const intervals: { value: PredictionHistoryInterval; labelKey: string }[] = [
   { value: '1d', labelKey: 'prediction.interval1d' },
@@ -458,8 +478,7 @@ const maxQty = computed(() => {
   if (tradeAction.value === 'sell') {
     return Math.floor(Number(selectedPosition.value?.qty || 0));
   }
-  const available = Number(assetStore.snapshot?.availableBalance || 0);
-  return tradePrice.value > 0 ? Math.floor(available / tradePrice.value) : 0;
+  return tradePrice.value > 0 ? Math.floor(predictionAvailable.value / tradePrice.value) : 0;
 });
 
 const canSubmit = computed(() => {
@@ -468,7 +487,7 @@ const canSubmit = computed(() => {
   const qty = tradeQtyNumber.value;
   if (!Number.isFinite(qty) || qty <= 0) return false;
   if (tradeAction.value === 'buy') {
-    return estimate.value <= Number(assetStore.snapshot?.availableBalance || 0) + 1e-9;
+    return estimate.value <= predictionAvailable.value + 1e-9;
   }
   return !!selectedPosition.value && qty <= Number(selectedPosition.value.qty) + 1e-9;
 });
@@ -601,7 +620,7 @@ async function submitTrade(): Promise<void> {
       action: tradeAction.value,
       qty: String(tradeQtyNumber.value),
     });
-    await assetStore.fetchAssets(modeStore.mode);
+    await Promise.all([refreshPredictionBalance(), refreshTopbarAssets()]);
     tradeSuccess.value = true;
     tradeQty.value = '';
   } catch {
@@ -614,7 +633,11 @@ async function closeMarketPosition(position: PredictionPositionRecord): Promise<
   store.clearTradeError();
   try {
     await store.closePosition(position.id);
-    await Promise.all([assetStore.fetchAssets(modeStore.mode), store.fetchOrders(props.slug)]);
+    await Promise.all([
+      refreshPredictionBalance(),
+      refreshTopbarAssets(),
+      store.fetchOrders(props.slug),
+    ]);
     tradeSuccess.value = true;
   } catch {
     // 错误由 store.tradeError 展示
@@ -635,6 +658,7 @@ async function loadMarket(slug: string): Promise<void> {
     store.fetchTrades(slug),
     store.fetchPositions(),
     store.fetchOrders(slug),
+    refreshPredictionBalance(),
   ]);
 }
 
@@ -656,6 +680,7 @@ function startPolling(): void {
     void store.fetchOrderBook(props.slug);
     void store.fetchTrades(props.slug);
     void store.fetchPositions();
+    void refreshPredictionBalance();
   }, 10_000);
 }
 

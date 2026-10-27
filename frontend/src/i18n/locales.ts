@@ -104,6 +104,8 @@ export const locales: Record<string, Record<string, string>> = {
     'chart.interval1d': '日线',
 
     'prediction.title': '预测市场',
+    'prediction.unavailableTitle': '预测市场暂不可用',
+    'prediction.unavailableHint': '无法从 Polymarket 获取数据，请检查网络后重试。',
     'prediction.subtitle': 'Polymarket 实时概率 · 价格即概率',
     'prediction.source': '数据源',
     'prediction.marketCount': '在架市场',
@@ -365,6 +367,9 @@ export const locales: Record<string, Record<string, string>> = {
     'kline.title': 'K线图',
     'kline.candles': '根K线',
     'kline.noData': '暂无K线数据',
+    'kline.entry': '开仓',
+    'kline.pnl': '盈亏',
+    'kline.liquidation': '强平',
 
     'summary.positionTitle': '当前持仓摘要',
     'summary.orderTitle': '当前委托摘要',
@@ -522,6 +527,8 @@ export const locales: Record<string, Record<string, string>> = {
     'chart.interval1d': '1D',
 
     'prediction.title': 'Prediction Markets',
+    'prediction.unavailableTitle': 'Prediction Market Unavailable',
+    'prediction.unavailableHint': 'Unable to load data from Polymarket. Check your network and try again.',
     'prediction.subtitle': 'Real-time Polymarket probabilities · price is probability',
     'prediction.source': 'Source',
     'prediction.marketCount': 'Active markets',
@@ -784,6 +791,9 @@ export const locales: Record<string, Record<string, string>> = {
     'kline.title': 'K-line Chart',
     'kline.candles': 'candles',
     'kline.noData': 'No K-line data',
+    'kline.entry': 'Entry',
+    'kline.pnl': 'PnL',
+    'kline.liquidation': 'Liq.',
 
     'summary.positionTitle': 'Position Summary',
     'summary.orderTitle': 'Order Summary',
@@ -941,6 +951,8 @@ export const locales: Record<string, Record<string, string>> = {
     'chart.interval1d': '日足',
 
     'prediction.title': '予測市場',
+    'prediction.unavailableTitle': '予測市場を利用できません',
+    'prediction.unavailableHint': 'Polymarket からデータを取得できません。ネットワークを確認して再試行してください。',
     'prediction.subtitle': 'Polymarket のリアルタイム確率 · 価格は確率',
     'prediction.source': 'データソース',
     'prediction.marketCount': '公開中の市場',
@@ -1203,6 +1215,9 @@ export const locales: Record<string, Record<string, string>> = {
     'kline.title': 'ローソク足',
     'kline.candles': '本のローソク',
     'kline.noData': 'ローソク足データがありません',
+    'kline.entry': 'エントリー',
+    'kline.pnl': '損益',
+    'kline.liquidation': 'ロスカット',
 
     'summary.positionTitle': 'ポジション概要',
     'summary.orderTitle': '注文概要',
@@ -1360,6 +1375,8 @@ export const locales: Record<string, Record<string, string>> = {
     'chart.interval1d': '일봉',
 
     'prediction.title': '예측 시장',
+    'prediction.unavailableTitle': '예측 시장을 사용할 수 없습니다',
+    'prediction.unavailableHint': 'Polymarket에서 데이터를 가져오지 못했습니다. 네트워크를 확인한 후 다시 시도하세요.',
     'prediction.subtitle': 'Polymarket 실시간 확률 · 가격이 곧 확률',
     'prediction.source': '데이터 소스',
     'prediction.marketCount': '거래 중인 시장',
@@ -1622,6 +1639,9 @@ export const locales: Record<string, Record<string, string>> = {
     'kline.title': '캔들차트',
     'kline.candles': '개의 캔들',
     'kline.noData': '캔들 데이터가 없습니다',
+    'kline.entry': '진입',
+    'kline.pnl': '손익',
+    'kline.liquidation': '청산',
 
     'summary.positionTitle': '포지션 요약',
     'summary.orderTitle': '주문 요약',
