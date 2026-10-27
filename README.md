@@ -123,10 +123,10 @@ start-dev.bat
 
 脚本会：
 
-1. 检查 Node.js / npm
+1. 使用 DSH 自带 Node（不依赖系统 Node/npm）
 2. 检查 `3000`、`5173` 端口
-3. 首次运行自动安装前后端依赖
-4. 新窗口启动后端和前端
+3. 检查本地 `node_modules`（不会联网下载依赖或其他工具）
+4. 构建后端并在新窗口启动后端和前端
 5. 等待端口就绪后打开浏览器
 
 启动后：
@@ -142,27 +142,28 @@ stop-dev.bat
 
 会按启动时保存的 PID 结束前后端进程树，并清理 `.dev-pids.json`；如果 PID 文件丢失，会按端口兜底清理。
 
-### 安装 Node.js 
-如果 `node_modules` 也不存在，脚本会提示先安装 [Node.js 18+](https://nodejs.org/)，然后执行：
+### 依赖说明
 
-```bash
-cd backend
-npm install
-cd ../frontend
-npm install
+启动脚本不会联网安装 Node、npm 依赖或其他工具，也不会自动执行 `npm install`。
+
+仓库需要保留以下目录：
+
+```text
+backend/node_modules
+frontend/node_modules
 ```
 
-### 手动启动
+如果缺少依赖，`start-dev.bat` 会直接提示并退出，而不会下载任何内容。
+
+### 手动启动（需要系统 Node/npm）
 
 ```bash
 # 后端
 cd backend
-npm install
 npm run start:dev
 
 # 前端（新终端）
 cd frontend
-npm install
 npm run dev
 ```
 
