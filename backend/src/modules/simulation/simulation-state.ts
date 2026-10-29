@@ -5,6 +5,7 @@ import { MarketService } from '../market/market.service';
 import { createInitialState, round, SimulationEngine } from './simulation-engine';
 import {
   AccountSnapshot,
+  DEFAULT_ENGINE_CONFIG,
   EquityPoint,
   MarketSnapshot,
   OrderSnapshot,
@@ -59,12 +60,14 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   private readonly priceCache = new Map<string, CachedMarket>();
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
+  private capitalRebased = false;
 
   constructor(private readonly marketService: MarketService) {
     this.filePath = path.resolve(__dirname, '../../../data/simulation.json');
     const loaded = this.loadState();
     this.engine = new SimulationEngine(loaded);
     const state = this.engine.getState();
+    if (this.capitalRebased) this.save();
     this.logger.log(
       `模拟盘已加载：钱包 ${state.walletBalance.toFixed(2)} USDT，持仓 ${state.positions.length} 个，预测持仓 ${state.predictionPositions.length} 个，委托 ${state.orders.filter((o) => o.status === 'pending').length} 笔`,
     );
@@ -358,11 +361,11 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       const parsed = JSON.parse(raw);
 
       if (parsed?.version === 2 && parsed.account) {
-        return parsed.account as SimAccountState;
+        return this.rebaseAccount(parsed.account as SimAccountState);
       }
 
       if (parsed && Array.isArray(parsed.orders)) {
-        const migrated = this.migrateLegacy(parsed);
+        const migrated = this.rebaseAccount(this.migrateLegacy(parsed));
         this.logger.warn('检测到旧版模拟盘数据，已迁移到 v2 账务模型');
         return migrated;
       }
@@ -452,6 +455,101 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     base.nextLedgerId = 1002;
     base.updatedAt = now;
     return base;
+  }
+
+  // 旧账户以 100,000 为初始资金；这里一次性等比例换算到 8,000 基准。
+  // 只缩放数量/金额，不改价格、杠杆、订单号和时间，收益率保持不变。
+  private rebaseAccount(account: SimAccountState): SimAccountState {
+    const target = round(DEFAULT_ENGINE_CONFIG.initialWallet, 2);
+    const current = Number(account.initialCapital) || this.detectInitialCapital(account);
+
+    if (!Number.isFinite(current) || current <= 0) {
+      account.initialCapital = target;
+      this.capitalRebased = true;
+      return account;
+    }
+
+    if (Math.abs(current - target) < 1e-9) {
+      if (Number(account.initialCapital) !== target) {
+        account.initialCapital = target;
+        this.capitalRebased = true;
+      }
+      return account;
+    }
+
+    const factor = target / current;
+    if (!Number.isFinite(factor) || factor <= 0) {
+      account.initialCapital = target;
+      this.capitalRebased = true;
+      return account;
+    }
+
+    this.backupBeforeRebase();
+    const scaleMoney = (value: number) => round((Number(value) || 0) * factor, 8);
+    const scaleQty = (value: number) => round((Number(value) || 0) * factor, 8);
+
+    account.walletBalance = scaleMoney(account.walletBalance);
+    account.realizedPnl = scaleMoney(account.realizedPnl);
+    account.totalFee = scaleMoney(account.totalFee);
+
+    for (const position of account.positions) {
+      position.qty = scaleQty(position.qty);
+      position.margin = scaleMoney(position.margin);
+      position.realizedPnl = scaleMoney(position.realizedPnl);
+    }
+
+    for (const order of account.orders) {
+      order.qty = scaleQty(order.qty);
+      order.filledQty = scaleQty(order.filledQty);
+      order.fee = scaleMoney(order.fee);
+      order.reservedMargin = scaleMoney(order.reservedMargin);
+    }
+
+    for (const position of account.predictionPositions) {
+      position.qty = scaleQty(position.qty);
+    }
+
+    for (const order of account.predictionOrders) {
+      order.qty = scaleQty(order.qty);
+      order.notional = scaleMoney(order.notional);
+      order.realizedPnl = scaleMoney(order.realizedPnl);
+    }
+
+    for (const entry of account.ledger) {
+      entry.amount = scaleMoney(entry.amount);
+      entry.balanceAfter = scaleMoney(entry.balanceAfter);
+    }
+
+    for (const point of account.equityHistory) {
+      point.equity = scaleMoney(point.equity);
+    }
+
+    account.initialCapital = target;
+    account.updatedAt = new Date().toISOString();
+    this.capitalRebased = true;
+    this.logger.log(`模拟账户已按 ${target} USDT 初始资金等比例换算，系数 ${factor.toFixed(6)}`);
+    return account;
+  }
+
+  private detectInitialCapital(account: SimAccountState): number {
+    const deposit = account.ledger?.find((entry) => entry.type === 'deposit');
+    if (deposit && Number(deposit.amount) > 0) return Number(deposit.amount);
+
+    const first = account.equityHistory?.[0];
+    if (first && Number(first.equity) > 0) return Number(first.equity);
+
+    return DEFAULT_ENGINE_CONFIG.initialWallet;
+  }
+
+  private backupBeforeRebase(): void {
+    try {
+      if (!fs.existsSync(this.filePath)) return;
+      const backup = `${this.filePath}.before-rebase-${Date.now()}.json`;
+      fs.copyFileSync(this.filePath, backup);
+      this.logger.warn(`已备份换算前的模拟盘数据到 ${backup}`);
+    } catch (error) {
+      this.logger.error(`备份换算前数据失败: ${(error as Error).message}`);
+    }
   }
 
   private backupCorruptFile(): void {

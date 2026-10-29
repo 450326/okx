@@ -53,6 +53,7 @@ export function createInitialState(initialWallet = DEFAULT_ENGINE_CONFIG.initial
   const now = iso();
   return {
     version: 2,
+    initialCapital: round(initialWallet, 2),
     walletBalance: round(initialWallet, 2),
     realizedPnl: 0,
     totalFee: 0,
@@ -163,6 +164,7 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
 
   return {
     version: 2,
+    initialCapital: round(Number(input.initialCapital) || config.initialWallet, 2),
     walletBalance: round(Number(input.walletBalance) || fallback.walletBalance, 2),
     realizedPnl: round(Number(input.realizedPnl) || 0),
     totalFee: round(Number(input.totalFee) || 0),

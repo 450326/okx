@@ -227,6 +227,8 @@ export interface EquityPoint {
 /** 落盘的完整账户状态。版本号用于后续迁移。 */
 export interface SimAccountState {
   version: 2;
+  /** 账户创建时的初始资金，用于权益曲线和收益率基准。 */
+  initialCapital: number;
   walletBalance: number;
   /** 累计已实现盈亏（已扣手续费）。 */
   realizedPnl: number;
@@ -350,7 +352,7 @@ export interface EngineConfig {
 }
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
-  initialWallet: 100000,
+  initialWallet: 8000,
   takerFeeRate: 0.0005,
   makerFeeRate: 0.0002,
   maintenanceMarginRate: 0.005,

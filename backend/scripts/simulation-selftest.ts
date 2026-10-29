@@ -70,7 +70,8 @@ function expectError(fn: () => unknown, code: number, messagePart: string): void
 }
 
 function newEngine(): SimulationEngine {
-  return new SimulationEngine(undefined, { slippageRate: 0 });
+  // 旧用例按 100000 初始资金编写；这里显式指定，避免受应用默认资金调整影响
+  return new SimulationEngine(undefined, { slippageRate: 0, initialWallet: 100000 });
 }
 
 function openLong(engine: SimulationEngine, qty = '0.02', price = 65000, leverage = 10) {
@@ -102,7 +103,17 @@ function test(name: string, fn: () => void): void {
 
 console.log('模拟盘账务自测');
 
-test('初始账户为 100000 USDT，权益一致', () => {
+test('默认初始账户为 8000 USDT，权益一致', () => {
+  const engine = new SimulationEngine(undefined, { slippageRate: 0 });
+  const snapshot = engine.snapshot({ [SYMBOL]: market(65000) });
+  approx(snapshot.walletBalance, 8000, 'walletBalance');
+  approx(snapshot.availableBalance, 8000, 'availableBalance');
+  approx(snapshot.positionMargin, 0, 'positionMargin');
+  approx(snapshot.orderMargin, 0, 'orderMargin');
+  approx(snapshot.equity, 8000, 'equity');
+});
+
+test('自定义初始账户为 100000 USDT，权益一致', () => {
   const engine = newEngine();
   const snapshot = engine.snapshot({ [SYMBOL]: market(65000) });
   approx(snapshot.walletBalance, 100000, 'walletBalance');
