@@ -112,6 +112,7 @@ import { useModeStore } from '../../stores/mode';
 import { useOrderStore } from '../../stores/orders';
 // 导入订单相关类型定义
 import type { OrderPayload, OrderPreviewPayload } from '../../api/types';
+import { formatOrderId } from '../../utils/format';
 
 // 定义 props：当前交易对、K 线价格（用于填充限价单价格）
 const props = defineProps<{
@@ -270,7 +271,7 @@ async function handleSubmit(side: 'long' | 'short') {
   const result = await orderStore.submitOrder(payload);
 
   if (result) {
-    localMessage.value = `${$t('order.orderSuccess')} ${result.orderId}`;
+    localMessage.value = `${$t('order.orderSuccess')} ${formatOrderId(result.orderId)}`;
     emit('submitted');
     if (form.action === 'open') {
       // 成交后可用余额、最大可开数量都会变化，刷新一次试算。

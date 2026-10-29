@@ -42,12 +42,6 @@
             {{ $t('assets.testApi') }}
           </button>
           <button class="ghost-btn" @click="bindingModalOpen = true">{{ $t('assets.bindAccount') }}</button>
-          <button class="danger-btn" :disabled="modeStore.mode !== 'simulation'" @click="resetConfirmOpen = true">
-            {{ $t('assets.resetSimulation') }}
-          </button>
-        </div>
-        <div class="status-text">
-          {{ modeStore.mode === 'simulation' ? $t('assets.canReset') : $t('assets.cannotReset') }}
         </div>
         <div v-if="exchangeStore.statusMessage || exchangeStore.error" class="status-text">
           {{ exchangeStore.statusMessage || exchangeStore.error }}
@@ -108,11 +102,16 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in assetStore.ledger" :key="item.id">
-            <td>{{ item.type }}</td>
+          <tr
+            v-for="item in assetStore.ledger"
+            :key="item.id"
+            :class="['ledger-row', { clickable: canOpenLedger(item) }]"
+            @click="handleLedgerClick(item)"
+          >
+            <td>{{ formatLedgerType(item.type) }}</td>
             <td :class="getTrendClass(item.amount)">{{ formatSignedValue(item.amount) }}</td>
             <td>{{ item.balanceAfter }}</td>
-            <td>{{ item.symbol }}</td>
+            <td>{{ item.symbol || '--' }}</td>
             <td>{{ formatDisplayTime(item.createdAt) }}</td>
           </tr>
         </tbody>
@@ -120,17 +119,6 @@
       <div v-if="!assetStore.ledger.length" class="empty-state">{{ $t('assets.noLedger') }}</div>
     </section>
   </div>
-
-  <ConfirmModal
-    :open="resetConfirmOpen"
-    :title="$t('assets.resetTitle')"
-    :description="$t('assets.resetDesc')"
-    :warning-text="$t('assets.resetWarning')"
-    confirm-text="$t('common.confirm')"
-    cancel-text="$t('common.cancel')"
-    @cancel="resetConfirmOpen = false"
-    @confirm="handleResetSimulation()"
-  />
 
   <ApiBindingModal
     :open="bindingModalOpen"
@@ -142,24 +130,43 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { $t } from '../utils/i18n';
 import ApiBindingModal from '../components/assets/ApiBindingModal.vue';
-import ConfirmModal from '../components/common/ConfirmModal.vue';
 import { useAssetStore } from '../stores/assets';
 import { useExchangeStore } from '../stores/exchange';
 import { useModeStore } from '../stores/mode';
-import type { ExchangeAccount, ExchangeAccountPayload } from '../api/types';
-import { formatCurrency, formatSignedCurrency, formatSignedValue, getTrendClass } from '../utils/format';
+import type { ExchangeAccount, ExchangeAccountPayload, LedgerItem } from '../api/types';
+import { formatCurrency, formatLedgerType, formatSignedCurrency, formatSignedValue, getTrendClass } from '../utils/format';
+import { exchangeFromSymbol } from '../utils/symbol';
 
 const assetStore = useAssetStore();
 const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
+const router = useRouter();
 const bindingModalOpen = ref(false);
-const resetConfirmOpen = ref(false);
 
 function formatDisplayTime(value: string) {
   return new Date(value).toLocaleString();
 }
+
+// 资金流水可跳转：合约流水跳到对应交易对，预测流水跳到预测市场
+const FUTURES_LEDGER_TYPES = new Set(['open_fee', 'close_fee', 'realized_pnl', 'liquidation']);
+
+function canOpenLedger(item: LedgerItem): boolean {
+  if (item.type === 'prediction_buy' || item.type === 'prediction_sell') return true;
+  return FUTURES_LEDGER_TYPES.has(item.type) && Boolean(exchangeFromSymbol(item.symbol));
+}
+
+function handleLedgerClick(item: LedgerItem): void {
+  if (!canOpenLedger(item)) return;
+  if (item.type === 'prediction_buy' || item.type === 'prediction_sell') {
+    void router.push('/prediction');
+    return;
+  }
+  const exchange = exchangeFromSymbol(item.symbol);
+  if (!exchange) return;
+  void router.push(`/trade/${item.symbol}`);}
 
 async function loadPageData() {
   await Promise.all([
@@ -167,15 +174,6 @@ async function loadPageData() {
     assetStore.fetchLedger(modeStore.mode),
     exchangeStore.fetchAccounts(),
   ]);
-}
-
-async function handleResetSimulation() {
-  const success = await assetStore.resetSimulation();
-
-  if (success) {
-    resetConfirmOpen.value = false;
-    await loadPageData();
-  }
 }
 
 async function handleTestConnection() {
@@ -232,5 +230,14 @@ watch(
 .danger-btn-sm:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.ledger-row.clickable {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.ledger-row.clickable:hover {
+  background: var(--bg-soft);
 }
 </style>

@@ -57,12 +57,12 @@
       </thead>
       <tbody>
         <tr v-for="item in openOrders" :key="item.orderId">
-          <td>{{ item.orderId }}</td>
+          <td>{{ formatOrderId(item.orderId) }}</td>
           <td>{{ item.symbol }}</td>
           <td>{{ item.orderType }}</td>
           <td>{{ item.price || '--' }}</td>
           <td>{{ item.qty }}</td>
-          <td>{{ item.status }}</td>
+          <td>{{ formatOrderStatus(item.status) }}</td>
           <td>
             <button class="close-btn" :disabled="cancellingId === item.orderId" @click="handleCancel(item)">
               {{ cancellingId === item.orderId ? '...' : $t('summary.cancel') }}
@@ -82,7 +82,7 @@ import type { OrderItem, PositionItem, TradeMode } from '../../api/types';
 import { positionApi } from '../../api/services';
 import CoinIcon from '../common/CoinIcon.vue';
 import { useOrderStore } from '../../stores/orders';
-import { formatSignedValue, getTrendClass } from '../../utils/format';
+import { formatOrderId, formatOrderStatus, formatSignedValue, getTrendClass } from '../../utils/format';
 
 const props = defineProps<{
   positions: PositionItem[];

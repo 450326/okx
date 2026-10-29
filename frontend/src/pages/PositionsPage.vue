@@ -137,13 +137,13 @@
         </thead>
         <tbody>
           <tr v-for="item in orderStore.openOrders" :key="item.orderId">
-            <td>{{ item.orderId }}</td>
+            <td>{{ formatOrderId(item.orderId) }}</td>
             <td>{{ item.symbol }}</td>
             <td>{{ item.orderType }}</td>
             <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? $t('positions.openLong') : $t('positions.openShort') }}</td>
             <td>{{ item.price || '--' }}</td>
             <td>{{ item.qty }}</td>
-            <td>{{ item.status }}</td>
+            <td>{{ formatOrderStatus(item.status) }}</td>
             <td>
               <button class="action-btn" :disabled="cancellingId === item.orderId" @click="handleCancel(item)">
                 {{ cancellingId === item.orderId ? '...' : $t('summary.cancel') }}
@@ -172,6 +172,8 @@ import { positionApi } from '../api/services';
 import type { OrderItem, PositionItem, PredictionPositionRecord } from '../api/types';
 import {
   formatCurrency,
+  formatOrderId,
+  formatOrderStatus,
   formatSignedCurrency,
   formatSignedValue,
   getTrendClass,

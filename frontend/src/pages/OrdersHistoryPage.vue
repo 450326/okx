@@ -20,7 +20,7 @@
         </thead>
         <tbody>
           <tr v-for="item in orderStore.historyOrders" :key="item.orderId">
-            <td>{{ item.orderId }}</td>
+            <td>{{ formatOrderId(item.orderId) }}</td>
             <td>
               <div class="symbol-cell">
                 <CoinIcon :symbol="item.symbol" :size="22" />
@@ -33,7 +33,7 @@
             <td>{{ item.avgFillPrice || '-' }}</td>
             <td>{{ item.qty }}</td>
             <td>{{ item.fee || '-' }}</td>
-            <td>{{ item.status }}</td>
+            <td>{{ formatOrderStatus(item.status) }}</td>
           </tr>
         </tbody>
       </table>
@@ -48,6 +48,7 @@ import CoinIcon from '../components/common/CoinIcon.vue';
 import { useModeStore } from '../stores/mode';
 import { useOrderStore } from '../stores/orders';
 import type { OrderItem } from '../api/types';
+import { formatOrderId, formatOrderStatus } from '../utils/format';
 import { $t } from '../utils/i18n';
 
 const modeStore = useModeStore();

@@ -232,14 +232,14 @@
           </thead>
           <tbody>
             <tr v-for="item in recentOrders" :key="item.orderId">
-              <td>{{ item.orderId }}</td>
+              <td>{{ formatOrderId(item.orderId) }}</td>
               <td>
                   {{ item.symbol }}
                   <em v-if="stockSymbolSet.has(item.symbol)" class="asset-badge">股票</em>
                 </td>
               <td>{{ item.orderType }}</td>
               <td>{{ item.side === 'long' ? '多' : '空' }}</td>
-              <td>{{ item.status }}</td>
+              <td>{{ formatOrderStatus(item.status) }}</td>
             </tr>
           </tbody>
         </table>
@@ -328,7 +328,7 @@ import { toExchangeSymbol } from '../utils/symbol';
 import { positionApi } from '../api/services';
 import type { TickerItem } from '../api/types';
 // 数值格式化与涨跌颜色工具函数
-import { formatPercent, formatSignedValue, formatSignedCurrency, formatCurrency, formatCompactVolume, getTrendClass } from '../utils/format';
+import { formatPercent, formatSignedValue, formatSignedCurrency, formatCurrency, formatCompactVolume, getTrendClass, formatOrderId, formatOrderStatus } from '../utils/format';
 
 // 各 Store 实例
 const assetStore = useAssetStore();

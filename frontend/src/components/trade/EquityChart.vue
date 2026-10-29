@@ -25,7 +25,7 @@
       </div>
       <div class="eq-stat">
         <span>{{ $t('equity.return') }}</span>
-        <strong :class="getTrendClass(returnAmount)">{{ formatSignedValue(returnAmount) }}</strong>
+        <strong :class="getTrendClass(returnAmount)">{{ formatSignedEquity(returnAmount) }}</strong>
       </div>
       <div class="eq-stat">
         <span>{{ $t('equity.returnRate') }}</span>
@@ -46,8 +46,9 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { createChart, LineSeries, type IChartApi, type ISeriesApi, type LineData, type Time, ColorType } from 'lightweight-charts';
 import { accountApi } from '../../api/services';
-import { formatSignedValue, getTrendClass } from '../../utils/format';
+import { getTrendClass } from '../../utils/format';
 import { $t } from '../../utils/i18n';
+import { useCurrencyStore } from '../../stores/currency';
 import type { EquityPoint } from '../../api/types';
 
 const props = withDefaults(defineProps<{
@@ -73,14 +74,23 @@ const ranges = [
 const activeRange = ref(props.range);
 const chartContainer = ref<HTMLDivElement | null>(null);
 const points = ref<EquityPoint[]>([]);
+const currencyStore = useCurrencyStore();
 
 let chart: IChartApi | null = null;
 let lineSeries: ISeriesApi<'Line'> | null = null;
 // 快速切换周期/模式时丢弃过期响应
 let requestSeq = 0;
 
-const startEquity = computed(() => points.value[0]?.equity ?? 0);
-const endEquity = computed(() => points.value[points.value.length - 1]?.equity ?? 0);
+// 后端权益按 USDT 记账，展示时统一按当前计价货币换算
+const displayPoints = computed(() =>
+  points.value.map((point) => ({
+    ...point,
+    equity: currencyStore.convert(point.equity),
+  })),
+);
+
+const startEquity = computed(() => displayPoints.value[0]?.equity ?? 0);
+const endEquity = computed(() => displayPoints.value[displayPoints.value.length - 1]?.equity ?? 0);
 const returnAmount = computed(() => endEquity.value - startEquity.value);
 const returnPct = computed(() => {
   if (!startEquity.value) return 0;
@@ -88,7 +98,11 @@ const returnPct = computed(() => {
 });
 
 function formatEquity(val: number): string {
-  return val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return `${currencyStore.symbol}${val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+function formatSignedEquity(val: number): string {
+  return `${val >= 0 ? '+' : '-'}${formatEquity(Math.abs(val))}`;
 }
 
 async function fetchData() {
@@ -189,7 +203,7 @@ function updateChart() {
 
   // lightweight-charts 只接受整数秒且时间必须严格递增，同一秒保留最后一条。
   const bySecond = new Map<number, EquityPoint>();
-  for (const point of points.value) {
+  for (const point of displayPoints.value) {
     bySecond.set(Math.floor(point.ts / 1000), point);
   }
   const data: LineData[] = Array.from(bySecond.entries())
@@ -231,6 +245,14 @@ watch(() => props.range, (val) => {
     activeRange.value = val;
     void fetchData();
   }
+});
+
+// 切换计价货币/汇率更新后，曲线和统计同步换算
+watch(() => [currencyStore.quote, currencyStore.rate], () => {
+  if (!chart) return;
+  const visibleRange = chart.timeScale().getVisibleRange();
+  updateChart();
+  if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
 });
 </script>
 

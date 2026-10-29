@@ -166,7 +166,7 @@ import { usePositionStore } from '../stores/positions';
 // 数值格式化与涨跌颜色工具函数
 import { formatPercent, getTrendClass } from '../utils/format';
 // 交易对格式转换
-import { isSymbolForExchange, toExchangeSymbol, type ExchangeId } from '../utils/symbol';
+import { exchangeFromSymbol, isSymbolForExchange, toExchangeSymbol, type ExchangeId } from '../utils/symbol';
 // 国际化
 import { $t } from '../utils/i18n';
 // 类型
@@ -182,7 +182,7 @@ const marketStore = useMarketStore();
 
 // 股票代币只有 OKX 有；带着 asset=stock 进入时强制切回 OKX。
 // 普通品种则根据路由里的原生 symbol 恢复对应交易所，避免刷新后 Coinbase/Binance 被重置回 OKX。
-const routeExchange = exchangeOfSymbol(props.symbol || '');
+const routeExchange = exchangeFromSymbol(props.symbol || '');
 if (route.query.asset === 'stock') {
   if (marketStore.exchange !== 'okx') marketStore.setExchange('okx');
 } else if (routeExchange && marketStore.exchange !== routeExchange) {
@@ -348,17 +348,8 @@ async function switchExchange(exch: ExchangeId) {
 }
 
 // 从持仓/委托的 symbol 反推交易所，点击下方持仓行时切到对应交易所
-function exchangeOfSymbol(symbol: string): ExchangeId | null {
-  const value = symbol.toUpperCase();
-  if (value.endsWith('-USDT-SWAP')) return 'okx';
-  if (value.endsWith('-USD') || value.endsWith('-USDC')) return 'coinbase';
-  if (!value.includes('-') && value.endsWith('USDT')) return 'binance';
-  if (value.endsWith('-USDT')) return 'uniswap';
-  return null;
-}
-
 async function handlePositionSelect(symbol: string) {
-  const targetExchange = exchangeOfSymbol(symbol);
+  const targetExchange = exchangeFromSymbol(symbol);
   if (targetExchange && marketStore.exchange !== targetExchange) {
     marketStore.setExchange(targetExchange);
   }
@@ -388,7 +379,7 @@ watch(
 watch(
   () => props.symbol,
   (symbol) => {
-    const inferred = exchangeOfSymbol(symbol || '');
+    const inferred = exchangeFromSymbol(symbol || '');
     if (inferred && marketStore.exchange !== inferred) {
       marketStore.setExchange(inferred);
     }

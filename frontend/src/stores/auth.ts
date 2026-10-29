@@ -28,6 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const result = await authApi.login(email, password);
       localStorage.setItem('accessToken', result.accessToken);
+      localStorage.setItem('lastLoginEmail', email);
       user.value = result.user;
       return result.user;
     } catch (err) {
@@ -59,6 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
   // 退出登录：清除 token 及用户信息
   function logout() {
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('lastLoginEmail');
     user.value = null;
   }
 

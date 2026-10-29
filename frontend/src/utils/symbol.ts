@@ -29,6 +29,17 @@ export function isSymbolForExchange(symbol: string | undefined, exchange: Exchan
   return true;
 }
 
+/** 从原生 symbol 反推交易所；无法识别时返回 null。 */
+export function exchangeFromSymbol(symbol?: string): ExchangeId | null {
+  const value = String(symbol || '').toUpperCase();
+  if (!value) return null;
+  if (value.endsWith('-USDT-SWAP')) return 'okx';
+  if (value.endsWith('-USD') || value.endsWith('-USDC')) return 'coinbase';
+  if (!value.includes('-') && value.endsWith('USDT')) return 'binance';
+  if (value.endsWith('-USDT')) return 'uniswap';
+  return null;
+}
+
 /** 交易对展示用：返回基础币和计价币。 */
 export function splitMarketSymbol(symbol?: string): { base: string; quote: string } {
   const value = String(symbol || '').toUpperCase();

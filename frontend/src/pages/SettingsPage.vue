@@ -66,6 +66,15 @@
           <span class="settings-label">{{ $t('settings.user') }}</span>
           <span class="settings-value">{{ authStore.user?.nickname || '--' }}</span>
         </div>
+        <!-- 仅 Kaser 账户显示重置入口 -->
+        <div v-if="canResetAccount" class="settings-row">
+          <span class="settings-label">{{ $t('settings.accountActions') }}</span>
+          <div class="settings-actions-row">
+            <button class="danger-btn" :disabled="modeStore.mode !== 'simulation'" @click="resetConfirmOpen = true">
+              {{ $t('settings.resetAccount') }}
+            </button>
+          </div>
+        </div>
         <div class="settings-row">
           <span></span>
           <button class="danger-btn" @click="handleLogout">{{ $t('settings.logout') }}</button>
@@ -93,6 +102,17 @@
       cancel-text-key="common.cancel"
       @cancel="modeConfirmOpen = false"
       @confirm="handleToggleMode()"
+    />
+
+    <ConfirmModal
+      :open="resetConfirmOpen"
+      :title="$t('assets.resetTitle')"
+      :description="$t('assets.resetDesc')"
+      :warning-text="$t('assets.resetWarning')"
+      confirm-text-key="common.confirm"
+      cancel-text-key="common.cancel"
+      @cancel="resetConfirmOpen = false"
+      @confirm="handleResetSimulation()"
     />
   </div>
 </template>
@@ -131,6 +151,14 @@ function switchExchange(exch: 'okx' | 'binance' | 'coinbase' | 'uniswap') {
 }
 
 const modeConfirmOpen = ref(false);
+const resetConfirmOpen = ref(false);
+
+// 只有 Kaser 账户登录时才显示重置入口
+const canResetAccount = computed(() => {
+  const user = authStore.user;
+  const identity = `${user?.nickname || ''} ${user?.email || ''} ${localStorage.getItem('lastLoginEmail') || ''}`;
+  return identity.toLowerCase().includes('kaser');
+});
 
 const modeConfirmTitle = computed(() => $t('layout.switchConfirmTitle'));
 const modeConfirmEnabled = computed(() => modeStore.mode === 'live' || exchangeStore.hasActiveAccount);
@@ -157,6 +185,17 @@ async function handleToggleMode() {
   if (changed) {
     modeConfirmOpen.value = false;
     await assetStore.fetchAssets(modeStore.mode);
+  }
+}
+
+async function handleResetSimulation() {
+  const success = await assetStore.resetSimulation();
+  if (success) {
+    resetConfirmOpen.value = false;
+    await Promise.all([
+      assetStore.fetchAssets(modeStore.mode),
+      assetStore.fetchLedger(modeStore.mode),
+    ]);
   }
 }
 

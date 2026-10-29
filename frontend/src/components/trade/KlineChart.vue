@@ -72,7 +72,6 @@ let liquidationPriceLine: IPriceLine | null = null;
 let positionPriceLevels: number[] = [];
 let isInitialLoad = true;
 let lastSymbol = '';
-let lastDataLength = 0;
 
 const intervals = computed(() => [
   { label: $t('chart.interval1s'), value: '1s', disabled: props.exchange === 'binance' || props.exchange === 'coinbase' || props.exchange === 'uniswap' },
@@ -306,6 +305,10 @@ function initChart() {
       borderColor: isDark ? '#2a3140' : '#d7deea',
       timeVisible: true,
       secondsVisible: isSecondsInterval.value,
+      // 新 K 线只在用户本来贴着最新一根时向右推进；用户拖到历史区域后不要移动视口
+      shiftVisibleRangeOnNewBar: true,
+      // 窗口大小变化时保持用户当前的时间范围
+      lockVisibleTimeRangeOnResize: true,
       tickMarkFormatter: (time: number) => {
         const d = new Date(time * 1000);
         const pad = (n: number) => n.toString().padStart(2, '0');
@@ -367,28 +370,19 @@ function initChart() {
 function updateChartData() {
   if (!candleSeries || !volumeSeries) return;
   const items = normalizeKlines(props.klines);
-  const timeScale = chart?.timeScale();
-  const rangeBefore = !isInitialLoad ? timeScale?.getVisibleLogicalRange() ?? null : null;
-  const timeRangeBefore = rangeBefore ? timeScale?.getVisibleRange() ?? null : null;
-  // 更新前视口右端是否贴着最新一根 K 线
-  const wasAtLatest = rangeBefore ? rangeBefore.to >= lastDataLength - 2 : true;
 
   candleSeries.setData(buildCandleData(items));
   volumeSeries.setData(buildVolumeData(items));
   updateTradeMarkers(items);
-  lastDataLength = items.length;
 
   if (!items.length) return;
 
-  // 首次加载/切换品种周期时定位到最新一根；用户拖到历史区域后，
-  // 实时刷新只恢复原来的视口，不能把画面抢回最右侧。
-  if (isInitialLoad || wasAtLatest) {
-    timeScale?.scrollToPosition(0, false);
+  // 只在首次加载/切换品种周期时定位到最新一根。
+  // 用户拖动后 lightweight-charts 会保留当前视口，这里不再做任何 scrollToPosition/setVisibleRange，
+  // 避免实时刷新或新 K 线到达时把用户拖到的位置抢回最右侧。
+  if (isInitialLoad) {
+    chart?.timeScale().scrollToPosition(0, false);
     isInitialLoad = false;
-  } else if (timeRangeBefore) {
-    timeScale?.setVisibleRange(timeRangeBefore);
-  } else if (rangeBefore) {
-    timeScale?.setVisibleLogicalRange(rangeBefore);
   }
 
   // K 线重绘后再次应用持仓虚线，避免切换交易所/刷新后虚线丢失
