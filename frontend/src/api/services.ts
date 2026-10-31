@@ -34,6 +34,10 @@ import type {
   PredictionPositionListResponse,
   PredictionSort,
   PredictionTradeListResponse,
+  SpotHoldingListResponse,
+  SpotOrderListResponse,
+  SpotOrderPayload,
+  SpotOrderResult,
 } from './types';
 
 // 认证相关 API
@@ -153,6 +157,31 @@ export const predictionApi = {
       `/prediction/positions/${encodeURIComponent(id)}/close`,
       { qty },
     );
+  },
+};
+
+// 现货行情与模拟交易 API
+export const spotApi = {
+  getMarkets(exchange = 'okx') {
+    return get<MarketSymbolsResponse>('/spot/markets', { exchange });
+  },
+  getTickers(symbols?: string[], exchange = 'okx') {
+    return get<TickerListResponse>('/spot/tickers', {
+      symbols: symbols?.length ? symbols.join(',') : undefined,
+      exchange,
+    });
+  },
+  getKlines(symbol: string, interval = '5m', exchange = 'okx', limit = 1000) {
+    return get<KlineResponse>('/spot/klines', { symbol, interval, exchange, limit });
+  },
+  getHoldings() {
+    return get<SpotHoldingListResponse>('/spot/holdings');
+  },
+  getOrders(symbol?: string) {
+    return get<SpotOrderListResponse>('/spot/orders', { symbol });
+  },
+  placeOrder(payload: SpotOrderPayload) {
+    return post<SpotOrderResult, SpotOrderPayload>('/spot/orders', payload);
   },
 };
 

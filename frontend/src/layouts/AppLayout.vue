@@ -86,6 +86,7 @@ const navItems = [
   { to: '/markets', labelKey: 'nav.explore' },
   { to: '/prediction', labelKey: 'nav.prediction' },
   { to: '/trade/BTC-USDT-SWAP', labelKey: 'nav.trade' },
+  { to: '/spot/BTC-USDT', labelKey: 'nav.spot' },
   { to: '/positions', labelKey: 'nav.positions' },
   { to: '/assets', labelKey: 'nav.assets' },
   { to: '/orders/history', labelKey: 'nav.orderHistory' },

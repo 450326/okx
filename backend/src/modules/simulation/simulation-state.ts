@@ -24,6 +24,10 @@ import {
   SimPredictionPosition,
   SimulationError,
   SimulationOrderInput,
+  SpotHoldingSnapshot,
+  SpotOrderSnapshot,
+  SpotTradeInput,
+  SpotTradeResult,
 } from './simulation.types';
 
 interface OkxTickerLike {
@@ -98,6 +102,38 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       .map((p) => p.symbol);
     const markets = await this.fetchMarkets(symbols);
     return this.engine.listPositions(markets).map((p) => this.toPosition(p));
+  }
+
+  // ---------------------------------------------------------------- 现货查询/交易
+
+  async getSpotHoldings(): Promise<Record<string, unknown>[]> {
+    const symbols = this.engine
+      .listSpotHoldings({})
+      .map((holding) => holding.symbol);
+    const markets = await this.fetchMarkets(symbols);
+    return this.engine.listSpotHoldings(markets).map((holding) => this.toSpotHolding(holding));
+  }
+
+  getSpotOrders(symbol?: string): Record<string, unknown>[] {
+    return this.engine
+      .getSpotOrderSnapshots(symbol)
+      .map((order) => this.toSpotOrder(order));
+  }
+
+  async placeSpotOrder(input: SpotTradeInput): Promise<Record<string, unknown>> {
+    this.assertSimulationMode(input.mode);
+    const symbol = String(input.symbol || '').trim();
+    if (!symbol) throw new SimulationError(SIM_ERROR.BAD_REQUEST, '交易对不能为空');
+
+    const markets = await this.fetchMarkets([symbol]);
+    const market = markets[symbol];
+    if (!market) {
+      throw new SimulationError(SIM_ERROR.MARKET_UNAVAILABLE, '现货行情暂不可用，请稍后重试');
+    }
+
+    const result = this.engine.placeSpotOrder(input, market);
+    this.save();
+    return this.toSpotResult(result);
   }
 
   // ---------------------------------------------------------------- 预测市场查询/交易
@@ -292,23 +328,37 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     const unique = Array.from(new Set(symbols.filter(Boolean)));
     if (!unique.length) return {};
 
-    const groups: Record<'okx' | 'binance' | 'coinbase', string[]> = {
-      okx: [],
-      binance: [],
-      coinbase: [],
+    const groups: Record<'okx' | 'binance' | 'coinbase', { futures: string[]; spot: string[] }> = {
+      okx: { futures: [], spot: [] },
+      binance: { futures: [], spot: [] },
+      coinbase: { futures: [], spot: [] },
     };
     for (const symbol of unique) {
-      groups[this.inferExchange(symbol)].push(symbol);
+      const exchange = this.inferExchange(symbol);
+      if (this.isSpotSymbol(symbol)) {
+        groups[exchange].spot.push(symbol);
+      } else {
+        groups[exchange].futures.push(symbol);
+      }
     }
 
     const now = Date.now();
     for (const exchange of ['okx', 'binance', 'coinbase'] as const) {
-      if (!groups[exchange].length) continue;
+      const group = groups[exchange];
       try {
-        const tickers = (await this.marketService.getTickers(groups[exchange], exchange)) as OkxTickerLike[];
-        for (const ticker of tickers || []) {
-          const market = this.toMarket(ticker, now);
-          if (market) this.priceCache.set(market.symbol, { market, ts: now });
+        if (group.futures.length) {
+          const tickers = (await this.marketService.getTickers(group.futures, exchange)) as OkxTickerLike[];
+          for (const ticker of tickers || []) {
+            const market = this.toMarket(ticker, now);
+            if (market) this.priceCache.set(market.symbol, { market, ts: now });
+          }
+        }
+        if (group.spot.length) {
+          const tickers = (await this.marketService.getSpotTickers(group.spot, exchange)) as OkxTickerLike[];
+          for (const ticker of tickers || []) {
+            const market = this.toMarket(ticker, now);
+            if (market) this.priceCache.set(market.symbol, { market, ts: now });
+          }
         }
       } catch (error) {
         this.logger.warn(`拉取 ${exchange} 行情失败，将使用最近缓存: ${(error as Error).message}`);
@@ -323,6 +373,15 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       }
     }
     return result;
+  }
+
+  private isSpotSymbol(symbol: string): boolean {
+    const value = String(symbol || '').toUpperCase();
+    if (value.endsWith('-USDT-SWAP')) return false;
+    if (value.endsWith('-USDT')) return true;
+    if (value.endsWith('-USD') || value.endsWith('-USDC')) return true;
+    // Binance 现货和永续共用 BTCUSDT 这类无连字符格式，暂按合约行情处理。
+    return false;
   }
 
   private inferExchange(symbol: string): 'okx' | 'binance' | 'coinbase' {
@@ -505,6 +564,19 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       order.reservedMargin = scaleMoney(order.reservedMargin);
     }
 
+    account.spotHoldings = Array.isArray(account.spotHoldings) ? account.spotHoldings : [];
+    for (const holding of account.spotHoldings) {
+      holding.qty = scaleQty(holding.qty);
+    }
+
+    account.spotOrders = Array.isArray(account.spotOrders) ? account.spotOrders : [];
+    for (const order of account.spotOrders) {
+      order.qty = scaleQty(order.qty);
+      order.notional = scaleMoney(order.notional);
+      order.fee = scaleMoney(order.fee);
+      order.realizedPnl = scaleMoney(order.realizedPnl);
+    }
+
     for (const position of account.predictionPositions) {
       position.qty = scaleQty(position.qty);
     }
@@ -605,6 +677,8 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       realizedPnl: this.money(snapshot.realizedPnl),
       equity: this.money(snapshot.equity),
       totalFee: this.money(snapshot.totalFee),
+      spotValue: this.money(snapshot.spotValue),
+      spotUnrealizedPnl: this.money(snapshot.spotUnrealizedPnl),
       predictionValue: this.money(snapshot.predictionValue),
       predictionUnrealizedPnl: this.money(snapshot.predictionUnrealizedPnl),
       updatedAt: snapshot.updatedAt,
@@ -661,6 +735,55 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       filledAt: order.filledAt || undefined,
+    };
+  }
+
+  private toSpotHolding(holding: SpotHoldingSnapshot): Record<string, unknown> {
+    return {
+      id: holding.id,
+      symbol: holding.symbol,
+      baseCoin: holding.baseCoin,
+      qty: this.qty(holding.qty),
+      avgCost: this.price(holding.avgCost),
+      markPrice: this.price(holding.markPrice),
+      costBasis: this.money(holding.costBasis),
+      currentValue: this.money(holding.currentValue),
+      unrealizedPnl: this.money(holding.unrealizedPnl),
+      roe: holding.roe.toFixed(6),
+      updatedAt: holding.updatedAt,
+    };
+  }
+
+  private toSpotOrder(order: SpotOrderSnapshot): Record<string, unknown> {
+    return {
+      orderId: order.orderId,
+      symbol: order.symbol,
+      baseCoin: order.baseCoin,
+      side: order.side,
+      qty: this.qty(order.qty),
+      price: this.price(order.price),
+      notional: this.money(order.notional),
+      fee: this.amount(order.fee),
+      realizedPnl: this.money(order.realizedPnl),
+      status: order.status,
+      createdAt: order.createdAt,
+    };
+  }
+
+  private toSpotResult(result: SpotTradeResult): Record<string, unknown> {
+    return {
+      order: this.toSpotOrder(result.order),
+      holding: result.holding
+        ? {
+            id: result.holding.id,
+            symbol: result.holding.symbol,
+            baseCoin: result.holding.baseCoin,
+            qty: this.qty(result.holding.qty),
+            avgCost: this.price(result.holding.avgCost),
+            openedAt: result.holding.openedAt,
+            updatedAt: result.holding.updatedAt,
+          }
+        : undefined,
     };
   }
 

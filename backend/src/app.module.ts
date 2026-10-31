@@ -14,6 +14,8 @@ import { AccountModule } from './modules/account/account.module';
 import { MarketModule } from './modules/market/market.module';
 // 引入预测市场模块
 import { PredictionModule } from './modules/prediction/prediction.module';
+// 引入现货交易模块
+import { SpotModule } from './modules/spot/spot.module';
 // 引入订单管理模块
 import { OrdersModule } from './modules/orders/orders.module';
 // 引入持仓管理模块
@@ -43,6 +45,7 @@ import { SimulationExceptionFilter } from './modules/simulation/simulation-excep
     AccountModule,
     MarketModule,
     PredictionModule,
+    SpotModule,
     OrdersModule,
     PositionsModule,
     ExchangeModule,

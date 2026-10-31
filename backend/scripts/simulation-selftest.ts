@@ -617,4 +617,51 @@ test('预测盘重置会清空预测持仓和成交', () => {
   approx(snapshot.equity, 100000, 'equity after reset');
 });
 
+test('现货买入/卖出使用同一钱包并更新持仓', () => {
+  const engine = newEngine();
+  const spotSymbol = 'BTC-USDT';
+  const buy = engine.placeSpotOrder(
+    { symbol: spotSymbol, side: 'buy', qty: '0.1' },
+    market(65000, spotSymbol),
+  );
+  approx(buy.order.notional, 6500, 'spot buy notional');
+  approx(buy.order.fee, 3.25, 'spot buy fee');
+
+  const afterBuy = engine.snapshot({ [spotSymbol]: market(66000, spotSymbol) });
+  approx(afterBuy.walletBalance, 93496.75, 'wallet after spot buy');
+  approx(afterBuy.spotValue, 6600, 'spot value');
+  approx(afterBuy.spotUnrealizedPnl, 96.75, 'spot unrealized pnl');
+  approx(afterBuy.equity, 100096.75, 'equity after spot buy');
+
+  const sell = engine.placeSpotOrder(
+    { symbol: spotSymbol, side: 'sell', qty: '0.1' },
+    market(66000, spotSymbol),
+  );
+  approx(sell.order.realizedPnl, 93.45, 'spot realized pnl');
+  assert.equal(engine.listSpotHoldings().length, 0);
+  approx(engine.snapshot().walletBalance, 100093.45, 'wallet after spot sell');
+});
+
+test('现货余额不足和卖出未持有会被拒绝', () => {
+  const engine = newEngine();
+  expectError(
+    () =>
+      engine.placeSpotOrder(
+        { symbol: 'BTC-USDT', side: 'buy', qty: '100' },
+        market(65000, 'BTC-USDT'),
+      ),
+    SIM_ERROR.INSUFFICIENT_BALANCE,
+    '可用余额不足',
+  );
+  expectError(
+    () =>
+      engine.placeSpotOrder(
+        { symbol: 'BTC-USDT', side: 'sell', qty: '1' },
+        market(65000, 'BTC-USDT'),
+      ),
+    SIM_ERROR.POSITION_NOT_FOUND,
+    '可用数量不足',
+  );
+});
+
 console.log(`\n全部通过：${passed} 项`);

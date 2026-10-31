@@ -24,14 +24,21 @@ import {
   SimPosition,
   SimPredictionOrder,
   SimPredictionPosition,
+  SimSpotHolding,
+  SimSpotOrder,
   SimulationError,
   SimulationOrderInput,
+  SpotHoldingSnapshot,
+  SpotOrderSnapshot,
+  SpotTradeInput,
+  SpotTradeResult,
 } from './simulation.types';
 
 const EPS = 1e-9;
 const MAX_HISTORY = 5000;
 const MAX_LEDGER = 5000;
 const MAX_PREDICTION_ORDERS = 2000;
+const MAX_SPOT_ORDERS = 2000;
 const EQUITY_INTERVAL_MS = 60_000;
 
 export function round(value: number, digits = 8): number {
@@ -59,6 +66,8 @@ export function createInitialState(initialWallet = DEFAULT_ENGINE_CONFIG.initial
     totalFee: 0,
     positions: [],
     orders: [],
+    spotHoldings: [],
+    spotOrders: [],
     predictionPositions: [],
     predictionOrders: [],
     ledger: [
@@ -74,6 +83,8 @@ export function createInitialState(initialWallet = DEFAULT_ENGINE_CONFIG.initial
     equityHistory: [{ ts: Date.now(), equity: round(initialWallet, 2) }],
     nextOrderId: 1001,
     nextPositionId: 1001,
+    nextSpotHoldingId: 1001,
+    nextSpotOrderId: 1001,
     nextPredictionOrderId: 1001,
     nextPredictionPositionId: 1001,
     nextLedgerId: 1002,
@@ -127,6 +138,34 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
       }))
     : [];
 
+  const spotHoldings = Array.isArray(input.spotHoldings)
+    ? input.spotHoldings
+        .filter((h) => h && h.symbol && Number(h.qty) > EPS)
+        .map<SimSpotHolding>((h) => ({
+          id: String(h.id || ''),
+          symbol: String(h.symbol || ''),
+          baseCoin: String(h.baseCoin || ''),
+          qty: round(Number(h.qty) || 0),
+          avgCost: round(Number(h.avgCost) || 0),
+          openedAt: h.openedAt || now,
+          updatedAt: h.updatedAt || now,
+        }))
+    : [];
+
+  const spotOrders = Array.isArray(input.spotOrders)
+    ? input.spotOrders.slice(-MAX_SPOT_ORDERS).map<SimSpotOrder>((o) => ({
+        ...o,
+        side: o.side === 'sell' ? 'sell' : 'buy',
+        qty: round(Number(o.qty) || 0),
+        price: round(Number(o.price) || 0),
+        notional: round(Number(o.notional) || 0),
+        fee: round(Number(o.fee) || 0),
+        realizedPnl: round(Number(o.realizedPnl) || 0),
+        status: 'filled',
+        createdAt: o.createdAt || now,
+      }))
+    : [];
+
   const predictionPositions = Array.isArray(input.predictionPositions)
     ? input.predictionPositions
         .filter((p) => p && p.slug && p.qty > EPS && p.entryPrice > 0)
@@ -170,6 +209,8 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
     totalFee: round(Number(input.totalFee) || 0),
     positions,
     orders,
+    spotHoldings,
+    spotOrders,
     predictionPositions,
     predictionOrders,
     ledger: Array.isArray(input.ledger) && input.ledger.length ? input.ledger : fallback.ledger,
@@ -181,6 +222,8 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
         : fallback.equityHistory,
     nextOrderId: Math.max(1001, Number(input.nextOrderId) || 1001),
     nextPositionId: Math.max(1001, Number(input.nextPositionId) || 1001),
+    nextSpotHoldingId: Math.max(1001, Number(input.nextSpotHoldingId) || 1001),
+    nextSpotOrderId: Math.max(1001, Number(input.nextSpotOrderId) || 1001),
     nextPredictionOrderId: Math.max(1001, Number(input.nextPredictionOrderId) || 1001),
     nextPredictionPositionId: Math.max(1001, Number(input.nextPredictionPositionId) || 1001),
     nextLedgerId: Math.max(1002, Number(input.nextLedgerId) || 1002),
@@ -231,6 +274,15 @@ export class SimulationEngine {
       positionMargin += position.margin;
     }
 
+    // 现货持仓按最新价计入权益
+    let spotValue = 0;
+    let spotUnrealizedPnl = 0;
+    for (const holding of this.state.spotHoldings) {
+      const mark = this.spotMarkPrice(holding, markets);
+      spotValue += mark * holding.qty;
+      spotUnrealizedPnl += (mark - holding.avgCost) * holding.qty;
+    }
+
     // 预测份额是全额买入的资产：钱包里已经扣掉成本，权益里按当前概率加回市值。
     let predictionValue = 0;
     let predictionUnrealizedPnl = 0;
@@ -250,10 +302,12 @@ export class SimulationEngine {
       availableBalance,
       positionMargin: round(positionMargin, 8),
       orderMargin: round(orderMargin, 8),
-      unrealizedPnl: round(unrealizedPnl + predictionUnrealizedPnl, 8),
+      unrealizedPnl: round(unrealizedPnl + spotUnrealizedPnl + predictionUnrealizedPnl, 8),
       realizedPnl: round(this.state.realizedPnl, 8),
-      equity: round(walletBalance + unrealizedPnl + predictionValue, 8),
+      equity: round(walletBalance + unrealizedPnl + spotValue + predictionValue, 8),
       totalFee: round(this.state.totalFee, 8),
+      spotValue: round(spotValue, 8),
+      spotUnrealizedPnl: round(spotUnrealizedPnl, 8),
       predictionValue: round(predictionValue, 8),
       predictionUnrealizedPnl: round(predictionUnrealizedPnl, 8),
       updatedAt: this.state.updatedAt,
@@ -289,6 +343,32 @@ export class SimulationEngine {
           status: position.status,
           createdAt: position.openedAt,
           updatedAt: position.updatedAt,
+        };
+      });
+  }
+
+  // ---------------------------------------------------------------- 现货持仓视图
+
+  listSpotHoldings(markets: Record<string, MarketSnapshot> = {}): SpotHoldingSnapshot[] {
+    return [...this.state.spotHoldings]
+      .sort((a, b) => a.openedAt.localeCompare(b.openedAt))
+      .map((holding) => {
+        const mark = this.spotMarkPrice(holding, markets);
+        const costBasis = holding.avgCost * holding.qty;
+        const currentValue = mark * holding.qty;
+        const unrealizedPnl = currentValue - costBasis;
+        return {
+          id: holding.id,
+          symbol: holding.symbol,
+          baseCoin: holding.baseCoin,
+          qty: holding.qty,
+          avgCost: holding.avgCost,
+          markPrice: mark,
+          costBasis: round(costBasis, 8),
+          currentValue: round(currentValue, 8),
+          unrealizedPnl: round(unrealizedPnl, 8),
+          roe: costBasis > EPS ? round(unrealizedPnl / costBasis, 10) : 0,
+          updatedAt: holding.updatedAt,
         };
       });
   }
@@ -412,6 +492,7 @@ export class SimulationEngine {
     for (const order of this.state.orders) {
       if (order.status === 'pending') symbols.add(order.symbol);
     }
+    for (const holding of this.state.spotHoldings) symbols.add(holding.symbol);
     return Array.from(symbols);
   }
 
@@ -570,6 +651,107 @@ export class SimulationEngine {
       throw error;
     }
     return { order, position: this.findPositionById(position.id) };
+  }
+
+  // ---------------------------------------------------------------- 现货下单/卖出
+
+  placeSpotOrder(input: SpotTradeInput, market: MarketSnapshot): SpotTradeResult {
+    const symbol = this.parseSymbol(input.symbol);
+    if (input.side !== 'buy' && input.side !== 'sell') {
+      throw new SimulationError(SIM_ERROR.BAD_REQUEST, '现货方向必须是 buy 或 sell');
+    }
+
+    const marketPrice = this.safeMarketPrice(market);
+    const qty = this.parseQty(input.qty);
+    const price = this.marketFillPrice(input.side, market, true);
+    const notional = round(price * qty, 8);
+    const fee = round(notional * this.config.takerFeeRate, 8);
+    const baseCoin = this.spotBaseCoin(symbol);
+    let holding = this.state.spotHoldings.find((item) => item.symbol === symbol);
+    let realizedPnl = 0;
+
+    if (input.side === 'buy') {
+      const total = round(notional + fee, 8);
+      if (total > this.availableBalance() + EPS) {
+        throw new SimulationError(SIM_ERROR.INSUFFICIENT_BALANCE, '可用余额不足');
+      }
+
+      this.state.walletBalance = round(this.state.walletBalance - total, 8);
+      if (holding) {
+        const oldCost = holding.avgCost * holding.qty;
+        const nextQty = round(holding.qty + qty, 8);
+        holding.qty = nextQty;
+        holding.avgCost = round((oldCost + notional + fee) / nextQty, 8);
+        holding.updatedAt = iso();
+      } else {
+        holding = {
+          id: `shold_${this.state.nextSpotHoldingId++}`,
+          symbol,
+          baseCoin,
+          qty,
+          avgCost: round((notional + fee) / qty, 8),
+          openedAt: iso(),
+          updatedAt: iso(),
+        };
+        this.state.spotHoldings.push(holding);
+      }
+      this.state.totalFee = round(this.state.totalFee + fee, 8);
+      this.addLedger('spot_buy', -total, this.state.walletBalance, {
+        symbol,
+        remark: `买入 ${qty} ${baseCoin}`,
+      });
+    } else {
+      if (!holding || holding.qty + EPS < qty) {
+        throw new SimulationError(SIM_ERROR.POSITION_NOT_FOUND, `现货 ${baseCoin} 可用数量不足`);
+      }
+
+      const proceeds = round(notional - fee, 8);
+      realizedPnl = round((price - holding.avgCost) * qty - fee, 8);
+      this.state.walletBalance = round(this.state.walletBalance + proceeds, 8);
+      this.state.realizedPnl = round(this.state.realizedPnl + realizedPnl, 8);
+      this.state.totalFee = round(this.state.totalFee + fee, 8);
+      holding.qty = round(holding.qty - qty, 8);
+      if (holding.qty <= EPS) {
+        this.state.spotHoldings = this.state.spotHoldings.filter((item) => item.symbol !== symbol);
+        holding = undefined;
+      } else {
+        holding.updatedAt = iso();
+      }
+      this.addLedger('spot_sell', proceeds, this.state.walletBalance, {
+        symbol,
+        remark: `卖出 ${qty} ${baseCoin}，已实现盈亏 ${realizedPnl.toFixed(2)} USDT`,
+      });
+    }
+
+    const order: SimSpotOrder = {
+      orderId: `sord_${this.state.nextSpotOrderId++}`,
+      symbol,
+      baseCoin,
+      side: input.side,
+      qty,
+      price,
+      notional,
+      fee,
+      realizedPnl,
+      status: 'filled',
+      createdAt: iso(),
+    };
+    this.state.spotOrders.push(order);
+    if (this.state.spotOrders.length > MAX_SPOT_ORDERS) {
+      this.state.spotOrders.splice(0, this.state.spotOrders.length - MAX_SPOT_ORDERS);
+    }
+
+    this.touch();
+    return { order, holding };
+  }
+
+  getSpotOrderSnapshots(symbol?: string): SpotOrderSnapshot[] {
+    const list = symbol
+      ? this.state.spotOrders.filter((order) => order.symbol === symbol)
+      : this.state.spotOrders;
+    return [...list]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((order) => ({ ...order }));
   }
 
   // ---------------------------------------------------------------- 预测市场下单/卖出
@@ -749,6 +931,8 @@ export class SimulationEngine {
   reset(): AccountSnapshot {
     const nextOrderId = this.state.nextOrderId;
     const nextPositionId = this.state.nextPositionId;
+    const nextSpotHoldingId = this.state.nextSpotHoldingId;
+    const nextSpotOrderId = this.state.nextSpotOrderId;
     const nextPredictionOrderId = this.state.nextPredictionOrderId;
     const nextPredictionPositionId = this.state.nextPredictionPositionId;
     const nextLedgerId = this.state.nextLedgerId;
@@ -759,6 +943,8 @@ export class SimulationEngine {
       ...createInitialState(wallet),
       nextOrderId,
       nextPositionId,
+      nextSpotHoldingId,
+      nextSpotOrderId,
       nextPredictionOrderId,
       nextPredictionPositionId,
       ledger: [
@@ -1433,6 +1619,18 @@ export class SimulationEngine {
     const market = markets[position.symbol];
     const last = market?.lastPrice || market?.markPrice;
     return last && last > 0 ? round(last, 8) : position.entryPrice;
+  }
+
+  private spotMarkPrice(holding: SimSpotHolding, markets: Record<string, MarketSnapshot>): number {
+    const market = markets[holding.symbol];
+    const mark = market?.markPrice || market?.lastPrice;
+    return mark && mark > 0 ? round(mark, 8) : holding.avgCost;
+  }
+
+  private spotBaseCoin(symbol: string): string {
+    const value = symbol.toUpperCase();
+    if (value.includes('-')) return value.split('-')[0];
+    return value.replace(/(USDT|USDC|USD)$/, '');
   }
 
   private pnl(position: SimPosition, mark: number): number {

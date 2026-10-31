@@ -2,6 +2,63 @@
   <div class="page">
     <h1 class="page-title">{{ $t('positions.pageTitle') }}</h1>
 
+    <!-- 现货持仓：不占保证金、不加杠杆，单独成组展示 -->
+    <section class="card">
+      <div class="section-head">
+        <h2 class="section-title">{{ $t('spot.holdings') }}</h2>
+        <div class="prediction-totals">
+          <span>
+            {{ $t('spot.currentValue') }}
+            <strong>{{ formatCurrency(spotValue) }}</strong>
+          </span>
+          <span>
+            {{ $t('spot.pnl') }}
+            <strong :class="getTrendClass(spotPnl)">{{ formatSignedCurrency(spotPnl) }}</strong>
+          </span>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ $t('assets.symbol') }}</th>
+              <th>{{ $t('spot.qty') }}</th>
+              <th>{{ $t('spot.avgCost') }}</th>
+              <th>{{ $t('spot.markPrice') }}</th>
+              <th>{{ $t('spot.currentValue') }}</th>
+              <th>{{ $t('spot.pnl') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in spotStore.holdings" :key="item.id">
+              <td>
+                <div class="symbol-cell">
+                  <CoinIcon :symbol="item.symbol" :size="22" />
+                  <span>{{ item.symbol.replace('-SWAP', '') }}</span>
+                </div>
+              </td>
+              <td>{{ formatQty(item.qty) }}</td>
+              <td>{{ formatSpotPrice(item.avgCost) }}</td>
+              <td>{{ formatSpotPrice(item.markPrice) }}</td>
+              <td>{{ formatCurrency(item.currentValue) }}</td>
+              <td :class="getTrendClass(item.unrealizedPnl)">
+                {{ formatSignedCurrency(item.unrealizedPnl) }}
+                <small>({{ formatPercent(Number(item.roe) * 100) }})</small>
+              </td>
+              <td>
+                <RouterLink class="action-btn" :to="`/spot/${item.symbol}`">
+                  {{ $t('spot.trade') }}
+                </RouterLink>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-if="!spotStore.holdings.length" class="empty-state">{{ $t('spot.noHoldings') }}</div>
+    </section>
+
     <!-- 预测市场持仓：与合约交易对分开成组，避免和永续持仓混在一起 -->
     <section class="card prediction-section">
       <div class="section-head">
@@ -166,6 +223,7 @@ import { useMarketStore } from '../stores/market';
 import { useOrderStore } from '../stores/orders';
 import { usePositionStore } from '../stores/positions';
 import { usePredictionStore } from '../stores/prediction';
+import { useSpotStore } from '../stores/spot';
 import { useAssetStore } from '../stores/assets';
 import CoinIcon from '../components/common/CoinIcon.vue';
 import { positionApi } from '../api/services';
@@ -174,6 +232,8 @@ import {
   formatCurrency,
   formatOrderId,
   formatOrderStatus,
+  formatPercent,
+  formatPrice,
   formatSignedCurrency,
   formatSignedValue,
   getTrendClass,
@@ -185,6 +245,7 @@ const marketStore = useMarketStore();
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
 const predictionStore = usePredictionStore();
+const spotStore = useSpotStore();
 const assetStore = useAssetStore();
 
 const closingId = ref('');
@@ -219,6 +280,23 @@ const predictionPnl = computed(() =>
   predictionStore.positions.reduce((sum, item) => sum + Number(item.unrealizedPnl || 0), 0),
 );
 
+const spotValue = computed(() =>
+  spotStore.holdings.reduce((sum, item) => sum + Number(item.currentValue || 0), 0),
+);
+const spotPnl = computed(() =>
+  spotStore.holdings.reduce((sum, item) => sum + Number(item.unrealizedPnl || 0), 0),
+);
+
+function formatQty(value?: string | number): string {
+  return (Number(value) || 0).toLocaleString('en-US', { maximumFractionDigits: 8 });
+}
+
+function formatSpotPrice(value?: string | number): string {
+  const numeric = Number(value) || 0;
+  const digits = numeric >= 1000 ? 2 : numeric >= 1 ? 4 : numeric >= 0.01 ? 6 : 8;
+  return formatPrice(numeric, digits);
+}
+
 // 预测价格就是概率，0.635 显示为 63.5¢
 function formatCents(value?: string | number | null): string {
   const numeric = Number(value);
@@ -238,6 +316,7 @@ async function loadPageData() {
     positionStore.fetchPositions(modeStore.mode),
     orderStore.fetchOpenOrders(modeStore.mode),
     assetStore.fetchAssets(modeStore.mode),
+    spotStore.fetchHoldings(),
     predictionStore.fetchPositions(),
   ]);
 }

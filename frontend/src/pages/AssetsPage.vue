@@ -23,6 +23,10 @@
             <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.orderMargin) }}</div>
           </div>
           <div>
+            <div class="stat-label">{{ $t('assets.spotValue') }}</div>
+            <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.spotValue) }}</div>
+          </div>
+          <div>
             <div class="stat-label">{{ $t('assets.predictionValue') }}</div>
             <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.predictionValue) }}</div>
           </div>
@@ -155,6 +159,7 @@ const FUTURES_LEDGER_TYPES = new Set(['open_fee', 'close_fee', 'realized_pnl', '
 
 function canOpenLedger(item: LedgerItem): boolean {
   if (item.type === 'prediction_buy' || item.type === 'prediction_sell') return true;
+  if (item.type === 'spot_buy' || item.type === 'spot_sell') return Boolean(item.symbol);
   return FUTURES_LEDGER_TYPES.has(item.type) && Boolean(exchangeFromSymbol(item.symbol));
 }
 
@@ -164,9 +169,14 @@ function handleLedgerClick(item: LedgerItem): void {
     void router.push('/prediction');
     return;
   }
+  if (item.type === 'spot_buy' || item.type === 'spot_sell') {
+    void router.push(`/spot/${item.symbol}`);
+    return;
+  }
   const exchange = exchangeFromSymbol(item.symbol);
   if (!exchange) return;
-  void router.push(`/trade/${item.symbol}`);}
+  void router.push(`/trade/${item.symbol}`);
+}
 
 async function loadPageData() {
   await Promise.all([

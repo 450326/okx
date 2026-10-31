@@ -55,6 +55,8 @@ export interface AssetSnapshot {
   unrealizedPnl: string;    // 未实现盈亏
   realizedPnl: string;      // 已实现盈亏
   equity: string;           // 账户权益
+  spotValue?: string;       // 现货持仓市值
+  spotUnrealizedPnl?: string; // 现货浮动盈亏
   predictionValue?: string;        // 预测持仓市值
   predictionUnrealizedPnl?: string; // 预测持仓浮动盈亏
 }
@@ -281,6 +283,66 @@ export interface ExchangeAccountPayload {
   apiSecret: string;  // API Secret
   passphrase: string; // API Passphrase
   isTestnet: boolean; // 是否测试网
+}
+
+/* ==================== 现货交易 ==================== */
+
+export interface SpotHoldingRecord {
+  id: string;
+  symbol: string;
+  baseCoin: string;
+  qty: string;
+  avgCost: string;
+  markPrice: string;
+  costBasis: string;
+  currentValue: string;
+  unrealizedPnl: string;
+  roe: string;
+  updatedAt: string;
+}
+
+export interface SpotHoldingListResponse {
+  mode: TradeMode;
+  list: SpotHoldingRecord[];
+}
+
+export interface SpotOrderRecord {
+  orderId: string;
+  symbol: string;
+  baseCoin: string;
+  side: 'buy' | 'sell';
+  qty: string;
+  price: string;
+  notional: string;
+  fee: string;
+  realizedPnl: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface SpotOrderListResponse {
+  mode: TradeMode;
+  list: SpotOrderRecord[];
+}
+
+export interface SpotOrderPayload {
+  mode?: TradeMode;
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: string;
+}
+
+export interface SpotOrderResult {
+  order: SpotOrderRecord;
+  holding?: {
+    id: string;
+    symbol: string;
+    baseCoin: string;
+    qty: string;
+    avgCost: string;
+    openedAt: string;
+    updatedAt: string;
+  };
 }
 
 /* ==================== 预测市场（Polymarket） ==================== */

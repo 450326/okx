@@ -6,6 +6,7 @@ import { DexService } from './dex.service';
 
 const OKX_BASE = 'https://www.okx.com/api/v5';
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
+const BINANCE_SPOT_BASE = 'https://api.binance.com/api/v3';
 const COINBASE_BASE = 'https://api.exchange.coinbase.com';
 
 /** Coinbase 没有全量 ticker 接口，默认只拉这些主流 USD 交易对。 */
@@ -41,11 +42,23 @@ function toBinanceSymbol(symbol: string): string {
   return `${baseCoinOf(value)}USDT`;
 }
 
+/** 把现货统一格式（BTC-USDT）转成 Binance 现货符号（BTCUSDT）。 */
+function toBinanceSpotSymbol(symbol: string): string {
+  return `${baseCoinOf(symbol)}USDT`;
+}
+
 /** 把任意交易所格式统一成 Coinbase 现货产品。 */
 function toCoinbaseProduct(symbol: string): string {
   const value = String(symbol || '').toUpperCase();
   if (value.includes('-') && !value.endsWith('-SWAP')) return value;
   return `${baseCoinOf(value)}-USD`;
+}
+
+/** 从 0.001 / 0.00000001 这类精度字符串推算小数位数。 */
+function decimalsOf(value: string): number {
+  const text = String(value || '');
+  const dot = text.indexOf('.');
+  return dot >= 0 ? text.length - dot - 1 : 0;
 }
 
 const OKX_INTERVAL_MAP: Record<string, string> = {
@@ -188,7 +201,9 @@ export class MarketService {
   private coinbaseProductsCache: { at: number; list: CoinbaseProduct[] } | null = null;
   private coinbaseTickerCache = new Map<string, { at: number; value: any }>();
   private binanceSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
+  private binanceSpotSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
   private okxSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
+  private okxSpotSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
   private readonly coinbaseAgent = new https.Agent({ keepAlive: true, maxSockets: 2 });
   private readonly binanceAgent = new https.Agent({ keepAlive: true, maxSockets: 4 });
 
@@ -235,6 +250,199 @@ export class MarketService {
     } catch {
       return null;
     }
+  }
+
+  private async getBinanceSpot<T>(path: string, params?: Record<string, string | number>): Promise<T | null> {
+    try {
+      const res = await axios.get<T>(`${BINANCE_SPOT_BASE}${path}`, {
+        params,
+        timeout: 8000,
+        httpsAgent: this.binanceAgent,
+        proxy: false,
+      });
+      return res.data;
+    } catch {
+      return null;
+    }
+  }
+
+  // 获取现货交易品种（支持 OKX / Binance / Coinbase）
+  async getSpotSymbols(exchange: string = 'okx') {
+    if (exchange === 'okx') return this.getOkxSpotSymbols();
+    if (exchange === 'binance') return this.getBinanceSpotSymbols();
+    if (exchange === 'coinbase') return this.getCoinbaseSymbols();
+    return [];
+  }
+
+  private async getBinanceSpotSymbols(): Promise<KnownSymbol[]> {
+    const now = Date.now();
+    if (this.binanceSpotSymbolsCache && now - this.binanceSpotSymbolsCache.at < 60_000) {
+      return this.binanceSpotSymbolsCache.list;
+    }
+
+    try {
+      const res = await axios.get<{ symbols: any[] }>(`${BINANCE_SPOT_BASE}/exchangeInfo`, {
+        timeout: 15000,
+        httpsAgent: this.binanceAgent,
+        proxy: false,
+      });
+      const raw = res.data?.symbols || [];
+      const list = raw
+        .filter((item) => item.status === 'TRADING' && item.quoteAsset === 'USDT')
+        .map((item) => {
+          const filters = item.filters || [];
+          const lot = filters.find((filter: any) => filter.filterType === 'LOT_SIZE');
+          const priceFilter = filters.find((filter: any) => filter.filterType === 'PRICE_FILTER');
+          return {
+            symbol: `${item.baseAsset}-USDT`,
+            baseCoin: item.baseAsset,
+            quoteCoin: 'USDT',
+            maxLeverage: 1,
+            minQty: lot?.minQty || '0.00000001',
+            pricePrecision: decimalsOf(priceFilter?.tickSize || '0.01'),
+            qtyPrecision: decimalsOf(lot?.stepSize || '0.00000001'),
+            assetClass: 'crypto' as const,
+          };
+        })
+        .sort((a, b) => a.symbol.localeCompare(b.symbol));
+
+      this.binanceSpotSymbolsCache = { at: now, list };
+      return list;
+    } catch (error) {
+      this.logger.warn(`获取 Binance 现货品种失败: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  private async getOkxSpotSymbols(): Promise<KnownSymbol[]> {
+    const now = Date.now();
+    if (this.okxSpotSymbolsCache && now - this.okxSpotSymbolsCache.at < 60_000) {
+      return this.okxSpotSymbolsCache.list;
+    }
+
+    try {
+      const res = await axios.get<{ code: string; data: any[] }>(`${OKX_BASE}/public/instruments`, {
+        params: { instType: 'SPOT' },
+        timeout: 15000,
+      });
+      const instruments = res.data?.data;
+      if (res.data?.code !== '0' || !instruments?.length) {
+        this.logger.warn(`OKX 现货 instruments 返回空, code=${res.data?.code}`);
+        return [];
+      }
+
+      const list = instruments
+        .filter((inst) => inst.state === 'live' && inst.quoteCcy === 'USDT')
+        .map((inst: any) => {
+          const tickSz = inst.tickSz || '0.01';
+          const lotSz = inst.lotSz || '0.0001';
+          return {
+            symbol: inst.instId,
+            baseCoin: inst.baseCcy || inst.instId.split('-')[0],
+            quoteCoin: 'USDT',
+            maxLeverage: 1,
+            minQty: inst.minSz || lotSz,
+            pricePrecision: decimalsOf(tickSz),
+            qtyPrecision: decimalsOf(lotSz),
+            assetClass: 'crypto' as const,
+          };
+        })
+        .sort((a, b) => a.symbol.localeCompare(b.symbol));
+
+      this.okxSpotSymbolsCache = { at: now, list };
+      return list;
+    } catch (error) {
+      this.logger.warn(`获取 OKX 现货品种失败: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  // 获取现货 ticker
+  async getSpotTickers(symbols?: string[], exchange: string = 'okx') {
+    if (exchange === 'coinbase') {
+      return this.getTickers(symbols, 'coinbase');
+    }
+    if (exchange === 'binance') {
+      return this.getBinanceSpotTickers(symbols);
+    }
+    if (exchange !== 'okx') return [];
+
+    const requested = symbols?.length ? new Set(symbols.map((symbol) => symbol.toUpperCase())) : null;
+    const raw = await this.fetchOkxList<OkxTicker>('/market/tickers', { instType: 'SPOT' });
+    return raw
+      .filter((ticker) => {
+        const symbol = String(ticker.instId || '').toUpperCase();
+        if (!symbol.endsWith('-USDT')) return false;
+        return !requested || requested.has(symbol);
+      })
+      .map((ticker) => {
+        const last = Number(ticker.last) || 0;
+        const open = Number(ticker.open24h) || 0;
+        const change = open > 0 ? ((last - open) / open) * 100 : 0;
+        return {
+          symbol: ticker.instId,
+          lastPrice: ticker.last,
+          markPrice: ticker.last,
+          indexPrice: ticker.last,
+          bidPrice: ticker.bidPx,
+          askPrice: ticker.askPx,
+          high24h: ticker.high24h,
+          low24h: ticker.low24h,
+          volume24h: ticker.vol24h,
+          priceChangePercent24h: change.toFixed(2),
+          assetClass: 'crypto' as const,
+        };
+      });
+  }
+
+  private async getBinanceSpotTickers(symbols?: string[]) {
+    const requested = symbols?.length
+      ? new Set(symbols.map((symbol) => toBinanceSpotSymbol(symbol)))
+      : null;
+
+    try {
+      const res = await axios.get<any[]>(`${BINANCE_SPOT_BASE}/ticker/24hr`, {
+        timeout: 12000,
+        httpsAgent: this.binanceAgent,
+        proxy: false,
+      });
+      return (res.data || [])
+        .filter((ticker) => String(ticker.symbol || '').endsWith('USDT'))
+        .filter((ticker) => !requested || requested.has(String(ticker.symbol).toUpperCase()))
+        .map((ticker) => {
+          const rawSymbol = String(ticker.symbol || '').toUpperCase();
+          const base = rawSymbol.slice(0, -4);
+          return {
+            symbol: `${base}-USDT`,
+            lastPrice: ticker.lastPrice,
+            markPrice: ticker.lastPrice,
+            indexPrice: ticker.lastPrice,
+            bidPrice: ticker.bidPrice,
+            askPrice: ticker.askPrice,
+            high24h: ticker.highPrice,
+            low24h: ticker.lowPrice,
+            volume24h: ticker.volume,
+            priceChangePercent24h: ticker.priceChangePercent,
+            assetClass: 'crypto' as const,
+          };
+        });
+    } catch (error) {
+      this.logger.warn(`获取 Binance 现货 ticker 失败: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  // 获取现货 K 线（OKX / Binance / Coinbase）
+  async getSpotKlines(symbol: string, interval: string, exchange: string = 'okx', limit = DEFAULT_KLINE_LIMIT) {
+    const safeLimit = this.clampKlineLimit(limit);
+    if (exchange === 'coinbase') {
+      return this.getKlines(symbol, interval, 'coinbase', safeLimit);
+    }
+    if (exchange === 'binance') {
+      return this.getBinanceSpotKlines(symbol, interval, safeLimit);
+    }
+    if (exchange !== 'okx') return [];
+    return this.getOkxCandles(String(symbol).toUpperCase(), interval, safeLimit);
   }
 
   // 获取指定交易所支持的交易品种列表
@@ -579,8 +787,11 @@ export class MarketService {
 
   // 获取 OKX K 线数据：单次最多 300 根，按 after 向更早翻页
   private async getOkxKlines(symbol: string, interval: string, limit: number) {
+    return this.getOkxCandles(toOkxSymbol(symbol), interval, limit);
+  }
+
+  private async getOkxCandles(instId: string, interval: string, limit: number) {
     const bar = OKX_INTERVAL_MAP[interval] || interval;
-    const instId = toOkxSymbol(symbol);
     const collected = new Map<number, string[]>();
     let after: string | undefined;
     let previousOldest = Number.POSITIVE_INFINITY;
@@ -634,6 +845,26 @@ export class MarketService {
     if (!raw) return [];
 
     // Binance 返回由旧到新；统一成 OKX 的由新到旧。
+    return raw
+      .map((c) => ({
+        openTime: Number(c[0]),
+        open: c[1],
+        high: c[2],
+        low: c[3],
+        close: c[4],
+        volume: c[5],
+      }))
+      .sort((a, b) => b.openTime - a.openTime);
+  }
+
+  private async getBinanceSpotKlines(symbol: string, interval: string, limit: number) {
+    const raw = await this.getBinanceSpot<string[][]>('/klines', {
+      symbol: toBinanceSpotSymbol(symbol),
+      interval,
+      limit,
+    });
+    if (!raw) return [];
+
     return raw
       .map((c) => ({
         openTime: Number(c[0]),

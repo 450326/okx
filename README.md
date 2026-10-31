@@ -48,6 +48,7 @@
 - 止盈止损、后台自动撮合、强制平仓
 - 手续费、保证金冻结/释放、已实现/未实现盈亏
 - 资金流水、权益曲线、模拟账户重置
+- 现货交易：OKX / Coinbase 现货行情，市价买入/卖出，持仓按最新价计入账户权益
 - 数据持久化到 `backend/data/simulation.json`
 
 ### 界面与工程
@@ -204,6 +205,17 @@ GET /api/v1/market/klines?symbol=BTCUSDT&interval=5m&exchange=binance
 GET /api/v1/market/klines?symbol=BTC-USD&interval=5m&exchange=coinbase
 GET /api/v1/market/depth?symbol=AAPL-USDT-SWAP&exchange=okx
 GET /api/v1/market/trades?symbol=AAPL-USDT-SWAP&exchange=okx
+```
+
+现货行情与模拟交易接口：
+
+```text
+GET /api/v1/spot/markets?exchange=okx
+GET /api/v1/spot/tickers?exchange=okx
+GET /api/v1/spot/klines?symbol=BTC-USDT&interval=5m&exchange=okx
+GET /api/v1/spot/holdings
+GET /api/v1/spot/orders?symbol=BTC-USDT
+POST /api/v1/spot/orders
 ```
 
 预测市场接口（独立模块）：

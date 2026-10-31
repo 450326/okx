@@ -44,6 +44,8 @@ const LEDGER_TYPE_KEYS: Record<string, string> = {
   liquidation: 'ledgerType.liquidation',
   prediction_buy: 'ledgerType.predictionBuy',
   prediction_sell: 'ledgerType.predictionSell',
+  spot_buy: 'ledgerType.spotBuy',
+  spot_sell: 'ledgerType.spotSell',
   reset: 'ledgerType.reset',
 };
 
@@ -88,7 +90,7 @@ export function formatCurrency(value?: string | number, digits = 2): string {
 export function formatSignedCurrency(value?: string | number, digits = 2): string {
   const store = useCurrencyStore();
   const numeric = store.convert(value);
-  const prefix = numeric >= 0 ? '+' : '';
+  const prefix = numeric >= 0 ? '+' : '-';
   const formatted = Math.abs(numeric).toLocaleString('en-US', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,

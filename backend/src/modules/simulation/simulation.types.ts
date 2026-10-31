@@ -21,6 +21,8 @@ export type SimLedgerType =
   | 'liquidation'
   | 'prediction_buy'
   | 'prediction_sell'
+  | 'spot_buy'
+  | 'spot_sell'
   | 'reset';
 
 /** 一次行情快照，由 SimulationState 从 OKX 行情服务获取后传给引擎。 */
@@ -224,6 +226,65 @@ export interface EquityPoint {
   equity: number;
 }
 
+/* ==================== 现货模拟交易 ==================== */
+
+/** 现货持仓：买入后持有基础币，不占保证金、不加杠杆。 */
+export interface SimSpotHolding {
+  id: string;
+  symbol: string;
+  baseCoin: string;
+  qty: number;
+  /** 持仓成本价（含买入手续费摊薄）。 */
+  avgCost: number;
+  openedAt: string;
+  updatedAt: string;
+}
+
+export type SimSpotSide = 'buy' | 'sell';
+
+/** 现货成交记录。 */
+export interface SimSpotOrder {
+  orderId: string;
+  symbol: string;
+  baseCoin: string;
+  side: SimSpotSide;
+  qty: number;
+  price: number;
+  notional: number;
+  fee: number;
+  realizedPnl: number;
+  status: 'filled';
+  createdAt: string;
+}
+
+export interface SpotTradeInput {
+  mode?: string;
+  symbol: string;
+  side: SimSpotSide;
+  qty: string | number;
+}
+
+export interface SpotHoldingSnapshot {
+  id: string;
+  symbol: string;
+  baseCoin: string;
+  qty: number;
+  avgCost: number;
+  markPrice: number;
+  costBasis: number;
+  currentValue: number;
+  unrealizedPnl: number;
+  roe: number;
+  updatedAt: string;
+}
+
+export interface SpotOrderSnapshot extends SimSpotOrder {}
+
+export interface SpotTradeResult {
+  order: SimSpotOrder;
+  holding?: SimSpotHolding;
+}
+
 /** 落盘的完整账户状态。版本号用于后续迁移。 */
 export interface SimAccountState {
   version: 2;
@@ -236,6 +297,9 @@ export interface SimAccountState {
   totalFee: number;
   positions: SimPosition[];
   orders: SimOrder[];
+  /** 现货持仓（与合约、预测持仓分开，共用同一个钱包余额）。 */
+  spotHoldings: SimSpotHolding[];
+  spotOrders: SimSpotOrder[];
   /** 预测市场持仓（与合约持仓分开，共用同一个钱包余额）。 */
   predictionPositions: SimPredictionPosition[];
   predictionOrders: SimPredictionOrder[];
@@ -243,6 +307,8 @@ export interface SimAccountState {
   equityHistory: EquityPoint[];
   nextOrderId: number;
   nextPositionId: number;
+  nextSpotHoldingId: number;
+  nextSpotOrderId: number;
   nextPredictionOrderId: number;
   nextPredictionPositionId: number;
   nextLedgerId: number;
@@ -258,6 +324,10 @@ export interface AccountSnapshot {
   realizedPnl: number;
   equity: number;
   totalFee: number;
+  /** 现货持仓市值。 */
+  spotValue: number;
+  /** 现货持仓浮动盈亏（已包含在 unrealizedPnl 中）。 */
+  spotUnrealizedPnl: number;
   /** 预测持仓按当前概率计算的市值。 */
   predictionValue: number;
   /** 预测持仓浮动盈亏（已包含在 unrealizedPnl 中）。 */

@@ -14,6 +14,8 @@ import PredictionPage from '../pages/PredictionPage.vue';
 import PredictionDetailPage from '../pages/PredictionDetailPage.vue';
 // 引入交易页面组件
 import TradePage from '../pages/TradePage.vue';
+// 引入现货页面组件
+import SpotPage from '../pages/SpotPage.vue';
 // 引入持仓页面组件
 import PositionsPage from '../pages/PositionsPage.vue';
 // 引入资产页面组件
@@ -46,6 +48,7 @@ const router = createRouter({
         { path: 'prediction', name: 'prediction', component: PredictionPage },  // 预测市场页
         { path: 'prediction/:slug', name: 'prediction-detail', component: PredictionDetailPage, props: true },  // 预测市场详情
         { path: 'trade/:symbol?', name: 'trade', component: TradePage, props: true },  // 交易页（可选交易对参数）
+        { path: 'spot/:symbol?', name: 'spot', component: SpotPage, props: true },  // 现货页（可选交易对参数）
         { path: 'positions', name: 'positions', component: PositionsPage }, // 持仓页
         { path: 'assets', name: 'assets', component: AssetsPage },          // 资产页
         { path: 'settings', name: 'settings', component: SettingsPage },    // 设置页
