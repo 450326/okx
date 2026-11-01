@@ -22,6 +22,8 @@ import type {
   UserProfile,
   DepthResponse,
   KlineResponse,
+  LiveOrderStatusItem,
+  LiveOrderStatusResponse,
   RecentTradeListResponse,
   LoginResponse,
   PredictionHistoryInterval,
@@ -216,7 +218,18 @@ export const orderApi = {
   },
   // 创建订单
   create(payload: OrderPayload) {
-    return post<{ orderId: string; status: string; payload: OrderPayload }, OrderPayload>('/orders', payload);
+    return post<
+      {
+        orderId: string;
+        clientOrderId?: string;
+        exchangeOrderId?: string | null;
+        status: string;
+        exchangeStatus?: string | null;
+        mismatch?: boolean;
+        payload: OrderPayload;
+      },
+      OrderPayload
+    >('/orders', payload);
   },
   // 获取当前委托
   getOpen(mode: TradeMode, symbol?: string) {
@@ -226,9 +239,17 @@ export const orderApi = {
   getHistory(mode: TradeMode, symbol?: string) {
     return get<OrderListResponse>('/orders/history', { mode, symbol });
   },
+  // 实盘本地订单与交易所状态
+  getLiveOrders() {
+    return get<LiveOrderStatusResponse>('/orders/live');
+  },
+  // 同步单笔实盘订单状态
+  syncLiveOrder(clientOrderId: string) {
+    return get<LiveOrderStatusItem>('/orders/live/' + encodeURIComponent(clientOrderId));
+  },
   // 撤销未成交委托
-  cancel(orderId: string, mode: TradeMode) {
-    return post<OrderItem, { mode: TradeMode }>(`/orders/${orderId}/cancel`, { mode });
+  cancel(orderId: string, mode: TradeMode, symbol?: string) {
+    return post<OrderItem, { mode: TradeMode; symbol?: string }>(`/orders/${orderId}/cancel`, { mode, symbol });
   },
 };
 

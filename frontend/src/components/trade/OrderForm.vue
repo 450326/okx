@@ -48,7 +48,7 @@
         </div>
       </div>
 
-      <div class="field-row">
+      <div v-if="modeStore.mode === 'simulation'" class="field-row">
         <div class="field">
           <input v-model="form.takeProfitPrice" :placeholder="$t('order.takeProfit')" />
         </div>
@@ -146,6 +146,9 @@ const form = reactive({
 
 // 本地消息文本
 const localMessage = ref('');
+// 实盘幂等键：同一笔失败/未知订单重试时复用，避免重复下单
+const pendingClientOrderId = ref('');
+const pendingSignature = ref('');
 // 试算结果展开状态
 const showPreview = ref(false);
 // 做多按钮文本：开仓/平多
@@ -263,14 +266,32 @@ async function handleSubmit(side: 'long' | 'short') {
   form.side = side;
 
   const previewPayload = buildPreviewPayload(side);
+  const signature = JSON.stringify({
+    symbol: previewPayload.symbol,
+    side: previewPayload.side,
+    action: previewPayload.action,
+    orderType: previewPayload.orderType,
+    leverage: previewPayload.leverage,
+    qty: previewPayload.qty,
+    price: previewPayload.price,
+    takeProfitPrice: previewPayload.takeProfitPrice,
+    stopLossPrice: previewPayload.stopLossPrice,
+  });
+  if (modeStore.mode === 'live' && (!pendingClientOrderId.value || pendingSignature.value !== signature)) {
+    pendingClientOrderId.value = `okx${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 32);
+    pendingSignature.value = signature;
+  }
   const payload: OrderPayload = {
     ...previewPayload,
     marginMode: 'isolated',
+    clientOrderId: modeStore.mode === 'live' ? pendingClientOrderId.value : undefined,
   };
 
   const result = await orderStore.submitOrder(payload);
 
   if (result) {
+    pendingClientOrderId.value = '';
+    pendingSignature.value = '';
     localMessage.value = `${$t('order.orderSuccess')} ${formatOrderId(result.orderId)}`;
     emit('submitted');
     if (form.action === 'open') {

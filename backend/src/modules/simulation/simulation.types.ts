@@ -48,6 +48,8 @@ export interface SimulationOrderInput {
   takeProfitPrice?: string | number | null;
   stopLossPrice?: string | number | null;
   reduceOnly?: boolean;
+  /** 实盘幂等键；模拟盘忽略。 */
+  clientOrderId?: string;
 }
 
 export interface SimPosition {

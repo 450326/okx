@@ -6,6 +6,9 @@ import { AccountModeStore } from './account-mode.store';
 import { AccountModeService } from './account-mode.service';
 import { CapabilityService } from './capability.service';
 import { LiveAccountService } from './live-account.service';
+import { OkxInstrumentService } from './okx-instrument.service';
+import { LiveOrderStore } from './live-order.store';
+import { LiveTradingService } from './live-trading.service';
 
 @Global()
 @Module({
@@ -17,6 +20,9 @@ import { LiveAccountService } from './live-account.service';
     AccountModeService,
     CapabilityService,
     LiveAccountService,
+    OkxInstrumentService,
+    LiveOrderStore,
+    LiveTradingService,
   ],
   exports: [
     AccountStore,
@@ -25,6 +31,9 @@ import { LiveAccountService } from './live-account.service';
     AccountModeService,
     CapabilityService,
     LiveAccountService,
+    OkxInstrumentService,
+    LiveOrderStore,
+    LiveTradingService,
   ],
 })
 export class AccountModule {}

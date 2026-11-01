@@ -233,6 +233,39 @@
       <h2 class="section-title">{{ $t('positions.openOrders') }}</h2>
       <p class="status-text">{{ modeStore.reasonOf('futuresOpenOrders') }}</p>
     </section>
+
+    <section v-if="modeStore.mode === 'live'" class="card">
+      <h2 class="section-title">实盘订单状态</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>订单号</th>
+            <th>品种</th>
+            <th>方向</th>
+            <th>数量</th>
+            <th>平台状态</th>
+            <th>交易所状态</th>
+            <th>一致性</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in liveOrderStatus" :key="item.clientOrderId">
+            <td>{{ item.clientOrderId }}</td>
+            <td>{{ item.symbol }}</td>
+            <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? '多' : '空' }}</td>
+            <td>{{ item.qty }}</td>
+            <td>{{ formatOrderStatus(item.localStatus) }}</td>
+            <td>{{ item.exchangeStatus ? formatOrderStatus(item.exchangeStatus) : '--' }}</td>
+            <td>
+              <span v-if="item.mismatch" class="error-text">不一致</span>
+              <span v-else class="status-text">一致</span>
+              <button class="ghost-btn small" type="button" @click="syncLiveOrder(item.clientOrderId)">同步</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-if="!liveOrderStatus.length" class="empty-state">暂无实盘订单</div>
+    </section>
   </div>
 </template>
 
@@ -247,8 +280,8 @@ import { usePredictionStore } from '../stores/prediction';
 import { useSpotStore } from '../stores/spot';
 import { useAssetStore } from '../stores/assets';
 import CoinIcon from '../components/common/CoinIcon.vue';
-import { positionApi } from '../api/services';
-import type { OrderItem, PositionItem, PredictionPositionRecord } from '../api/types';
+import { positionApi, orderApi } from '../api/services';
+import type { LiveOrderStatusItem, OrderItem, PositionItem, PredictionPositionRecord } from '../api/types';
 import {
   formatCurrency,
   formatOrderId,
@@ -274,6 +307,7 @@ const closingPredictionId = ref('');
 const cancellingId = ref('');
 const errorMessage = ref('');
 const predictionError = ref('');
+const liveOrderStatus = ref<LiveOrderStatusItem[]>([]);
 
 const canFutures = computed(() => modeStore.can('futuresPositions'));
 const canOpenOrders = computed(() => modeStore.can('futuresOpenOrders'));
@@ -372,6 +406,15 @@ async function loadPageData() {
     predictionStore.positions = [];
   }
 
+  liveOrderStatus.value = [];
+  if (modeStore.mode === 'live' && canOpenOrders.value) {
+    try {
+      liveOrderStatus.value = (await orderApi.getLiveOrders()).list;
+    } catch {
+      liveOrderStatus.value = [];
+    }
+  }
+
   await Promise.all(tasks);
 }
 
@@ -403,11 +446,21 @@ async function handleClosePrediction(item: PredictionPositionRecord) {
   }
 }
 
+async function syncLiveOrder(clientOrderId: string) {
+  try {
+    const updated = await orderApi.syncLiveOrder(clientOrderId);
+    const index = liveOrderStatus.value.findIndex((item) => item.clientOrderId === clientOrderId);
+    if (index >= 0) liveOrderStatus.value[index] = updated;
+  } catch (error) {
+    errorMessage.value = (error as Error).message || '同步实盘订单失败';
+  }
+}
+
 async function handleCancel(item: OrderItem) {
   if (cancellingId.value) return;
   cancellingId.value = item.orderId;
   errorMessage.value = '';
-  const success = await orderStore.cancelOrder(item.orderId, modeStore.mode);
+  const success = await orderStore.cancelOrder(item.orderId, modeStore.mode, item.symbol);
   if (success) {
     await loadPageData();
   } else {

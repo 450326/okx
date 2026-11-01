@@ -290,11 +290,14 @@ export interface OrderPreviewResult {
 // 下单请求参数（继承预览参数 + 保证金模式）
 export interface OrderPayload extends OrderPreviewPayload {
   marginMode: 'isolated';  // 保证金模式（逐仓）
+  clientOrderId?: string;  // 实盘幂等键
 }
 
 // 订单条目
 export interface OrderItem {
   orderId: string;              // 订单 ID
+  clientOrderId?: string;       // 实盘幂等键
+  exchangeOrderId?: string | null;
   symbol: string;               // 交易对
   side?: 'long' | 'short';     // 方向
   action?: 'open' | 'close';   // 开平
@@ -319,6 +322,31 @@ export interface OrderListResponse {
   mode: TradeMode;    // 交易模式
   source?: CapabilitySource;
   list: OrderItem[];  // 订单列表
+}
+
+export interface LiveOrderStatusItem {
+  orderId: string;
+  clientOrderId: string;
+  exchangeOrderId?: string | null;
+  status: string;
+  localStatus: string;
+  exchangeStatus?: string | null;
+  mismatch?: boolean;
+  symbol: string;
+  side: 'long' | 'short';
+  action: 'open' | 'close';
+  orderType: string;
+  qty: string;
+  price?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LiveOrderStatusResponse {
+  mode: TradeMode;
+  source: CapabilitySource;
+  list: LiveOrderStatusItem[];
 }
 
 // 交易所账户信息

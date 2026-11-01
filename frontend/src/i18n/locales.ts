@@ -56,6 +56,9 @@ export const locales: Record<string, Record<string, string>> = {
     'spot.marketOnlyHint': '当前仅支持市价成交，按盘口最优价成交并收取 0.05% 手续费。',
 
     'trade.workbench': '交易工作台',
+    'trade.liveLockedTitle': '实盘只读',
+    'trade.liveLockedHint': '当前只允许查看实盘数据，下单、平仓、撤单已被禁用。请先到设置中开启实盘交易。',
+    'trade.goEnableLive': '去开启实盘交易',
     'trade.predictionMarket': '预测市场',
     'trade.probabilityMarket': '概率市场',
     'trade.currentMode': '当前模式',
@@ -555,6 +558,9 @@ export const locales: Record<string, Record<string, string>> = {
     'spot.marketOnlyHint': 'Market orders only. Fills at the best quote with a 0.05% fee.',
 
     'trade.workbench': 'Trade Workbench',
+    'trade.liveLockedTitle': 'Live Read-only',
+    'trade.liveLockedHint': 'Live data is view-only. Orders, closes and cancels are disabled. Enable live trading in Settings first.',
+    'trade.goEnableLive': 'Enable Live Trading',
     'trade.predictionMarket': 'Prediction Market',
     'trade.probabilityMarket': 'Probability Market',
     'trade.currentMode': 'Current Mode',
@@ -1055,6 +1061,9 @@ export const locales: Record<string, Record<string, string>> = {
     'spot.marketOnlyHint': '成行注文のみ対応。最良気配で約定し、手数料 0.05% を徴収します。',
 
     'trade.workbench': '取引ワークベンチ',
+    'trade.liveLockedTitle': '実盤閲覧のみ',
+    'trade.liveLockedHint': '実盤データの閲覧のみ可能です。注文・決済・取消は無効です。先に設定で実盤取引を有効化してください。',
+    'trade.goEnableLive': '実盤取引を有効化',
     'trade.predictionMarket': '予測マーケット',
     'trade.probabilityMarket': '確率マーケット',
     'trade.currentMode': '現在のモード',
@@ -1555,6 +1564,9 @@ export const locales: Record<string, Record<string, string>> = {
     'spot.marketOnlyHint': '시장가 주문만 지원합니다. 최우선 호가로 체결되며 수수료 0.05%가 부과됩니다.',
 
     'trade.workbench': '거래 워크벤치',
+    'trade.liveLockedTitle': '실계좌 읽기 전용',
+    'trade.liveLockedHint': '실계좌 데이터만 조회할 수 있습니다. 주문·청산·취소가 비활성화됩니다. 먼저 설정에서 실계좌 거래를 활성화하세요.',
+    'trade.goEnableLive': '실계좌 거래 활성화',
     'trade.predictionMarket': '예측 시장',
     'trade.probabilityMarket': '확률 시장',
     'trade.currentMode': '현재 모드',

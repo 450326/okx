@@ -23,7 +23,7 @@
     </section>
 
     <!-- K 线 + 下单区: 并排 -->
-    <section class="kline-order-grid">
+    <section class="kline-order-grid" :class="{ 'trade-grid-locked': isTradeLocked }">
       <KlineChart
         :klines="marketStore.klines"
         :loading="marketStore.chartLoading"
@@ -39,6 +39,14 @@
         <h2 class="section-title">{{ $t('trade.workbench') }}</h2>
         <p class="status-text">{{ modeStore.reasonOf('futuresTrade') }}</p>
       </section>
+
+      <div v-if="isTradeLocked" class="trade-lock-overlay">
+        <div class="trade-lock-card">
+          <h3>{{ $t('trade.liveLockedTitle') }}</h3>
+          <p>{{ $t('trade.liveLockedHint') }}</p>
+          <RouterLink class="primary-btn" to="/settings">{{ $t('trade.goEnableLive') }}</RouterLink>
+        </div>
+      </div>
     </section>
 
     <!-- 持仓 + 委托汇总：只显示当前交易对，紧跟交易区下方并按 5 秒轮询刷新 -->
@@ -195,6 +203,7 @@ if (route.query.asset === 'stock') {
 const assetStore = useAssetStore();
 const modeStore = useModeStore();
 const canFuturesTrade = computed(() => modeStore.can('futuresTrade'));
+const isTradeLocked = computed(() => modeStore.mode === 'live' && !canFuturesTrade.value);
 const canFuturesPositions = computed(() => modeStore.can('futuresPositions'));
 const canOpenOrders = computed(() => modeStore.can('futuresOpenOrders'));
 const canOrderHistory = computed(() => modeStore.can('futuresOrderHistory'));
@@ -443,10 +452,56 @@ onBeforeUnmount(() => {
 
 /* K 线 + 下单面板并排网格 */
 .kline-order-grid {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: 14px;
   align-items: start;
+}
+
+.trade-grid-locked {
+  isolation: isolate;
+}
+
+.trade-lock-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: rgba(5, 8, 12, 0.58);
+  backdrop-filter: blur(2px);
+}
+
+.trade-lock-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  padding: 22px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-card);
+  text-align: center;
+}
+
+.trade-lock-card h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.trade-lock-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.trade-lock-card .primary-btn {
+  align-self: center;
+  margin-top: 4px;
 }
 
 /* 网格布局公用 */

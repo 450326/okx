@@ -99,10 +99,10 @@ export const useOrderStore = defineStore('orders', () => {
   }
 
   // 撤销未成交委托
-  async function cancelOrder(orderId: string, mode: TradeMode) {
+  async function cancelOrder(orderId: string, mode: TradeMode, symbol?: string) {
     error.value = '';
     try {
-      await orderApi.cancel(orderId, mode);
+      await orderApi.cancel(orderId, mode, symbol);
       openOrders.value = openOrders.value.filter((item) => item.orderId !== orderId);
       return true;
     } catch (err) {

@@ -36,6 +36,8 @@ import { WsModule } from './modules/ws/ws.module';
 import { SimulationExceptionFilter } from './modules/simulation/simulation-exception.filter';
 // 引入能力矩阵异常过滤器
 import { CapabilityExceptionFilter } from './modules/account/capability-exception.filter';
+// 引入实盘下单异常过滤器
+import { LiveOrderExceptionFilter } from './modules/account/live-order-exception.filter';
 
 // 应用根模块，汇总所有子模块
 @Module({
@@ -61,6 +63,7 @@ import { CapabilityExceptionFilter } from './modules/account/capability-exceptio
     // 模拟盘业务错误统一返回 { code, message, data }，避免 Nest 默认 400 结构丢失业务码。
     { provide: APP_FILTER, useClass: SimulationExceptionFilter },
     { provide: APP_FILTER, useClass: CapabilityExceptionFilter },
+    { provide: APP_FILTER, useClass: LiveOrderExceptionFilter },
   ],
 })
 export class AppModule {}

@@ -6,6 +6,7 @@ import {
 } from '../simulation/simulation.types';
 import { CapabilityService } from '../account/capability.service';
 import { LiveAccountService } from '../account/live-account.service';
+import { LiveTradingService } from '../account/live-trading.service';
 
 @Controller('orders')
 export class OrdersController {
@@ -13,6 +14,7 @@ export class OrdersController {
     private readonly sim: SimulationState,
     private readonly capabilities: CapabilityService,
     private readonly live: LiveAccountService,
+    private readonly liveTrading: LiveTradingService,
   ) {}
 
   @Post('preview')
@@ -21,7 +23,10 @@ export class OrdersController {
     @Headers('authorization') authorization?: string,
     @Headers('x-simulation-overlay') overlay?: string,
   ) {
-    this.capabilities.assert('futuresTrade', authorization, overlay);
+    const capability = this.capabilities.assert('futuresTrade', authorization, overlay);
+    if (capability.source === 'okx') {
+      return ok(await this.liveTrading.preview(body));
+    }
     return ok(await this.sim.previewOrder(body));
   }
 
@@ -31,7 +36,10 @@ export class OrdersController {
     @Headers('authorization') authorization?: string,
     @Headers('x-simulation-overlay') overlay?: string,
   ) {
-    this.capabilities.assert('futuresTrade', authorization, overlay);
+    const capability = this.capabilities.assert('futuresTrade', authorization, overlay);
+    if (capability.source === 'okx') {
+      return ok(await this.liveTrading.place(body));
+    }
     return ok(await this.sim.placeOrder(body));
   }
 
@@ -46,6 +54,25 @@ export class OrdersController {
       return ok({ mode: 'live', source: 'okx', list: await this.live.getOpenOrders(symbol) });
     }
     return ok({ mode: 'simulation', source: 'simulation', list: this.sim.getOpenOrders(symbol) });
+  }
+
+  @Get('live')
+  getLiveOrders(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    this.capabilities.assert('futuresOpenOrders', authorization, overlay);
+    return ok({ mode: 'live', source: 'okx', list: this.liveTrading.listOrders() });
+  }
+
+  @Get('live/:clientOrderId')
+  async syncLiveOrder(
+    @Param('clientOrderId') clientOrderId: string,
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    this.capabilities.assert('futuresOpenOrders', authorization, overlay);
+    return ok(await this.liveTrading.sync(clientOrderId));
   }
 
   @Get('history')
@@ -68,12 +95,16 @@ export class OrdersController {
   }
 
   @Post(':id/cancel')
-  cancelOrder(
+  async cancelOrder(
     @Param('id') id: string,
+    @Body() body: { symbol?: string } = {},
     @Headers('authorization') authorization?: string,
     @Headers('x-simulation-overlay') overlay?: string,
   ) {
-    this.capabilities.assert('futuresTrade', authorization, overlay);
+    const capability = this.capabilities.assert('futuresTrade', authorization, overlay);
+    if (capability.source === 'okx') {
+      return ok(await this.liveTrading.cancel(id, body?.symbol));
+    }
     return ok(this.sim.cancelOrder(id));
   }
 }

@@ -60,6 +60,50 @@ export class OkxApiService {
     return this.request(account, 'GET', '/api/v5/account/config');
   }
 
+  async placeOrder(
+    account: OkxAccount,
+    body: {
+      instId: string;
+      tdMode: string;
+      side: 'buy' | 'sell';
+      posSide?: 'long' | 'short';
+      ordType: 'market' | 'limit';
+      sz: string;
+      px?: string;
+      clOrdId?: string;
+      reduceOnly?: boolean;
+    },
+  ) {
+    return this.request(account, 'POST', '/api/v5/trade/order', body);
+  }
+
+  async cancelOrder(account: OkxAccount, body: { instId: string; ordId?: string; clOrdId?: string }) {
+    return this.request(account, 'POST', '/api/v5/trade/cancel-order', body);
+  }
+
+  async getOrder(account: OkxAccount, params: { instId: string; ordId?: string; clOrdId?: string }) {
+    const query = new URLSearchParams();
+    query.set('instId', params.instId);
+    if (params.ordId) query.set('ordId', params.ordId);
+    if (params.clOrdId) query.set('clOrdId', params.clOrdId);
+    return this.request(account, 'GET', `/api/v5/trade/order?${query.toString()}`);
+  }
+
+  async getTicker(instId: string) {
+    try {
+      const res = await axios.get<{ code: string; data: any[] }>(`${OKX_BASE}/api/v5/market/ticker`, {
+        params: { instId },
+        timeout: 10000,
+        httpsAgent: this.proxyAgent ?? undefined,
+        proxy: false,
+      });
+      return res.data;
+    } catch (error) {
+      this.logger.warn(`OKX ticker 获取失败 ${instId}: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
   async getPositions(account: OkxAccount, instType = 'SWAP') {
     return this.request(account, 'GET', `/api/v5/account/positions?instType=${instType}`);
   }

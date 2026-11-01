@@ -88,7 +88,10 @@ export class CapabilityService {
           futuresPositions: liveRead('未找到已激活的 OKX API 账户'),
           futuresOpenOrders: liveRead('未找到已激活的 OKX API 账户'),
           futuresOrderHistory: disabled('实盘历史订单读取开发中'),
-          futuresTrade: disabled('实盘交易通道开发中，暂不允许下真实订单'),
+          futuresTrade:
+            state === 'live_trading'
+              ? okx()
+              : disabled('实盘只读模式，禁止下单'),
           spotHoldings: overlayEnabled
             ? sim()
             : disabled('平台暂未接入实盘现货持仓'),

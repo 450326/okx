@@ -282,6 +282,20 @@ Mock 登录阶段可以使用超级权限账号：
 
 超级账号在实盘模式下可在设置中开启「超级权限 · 实盘模拟数据」，以只读方式查看模拟预测和现货持仓；普通账号即使伪造请求头，服务端也会拒绝。
 
+### 实盘下单与幂等
+
+`live_trading` 状态下支持 OKX USDT 永续市价/限价开平仓：
+
+- 前端为每个订单生成 `clientOrderId`，网络异常重试时复用
+- 服务端将 `clientOrderId` 映射持久化到 `backend/data/live-orders.json`
+- 相同 `clientOrderId` + 相同参数重复提交只返回第一次结果，不重复下单
+- 相同 `clientOrderId` + 不同参数返回 `4301`
+- 下单结果未知时标记 `unknown`，不会自动重复提交
+- `GET /api/v1/orders/live` 查看本地实盘订单
+- `GET /api/v1/orders/live/:clientOrderId` 向 OKX 同步状态并返回 `mismatch` 差异标记
+
+实盘暂不支持同时设置止盈止损，也不支持实盘现货；`live_readonly` 下所有写操作由前后端双重拒绝。
+
 ## 模拟盘规则
 
 | 项目 | 规则 |
