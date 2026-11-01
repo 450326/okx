@@ -5,16 +5,42 @@ import { defineStore } from 'pinia';
 // 导入账户 API
 import { accountApi } from '../api/services';
 // 导入交易模式类型
-import type { TradeMode } from '../api/types';
+import type {
+  AccountModeResponse,
+  ModeCapabilities,
+  TradeMode,
+  TradingState,
+} from '../api/types';
+
+const EMPTY_CAPABILITIES: ModeCapabilities = {
+  canUseSimulation: true,
+  canReadLive: false,
+  canTradeLive: false,
+  canEnterLiveReadonly: false,
+  canEnterLiveTrading: false,
+};
 
 // 交易模式状态 store
 export const useModeStore = defineStore('mode', () => {
-  // 当前交易模式
+  // 兼容现有页面的有效模式
   const mode = ref<TradeMode>('simulation');
+  // 服务端真实状态机
+  const state = ref<TradingState>('simulation');
+  const capabilities = ref<ModeCapabilities>({ ...EMPTY_CAPABILITIES });
+  const blockers = ref<string[]>([]);
+  const updatedAt = ref('');
   // 加载状态
   const loading = ref(false);
   // 错误信息
   const error = ref('');
+
+  function apply(data: AccountModeResponse) {
+    mode.value = data.mode === 'live' ? 'live' : 'simulation';
+    state.value = data.state || (data.mode === 'live' ? 'live_readonly' : 'simulation');
+    capabilities.value = { ...EMPTY_CAPABILITIES, ...(data.capabilities || {}) };
+    blockers.value = data.blockers || [];
+    updatedAt.value = data.updatedAt || '';
+  }
 
   // 从服务端获取当前交易模式
   async function fetchMode() {
@@ -23,24 +49,24 @@ export const useModeStore = defineStore('mode', () => {
 
     try {
       const data = await accountApi.getMode();
-      mode.value = data.mode;
-      return mode.value;
+      apply(data);
+      return state.value;
     } catch (err) {
       error.value = (err as Error)?.message ?? '获取模式失败';
-      return mode.value;
+      return state.value;
     } finally {
       loading.value = false;
     }
   }
 
-  // 更新交易模式
-  async function updateMode(nextMode: TradeMode) {
+  // 更新交易模式（simulation / live / live_readonly / live_trading）
+  async function updateMode(nextMode: TradeMode | TradingState, reason?: string) {
     loading.value = true;
     error.value = '';
 
     try {
-      const data = await accountApi.updateMode(nextMode);
-      mode.value = data.mode;
+      const data = await accountApi.updateMode(nextMode, reason);
+      apply(data);
       return true;
     } catch (err) {
       error.value = (err as Error)?.message ?? '切换模式失败';
@@ -50,19 +76,35 @@ export const useModeStore = defineStore('mode', () => {
     }
   }
 
-  // 切换交易模式（模拟/实盘互切）
+  // 切换模拟/实盘：进入 live 时只到“实盘只读”，交易需再显式开启
   async function toggleMode() {
-    const nextMode = mode.value === 'simulation' ? 'live' : 'simulation';
+    const nextMode: TradeMode = mode.value === 'simulation' ? 'live' : 'simulation';
     return updateMode(nextMode);
+  }
+
+  // 实盘只读 → 实盘交易（服务端会做 API 权限/余额前置校验）
+  async function enableLiveTrading() {
+    return updateMode('live_trading', 'enable_live_trading');
+  }
+
+  // 实盘交易 → 实盘只读（降级，不退出实盘）
+  async function disableLiveTrading() {
+    return updateMode('live_readonly', 'disable_live_trading');
   }
 
   // 导出 store 状态与方法
   return {
     mode,
+    state,
+    capabilities,
+    blockers,
+    updatedAt,
     loading,
     error,
     fetchMode,
     updateMode,
     toggleMode,
+    enableLiveTrading,
+    disableLiveTrading,
   };
 });

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Logger, Post, Put, Query } from '@nestjs/common'
 import { fail, ok } from '../../common/api-response';
 import { OkxApiService } from './okx-api.service';
 import { AccountStore } from './account-store';
+import { AccountModeService, ModeTransitionError } from './account-mode.service';
 import { SimulationState } from '../simulation/simulation-state';
 
 @Controller('account')
@@ -11,18 +12,25 @@ export class AccountController {
   constructor(
     private readonly okxApi: OkxApiService,
     private readonly accountStore: AccountStore,
+    private readonly modeService: AccountModeService,
     private readonly sim: SimulationState,
   ) {}
 
   @Get('mode')
-  getMode() {
-    // 模式本身仍由前端保存；这里只保证模拟盘默认模式。
-    return ok({ mode: 'simulation' });
+  async getMode() {
+    return ok(await this.modeService.getView());
   }
 
   @Put('mode')
-  updateMode(@Body() body: { mode: 'simulation' | 'live' }) {
-    return ok(body);
+  async updateMode(@Body() body: { mode?: string; reason?: string }) {
+    try {
+      return ok(await this.modeService.changeMode(body));
+    } catch (error) {
+      if (error instanceof ModeTransitionError) {
+        return fail(error.message, error.code, { blockers: error.blockers });
+      }
+      throw error;
+    }
   }
 
   @Get('assets')

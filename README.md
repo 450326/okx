@@ -234,6 +234,29 @@ POST /api/v1/prediction/positions/:id/close
 
 接口设计详见 [前后端接口设计.md](前后端接口设计.md)。
 
+## 交易模式状态机
+
+交易模式由服务端持久化到 `backend/data/account-mode.json`，前端刷新、换标签页或重启服务后都以服务端为准。
+
+```text
+simulation → live_readonly → live_trading
+     ↑             ↓               ↓
+     └─────────────┴───────────────┘
+```
+
+- `simulation`：模拟盘
+- `live_readonly`：实盘只读，必须先绑定并激活 OKX API 账户
+- `live_trading`：实盘交易，必须从 `live_readonly` 进入，并校验 API 交易权限与 USDT 可用保证金
+
+接口：
+
+```text
+GET /api/v1/account/mode
+PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "live_trading" }
+```
+
+`GET` 返回兼容字段 `mode`（`simulation` / `live`）、真实状态 `state`、能力位 `capabilities`、阻塞原因 `blockers` 和最近一次迁移记录。非法迁移会返回业务错误码 `4100` / `4101` / `4102`。
+
 ## 模拟盘规则
 
 | 项目 | 规则 |
@@ -250,13 +273,13 @@ POST /api/v1/prediction/positions/:id/close
 | 强平 | `margin + uPnL <= 维持保证金` 时平仓 |
 
 - 可用余额 = 钱包余额 − 持仓保证金 − 挂单冻结
-- 权益 = 钱包余额 + 未实现盈亏
+- 权益 = 钱包余额 + 合约未实现盈亏 + 现货市值 + 预测持仓市值
 - 同一币种在不同交易所是独立持仓，例如 `BTC-USDT-SWAP` 与 `BTC-USD` 不互相覆盖
 
 ## 测试与构建
 
 ```bash
-# 模拟盘账务自测（26 项，含预测盘交易）
+# 模拟盘账务自测（29 项，含预测盘和现货交易）
 cd backend
 npm run test:simulation
 

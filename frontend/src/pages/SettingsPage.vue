@@ -30,11 +30,31 @@
         <div class="settings-row">
           <span class="settings-label">{{ $t('settings.tradeMode') }}</span>
           <div class="settings-actions-row">
+            <span :class="['mode-state-badge', modeStore.state]">{{ modeStateLabel }}</span>
             <button class="ghost-btn" :disabled="modeStore.loading" @click="openModeConfirm()">
               {{ $t('settings.switchAccount') }}
             </button>
+            <button
+              v-if="modeStore.state === 'live_readonly'"
+              class="ghost-btn"
+              :disabled="modeStore.loading || !modeStore.capabilities.canEnterLiveTrading"
+              @click="handleEnableLiveTrading"
+            >
+              {{ $t('settings.enableLiveTrading') }}
+            </button>
+            <button
+              v-if="modeStore.state === 'live_trading'"
+              class="ghost-btn"
+              :disabled="modeStore.loading"
+              @click="handleDisableLiveTrading"
+            >
+              {{ $t('settings.disableLiveTrading') }}
+            </button>
           </div>
         </div>
+        <p v-if="modeStore.state === 'live_readonly'" class="status-text mode-hint">
+          {{ $t('settings.liveTradingHint') }}
+        </p>
         <div class="settings-row">
           <span class="settings-label">{{ $t('settings.apibinding') }}</span>
           <div class="settings-actions-row">
@@ -161,6 +181,11 @@ const canResetAccount = computed(() => {
 });
 
 const modeConfirmTitle = computed(() => $t('layout.switchConfirmTitle'));
+const modeStateLabel = computed(() => {
+  if (modeStore.state === 'live_trading') return $t('settings.modeLiveTrading');
+  if (modeStore.state === 'live_readonly') return $t('settings.modeLiveReadonly');
+  return $t('settings.modeSimulation');
+});
 const modeConfirmEnabled = computed(() => modeStore.mode === 'live' || exchangeStore.hasActiveAccount);
 const modeConfirmDescription = computed(() =>
   modeStore.mode === 'simulation'
@@ -184,6 +209,20 @@ async function handleToggleMode() {
   const changed = await modeStore.toggleMode();
   if (changed) {
     modeConfirmOpen.value = false;
+    await assetStore.fetchAssets(modeStore.mode);
+  }
+}
+
+async function handleEnableLiveTrading() {
+  const changed = await modeStore.enableLiveTrading();
+  if (changed) {
+    await assetStore.fetchAssets(modeStore.mode);
+  }
+}
+
+async function handleDisableLiveTrading() {
+  const changed = await modeStore.disableLiveTrading();
+  if (changed) {
     await assetStore.fetchAssets(modeStore.mode);
   }
 }
@@ -260,6 +299,29 @@ function handleOpenApiBinding() {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.mode-state-badge {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mode-state-badge.live_readonly {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+}
+
+.mode-state-badge.live_trading {
+  background: rgba(239, 68, 68, 0.14);
+  color: #f87171;
+}
+
+.mode-hint {
+  margin: 0 0 8px;
 }
 
 .exch-btn-settings {

@@ -56,6 +56,10 @@ export class OkxApiService {
     return this.request(account, 'GET', '/api/v5/account/balance');
   }
 
+  async getAccountConfig(account: OkxAccount) {
+    return this.request(account, 'GET', '/api/v5/account/config');
+  }
+
   async getPositions(account: OkxAccount, instType = 'SWAP') {
     return this.request(account, 'GET', `/api/v5/account/positions?instType=${instType}`);
   }

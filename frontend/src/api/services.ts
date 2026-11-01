@@ -18,6 +18,7 @@ import type {
   PositionListResponse,
   TickerListResponse,
   TradeMode,
+  TradingState,
   UserProfile,
   DepthResponse,
   KlineResponse,
@@ -58,9 +59,12 @@ export const accountApi = {
   getMode() {
     return get<AccountModeResponse>('/account/mode');
   },
-  // 更新交易模式
-  updateMode(mode: TradeMode) {
-    return put<AccountModeResponse, { mode: TradeMode }>('/account/mode', { mode });
+  // 更新交易模式（mode 兼容 simulation/live，state 支持 live_readonly/live_trading）
+  updateMode(mode: TradeMode | TradingState, reason?: string) {
+    return put<AccountModeResponse, { mode: TradeMode | TradingState; reason?: string }>(
+      '/account/mode',
+      { mode, reason },
+    );
   },
   // 获取资产信息
   getAssets(mode: TradeMode) {

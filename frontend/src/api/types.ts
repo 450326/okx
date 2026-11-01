@@ -1,6 +1,25 @@
 // 交易模式：模拟盘 / 实盘
 export type TradeMode = 'simulation' | 'live';
 
+// 服务端交易状态机：模拟盘 → 实盘只读 → 实盘交易
+export type TradingState = 'simulation' | 'live_readonly' | 'live_trading';
+
+export interface ModeCapabilities {
+  canUseSimulation: boolean;
+  canReadLive: boolean;
+  canTradeLive: boolean;
+  canEnterLiveReadonly: boolean;
+  canEnterLiveTrading: boolean;
+}
+
+export interface ModeTransition {
+  from: TradingState;
+  to: TradingState;
+  at: string;
+  reason: string;
+  result: 'ok' | 'rejected';
+}
+
 // 主题模式：深色 / 浅色
 export type Theme = 'dark' | 'light';
 
@@ -41,7 +60,12 @@ export interface EquityHistoryResponse {
 
 // 账户模式响应
 export interface AccountModeResponse {
-  mode: TradeMode;  // 当前交易模式
+  mode: TradeMode;  // 兼容字段：当前有效模式
+  state: TradingState;
+  capabilities: ModeCapabilities;
+  blockers: string[];
+  updatedAt: string;
+  lastTransition: ModeTransition | null;
 }
 
 // 资产快照
