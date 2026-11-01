@@ -20,6 +20,7 @@ const OKX_PRIVATE_CHANNELS = new Set([
 
 // WebSocket 连接信息接口
 interface ConnectionInfo {
+  userId?: string;
   ws: WebSocket;
   refCount: number;
   callbacks: Set<(data: any) => void>;
@@ -52,28 +53,29 @@ export class ExchangeWsService {
   }
 
   // 订阅行情或私有推送，支持引用计数管理多个订阅者
-  subscribe(exchange: string, channel: string, symbol: string, callback: (data: any) => void): void {
+  subscribe(exchange: string, channel: string, symbol: string, callback: (data: any) => void, userId?: string): boolean {
     if (exchange !== 'okx' && exchange !== 'binance') {
       this.logger.warn(`WebSocket 不支持 ${exchange}，跳过订阅`);
-      return;
+      return false;
     }
 
-    const key = this.getConnectionKey(exchange, channel, symbol);
+    const key = this.getConnectionKey(exchange, channel, symbol, userId);
     const existing = this.connections.get(key);
     if (existing) {
       existing.refCount++;
       existing.callbacks.add(callback);
-      return;
+      return true;
     }
 
     const requiresAuth = this.requiresAuth(exchange, channel);
-    if (requiresAuth && exchange === 'okx' && !this.accountStore.getActiveOkx()) {
-      this.logger.warn(`OKX 私有频道 ${channel} 订阅失败：未找到已激活的 API 账户`);
-      return;
+    if (requiresAuth && exchange === 'okx' && !this.accountStore.getActiveOkx(userId)) {
+      this.logger.warn(`OKX 私有频道 ${channel} 订阅失败：未找到该用户已激活的 API 账户`);
+      return false;
     }
 
-    const ws = this.createSocket(exchange, requiresAuth, channel);
+    const ws = this.createSocket(exchange, requiresAuth, channel, userId);
     const conn: ConnectionInfo = {
+      userId,
       ws,
       refCount: 1,
       callbacks: new Set([callback]),
@@ -94,19 +96,20 @@ export class ExchangeWsService {
       this.logger.log(`WS 已连接: ${exchange} ${channel} ${symbol || '*'}`);
       this.handleOpen(conn);
     });
+    return true;
   }
 
   // 移除指定订阅回调
-  removeCallback(exchange: string, channel: string, symbol: string, callback: (data: any) => void): void {
-    const key = this.getConnectionKey(exchange, channel, symbol);
+  removeCallback(exchange: string, channel: string, symbol: string, callback: (data: any) => void, userId?: string): void {
+    const key = this.getConnectionKey(exchange, channel, symbol, userId);
     const conn = this.connections.get(key);
     if (!conn) return;
     conn.callbacks.delete(callback);
   }
 
   // 取消订阅，引用计数归零时关闭连接
-  unsubscribe(exchange: string, channel: string, symbol: string): void {
-    const key = this.getConnectionKey(exchange, channel, symbol);
+  unsubscribe(exchange: string, channel: string, symbol: string, userId?: string): void {
+    const key = this.getConnectionKey(exchange, channel, symbol, userId);
     const conn = this.connections.get(key);
     if (!conn) return;
 
@@ -167,7 +170,7 @@ export class ExchangeWsService {
     conn.authenticated = false;
     conn.awaitingLogin = false;
 
-    const ws = this.createSocket(conn.exchange, conn.requiresAuth, conn.channel);
+    const ws = this.createSocket(conn.exchange, conn.requiresAuth, conn.channel, conn.userId);
     conn.ws = ws;
 
     this.attachHandlers(conn);
@@ -179,7 +182,7 @@ export class ExchangeWsService {
 
   private handleOpen(conn: ConnectionInfo): void {
     if (conn.exchange === 'okx' && conn.requiresAuth) {
-      const account = this.accountStore.getActiveOkx();
+      const account = this.accountStore.getActiveOkx(conn.userId);
       if (!account) {
         this.logger.warn(`OKX 私有 WS 登录失败：未找到已激活的 API 账户`);
         conn.ws.close();
@@ -192,8 +195,8 @@ export class ExchangeWsService {
     this.sendSubscribe(conn.ws, conn.exchange, conn.channel, conn.symbol);
   }
 
-  private createSocket(exchange: string, requiresAuth: boolean, channel = ''): WebSocket {
-    const okxAccount = exchange === 'okx' ? this.accountStore.getActiveOkx() : undefined;
+  private createSocket(exchange: string, requiresAuth: boolean, channel = '', userId?: string): WebSocket {
+    const okxAccount = exchange === 'okx' ? this.accountStore.getActiveOkx(userId) : undefined;
     const wsUrl = this.getWsUrl(exchange, requiresAuth, okxAccount?.isTestnet, channel);
     if (exchange === 'okx') {
       this.logger.log(`WS 创建: ${wsUrl} ${okxAccount?.isTestnet ? '(模拟网)' : ''}`);
@@ -201,8 +204,8 @@ export class ExchangeWsService {
     return new WebSocket(wsUrl, { agent: this.proxyAgent ?? undefined });
   }
 
-  private getConnectionKey(exchange: string, channel: string, symbol: string): string {
-    const scope = this.requiresAuth(exchange, channel) ? 'private' : 'public';
+  private getConnectionKey(exchange: string, channel: string, symbol: string, userId?: string): string {
+    const scope = this.requiresAuth(exchange, channel) ? `private:${userId || 'anonymous'}` : 'public';
     return `${exchange}:${scope}:${channel}:${symbol || '*'}`;
   }
 

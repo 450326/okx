@@ -16,6 +16,54 @@
         </div>
       </section>
 
+      <!-- 账户安全 -->
+      <section class="settings-card card">
+        <h3 class="settings-section-title">{{ $t('settings.security') }}</h3>
+        <div class="settings-row">
+          <span class="settings-label">{{ $t('settings.email') }}</span>
+          <span class="settings-value">
+            {{ authStore.user?.email || '--' }}
+            <span :class="['security-badge', authStore.user?.emailVerified ? 'verified' : 'unverified']">
+              {{ authStore.user?.emailVerified ? $t('settings.emailVerified') : $t('settings.emailUnverified') }}
+            </span>
+          </span>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">{{ $t('settings.twoFactor') }}</span>
+          <div class="settings-actions-row">
+            <span :class="['security-badge', authStore.user?.twoFactorEnabled ? 'verified' : 'unverified']">
+              {{ authStore.user?.twoFactorEnabled ? $t('settings.twoFactorEnabled') : $t('settings.twoFactorDisabled') }}
+            </span>
+            <button
+              v-if="!authStore.user?.twoFactorEnabled"
+              class="ghost-btn"
+              :disabled="totpBusy"
+              @click="startTotpSetup"
+            >
+              {{ $t('settings.enableTwoFactor') }}
+            </button>
+          </div>
+        </div>
+        <div v-if="totpSetupSecret" class="totp-setup">
+          <p class="settings-label">{{ $t('settings.totpSecretHint') }}</p>
+          <code class="totp-secret">{{ totpSetupSecret }}</code>
+          <p class="settings-label">{{ totpSetupUrl }}</p>
+          <div class="settings-actions-row">
+            <input v-model="totpSetupCode" class="settings-input" maxlength="6" placeholder="000000" />
+            <button class="ghost-btn" :disabled="totpBusy || totpSetupCode.length !== 6" @click="enableTotp">
+              {{ $t('settings.confirm') }}
+            </button>
+          </div>
+        </div>
+        <div v-if="authStore.user?.twoFactorEnabled" class="settings-actions-row">
+          <input v-model="totpDisableCode" class="settings-input" maxlength="6" :placeholder="$t('settings.totpCode')" />
+          <button class="ghost-btn" :disabled="totpBusy || totpDisableCode.length !== 6" @click="disableTotp">
+            {{ $t('settings.disableTwoFactor') }}
+          </button>
+        </div>
+        <div v-if="securityError" class="status-text error-text">{{ securityError }}</div>
+      </section>
+
       <!-- 外观与模式 -->
       <section class="settings-card card">
         <h3 class="settings-section-title">{{ $t('settings.appearance') }}</h3>
@@ -157,6 +205,7 @@ import ConfirmModal from '../components/common/ConfirmModal.vue';
 import { useAuthStore } from '../stores/auth';
 import { useMarketStore } from '../stores/market';
 import { useModeStore } from '../stores/mode';
+import { authApi } from '../api/services';
 import { useThemeStore } from '../stores/theme';
 import { useExchangeStore } from '../stores/exchange';
 import { useAssetStore } from '../stores/assets';
@@ -169,6 +218,58 @@ const themeStore = useThemeStore();
 const exchangeStore = useExchangeStore();
 const assetStore = useAssetStore();
 const router = useRouter();
+
+const totpSetupSecret = ref('');
+const totpSetupUrl = ref('');
+const totpSetupCode = ref('');
+const totpDisableCode = ref('');
+const totpBusy = ref(false);
+const securityError = ref('');
+
+async function startTotpSetup() {
+  securityError.value = '';
+  totpBusy.value = true;
+  try {
+    const result = await authApi.setupTotp();
+    totpSetupSecret.value = result.secret;
+    totpSetupUrl.value = result.otpauthUrl;
+    totpSetupCode.value = '';
+  } catch (error) {
+    securityError.value = (error as Error).message || '设置两步验证失败';
+  } finally {
+    totpBusy.value = false;
+  }
+}
+
+async function enableTotp() {
+  securityError.value = '';
+  totpBusy.value = true;
+  try {
+    await authApi.enableTotp(totpSetupCode.value);
+    totpSetupSecret.value = '';
+    totpSetupUrl.value = '';
+    totpSetupCode.value = '';
+    await authStore.fetchMe();
+  } catch (error) {
+    securityError.value = (error as Error).message || '启用两步验证失败';
+  } finally {
+    totpBusy.value = false;
+  }
+}
+
+async function disableTotp() {
+  securityError.value = '';
+  totpBusy.value = true;
+  try {
+    await authApi.disableTotp(totpDisableCode.value);
+    totpDisableCode.value = '';
+    await authStore.fetchMe();
+  } catch (error) {
+    securityError.value = (error as Error).message || '关闭两步验证失败';
+  } finally {
+    totpBusy.value = false;
+  }
+}
 
 const exchanges = [
   { value: 'okx' as const, label: 'OKX' },
@@ -364,4 +465,50 @@ function handleOpenApiBinding() {
 .exch-btn-settings:hover {
   opacity: 0.85;
 }
+.security-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.security-badge.verified {
+  color: var(--color-up);
+  background: rgba(0, 200, 120, 0.12);
+}
+
+.security-badge.unverified {
+  color: var(--color-down);
+  background: rgba(255, 80, 80, 0.12);
+}
+
+.totp-setup {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.totp-secret {
+  display: block;
+  margin: 6px 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.settings-input {
+  width: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
 </style>

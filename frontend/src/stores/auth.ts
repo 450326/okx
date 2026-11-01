@@ -5,7 +5,7 @@ import { defineStore } from 'pinia';
 // 导入认证 API
 import { authApi } from '../api/services';
 // 导入用户信息类型
-import type { LoginResponse, UserProfile } from '../api/types';
+import type { LoginResponse, LoginResult, UserProfile } from '../api/types';
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -30,17 +30,36 @@ export const useAuthStore = defineStore('auth', () => {
   const isSuper = computed(() => Boolean(user.value?.isSuper));
   const isGuest = computed(() => Boolean(user.value?.isGuest));
 
-  async function login(email: string, password: string) {
+  async function login(email: string, password: string): Promise<LoginResult> {
     loading.value = true;
     error.value = '';
     try {
       const result = await authApi.login(email, password);
+      if ('challengeToken' in result) {
+        return result;
+      }
       persistSession(result);
       localStorage.setItem('lastLoginEmail', email);
       user.value = result.user;
-      return result.user;
+      return result;
     } catch (err) {
       error.value = String((err as any)?.message || '登录失败');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function verifyTwoFactor(challengeToken: string, code: string) {
+    loading.value = true;
+    error.value = '';
+    try {
+      const result = await authApi.verifyTwoFactor(challengeToken, code);
+      persistSession(result);
+      user.value = result.user;
+      return result;
+    } catch (err) {
+      error.value = String((err as any)?.message || '两步验证失败');
       throw err;
     } finally {
       loading.value = false;
@@ -127,6 +146,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     loginAsGuest,
     loginWithBiometric,
+    verifyTwoFactor,
     ensureFreshAccessToken,
     logout,
     fetchMe,

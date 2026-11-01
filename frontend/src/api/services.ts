@@ -26,6 +26,7 @@ import type {
   LiveOrderStatusResponse,
   RecentTradeListResponse,
   LoginResponse,
+  LoginResult,
   PredictionHistoryInterval,
   PredictionHistoryResponse,
   PredictionMarketDetailResponse,
@@ -47,7 +48,40 @@ import type {
 export const authApi = {
   // 用户登录
   login(email: string, password: string) {
-    return post<LoginResponse, { email: string; password: string }>('/auth/login', { email, password });
+    return post<LoginResult, { email: string; password: string }>('/auth/login', { email, password });
+  },
+  // 两步验证
+  verifyTwoFactor(challengeToken: string, code: string) {
+    return post<LoginResponse, { challengeToken: string; code: string }>('/auth/2fa/verify', {
+      challengeToken,
+      code,
+    });
+  },
+  // 注册（需要邮箱验证）
+  register(email: string, password: string, nickname?: string) {
+    return post<{ verificationRequired: boolean; email: string; devVerificationToken?: string }, { email: string; password: string; nickname?: string }>('/auth/register', { email, password, nickname });
+  },
+  // 验证邮箱
+  verifyEmail(token: string) {
+    return post<{ verified: boolean }, { token: string }>('/auth/verify-email', { token });
+  },
+  // 忘记密码
+  forgotPassword(email: string) {
+    return post<{ sent: boolean; devResetToken?: string }, { email: string }>('/auth/forgot-password', { email });
+  },
+  // 重置密码
+  resetPassword(token: string, password: string) {
+    return post<{ reset: boolean }, { token: string; password: string }>('/auth/reset-password', { token, password });
+  },
+  // 2FA 设置
+  setupTotp() {
+    return post<{ secret: string; otpauthUrl: string }, Record<string, never>>('/auth/2fa/setup', {});
+  },
+  enableTotp(code: string) {
+    return post<{ enabled: boolean; user: UserProfile }, { code: string }>('/auth/2fa/enable', { code });
+  },
+  disableTotp(code: string) {
+    return post<{ enabled: boolean; user: UserProfile }, { code: string }>('/auth/2fa/disable', { code });
   },
   // 获取当前用户信息
   me() {

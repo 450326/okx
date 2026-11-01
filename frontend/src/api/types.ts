@@ -63,12 +63,24 @@ export interface ApiEnvelope<T> {
 }
 
 // 用户档案信息
+// 两步验证挑战
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  challengeToken: string;
+  user: UserProfile;
+}
+
+export type LoginResult = LoginResponse | TwoFactorChallenge;
+
 export interface UserProfile {
   id: string;          // 用户 ID
   email: string;       // 用户邮箱
   nickname: string;    // 用户昵称
   isSuper?: boolean;   // 超级权限账号
   isGuest?: boolean;   // 游客账号
+  emailVerified?: boolean;
+  twoFactorEnabled?: boolean;
+  guestExpiresAt?: string | null;
   defaultMode: TradeMode;  // 默认交易模式
 }
 

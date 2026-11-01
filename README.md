@@ -280,7 +280,16 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 - 全局 `AuthGuard`：无 token/错误 token 返回 401
 - 行情、K 线、预测市场列表等只读行情接口匿名开放；账户、持仓、委托、流水、凭证、模式接口必须登录
 - 游客账号：`POST /api/v1/auth/guest`，拥有独立的模拟账户和订单/持仓/流水
+- 游客账号 7 天后自动清理（启动时 + 每小时扫描，同时删除模拟账户/模式文件）
 - 模拟账户、交易模式、API 账户均按 `userId` 隔离；跨用户按资源 ID 操作返回 403
+- 注销会自增 `token_version` 并撤销全部 refresh token，已签发 access token 立即失效
+- 登录限流：同 IP + 邮箱 10 分钟内失败 5 次，锁定 15 分钟（返回 429）
+- 邮箱验证：`POST /auth/register` 发验证 token；`POST /auth/verify-email`
+- 找回密码：`POST /auth/forgot-password`、`POST /auth/reset-password`；重置后旧 token 全部失效
+- 2FA：`POST /auth/2fa/setup|enable|disable`，登录返回 challenge，`POST /auth/2fa/verify` 换取 token
+- WebSocket `/market` 私有频道需要在 handshake `auth.token` 携带 access token；公共行情不需要
+
+邮件默认使用控制台日志占位，生产环境需接入 SMTP/SES。开发环境注册/找回密码响应会带 `devVerificationToken` / `devResetToken`，生产环境不返回。设置 `AUTH_REQUIRE_EMAIL_VERIFICATION=true` 可强制邮箱验证后才能登录。
 
 内置账号：
 

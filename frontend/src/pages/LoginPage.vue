@@ -53,13 +53,56 @@
             </div>
           </div>
 
-          <button type="submit" class="login-btn" :disabled="!canSubmit || submitting">
+          <div v-if="twoFactorRequired" class="field">
+            <label for="twoFactorCode">{{ $t('login.twoFactorCode') }}</label>
+            <div class="input-wrap">
+              <input
+                id="twoFactorCode"
+                v-model="twoFactorCode"
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                placeholder="000000"
+                autocomplete="one-time-code"
+                :disabled="submitting"
+              />
+            </div>
+          </div>
+
+          <button v-if="!twoFactorRequired" type="submit" class="login-btn" :disabled="!canSubmit || submitting">
             <span v-if="submitting" class="btn-loader"></span>
             <span v-else>{{ $t('login.loginBtn') }}</span>
+          </button>
+          <button v-else type="button" class="login-btn" :disabled="twoFactorCode.length !== 6 || submitting" @click="handleVerifyTwoFactor">
+            <span v-if="submitting" class="btn-loader"></span>
+            <span v-else>{{ $t('login.verifyTwoFactor') }}</span>
           </button>
         </form>
 
         <p class="login-hint">{{ $t('login.accountHint') }}</p>
+
+        <button class="forgot-link" type="button" @click="forgotOpen = !forgotOpen">
+          {{ $t('login.forgotPassword') }}
+        </button>
+
+        <div v-if="forgotOpen" class="forgot-panel">
+          <input v-model="forgotEmail" class="forgot-input" type="email" :placeholder="$t('login.email')" />
+          <button class="ghost-btn" type="button" :disabled="forgotBusy" @click="requestPasswordReset">
+            {{ $t('login.sendResetLink') }}
+          </button>
+          <template v-if="forgotToken">
+            <input
+              v-model="forgotPassword"
+              class="forgot-input"
+              type="password"
+              :placeholder="$t('login.newPassword')"
+            />
+            <button class="ghost-btn" type="button" :disabled="forgotBusy" @click="confirmPasswordReset">
+              {{ $t('login.resetPassword') }}
+            </button>
+          </template>
+          <p v-if="forgotMessage" class="login-hint">{{ forgotMessage }}</p>
+        </div>
 
         <button class="guest-login-btn" type="button" :disabled="submitting" @click="handleGuestLogin">
           {{ $t('login.guestLogin') }}
@@ -108,11 +151,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { authApi } from '../api/services';
 import { $t } from '../utils/i18n';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const form = ref({ email: '', password: '' });
@@ -120,12 +165,30 @@ const showPassword = ref(false);
 const submitting = ref(false);
 const faceLoading = ref(false);
 const errorMsg = ref('');
+const twoFactorRequired = ref(false);
+const twoFactorCode = ref('');
+const twoFactorChallenge = ref('');
+const forgotOpen = ref(false);
+const forgotEmail = ref('');
+const forgotToken = ref('');
+const forgotPassword = ref('');
+const forgotMessage = ref('');
+const forgotBusy = ref(false);
 const biometricSupported = ref(false);
 
 const isDark = computed(() => document.documentElement.getAttribute('data-theme') !== 'light');
 const canSubmit = computed(() => form.value.email.trim() && form.value.password.trim());
 
 onMounted(async () => {
+  const verifyToken = typeof route.query.verifyToken === 'string' ? route.query.verifyToken : '';
+  if (verifyToken) {
+    try {
+      await authApi.verifyEmail(verifyToken);
+      errorMsg.value = $t('login.emailVerifySuccess');
+    } catch (err) {
+      errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
+    }
+  }
   if (typeof PublicKeyCredential !== 'undefined' && typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
     biometricSupported.value = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
   }
@@ -137,12 +200,67 @@ async function handleLogin() {
   errorMsg.value = '';
 
   try {
-    await authStore.login(form.value.email, form.value.password);
+    const result = await authStore.login(form.value.email, form.value.password);
+    if ('twoFactorRequired' in result && result.twoFactorRequired) {
+      twoFactorRequired.value = true;
+      twoFactorChallenge.value = result.challengeToken;
+      twoFactorCode.value = '';
+      return;
+    }
     router.replace('/');
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
   } finally {
     submitting.value = false;
+  }
+}
+
+async function handleVerifyTwoFactor() {
+  if (!twoFactorChallenge.value || twoFactorCode.value.length !== 6) return;
+  submitting.value = true;
+  errorMsg.value = '';
+  try {
+    await authStore.verifyTwoFactor(twoFactorChallenge.value, twoFactorCode.value);
+    router.replace('/');
+  } catch (err) {
+    errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function requestPasswordReset() {
+  if (!forgotEmail.value.trim()) return;
+  forgotBusy.value = true;
+  forgotMessage.value = '';
+  try {
+    const result = await authApi.forgotPassword(forgotEmail.value.trim());
+    if (result.devResetToken) {
+      forgotToken.value = result.devResetToken;
+      forgotMessage.value = $t('login.resetTokenReady');
+    } else {
+      forgotMessage.value = $t('login.resetEmailSent');
+    }
+  } catch (err) {
+    forgotMessage.value = err instanceof Error ? err.message : $t('login.errorGeneric');
+  } finally {
+    forgotBusy.value = false;
+  }
+}
+
+async function confirmPasswordReset() {
+  if (!forgotToken.value || forgotPassword.value.length < 6) return;
+  forgotBusy.value = true;
+  forgotMessage.value = '';
+  try {
+    await authApi.resetPassword(forgotToken.value, forgotPassword.value);
+    forgotMessage.value = $t('login.resetSuccess');
+    forgotToken.value = '';
+    forgotPassword.value = '';
+  } catch (err) {
+    forgotMessage.value = err instanceof Error ? err.message : $t('login.errorGeneric');
+  } finally {
+    forgotBusy.value = false;
   }
 }
 
@@ -411,6 +529,37 @@ async function handleFaceLogin() {
 .guest-login-btn:hover {
   color: var(--text-primary);
   border-color: var(--color-up);
+}
+
+.forgot-link {
+  display: block;
+  margin: 8px auto 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.forgot-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.forgot-input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
 }
 
 .login-divider {

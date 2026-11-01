@@ -24,6 +24,10 @@ export class CurrentUserService {
       nickname: 'Demo User',
       isGuest: false,
       isSuper: false,
+      emailVerified: true,
+      totpEnabled: false,
+      tokenVersion: 0,
+      guestExpiresAt: null,
       createdAt: new Date(0).toISOString(),
     };
   }

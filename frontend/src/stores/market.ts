@@ -122,9 +122,11 @@ export const useMarketStore = defineStore('market', () => {
       reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
       reconnectionDelayMax: 10000,
+      auth: { token: localStorage.getItem('accessToken') || '' },
     });
 
     socket.on('connect', () => {
+      if (socket) socket.auth = { token: localStorage.getItem('accessToken') || '' };
       if (wsReconnectTimer) {
         clearTimeout(wsReconnectTimer);
         wsReconnectTimer = null;
