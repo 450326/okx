@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { MarketService } from '../market/market.service';
 import { RequestContextService } from '../auth/request-context.service';
+import { NotificationService } from '../notifications/notification.service';
 import { createInitialState, round, SimulationEngine } from './simulation-engine';
 import {
   AccountSnapshot,
@@ -72,9 +73,20 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly marketService: MarketService,
     private readonly context: RequestContextService,
+    private readonly notifications: NotificationService,
   ) {
     this.dataDir = path.resolve(__dirname, '../../../data');
     this.getEngine(this.primaryUserId);
+
+    // 启动时加载所有已有模拟账户，确保用户不在线时仍能触发强平/止盈止损通知。
+    try {
+      for (const name of fs.readdirSync(this.dataDir)) {
+        const match = /^simulation-([A-Za-z0-9_-]+)\.json$/.exec(name);
+        if (match && !match[1].startsWith('u_guest_')) this.getEngine(match[1]);
+      }
+    } catch (error) {
+      this.logger.warn(`扫描模拟账户失败: ${(error as Error).message}`);
+    }
   }
 
   private get engine(): SimulationEngine {
@@ -341,7 +353,53 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
       const markets = await this.fetchMarkets(symbols);
       for (const [userId, engine] of this.engines) {
+        const beforeOrders = new Set(engine.getState().orders.map((order) => order.orderId));
         const result = engine.processMarkets(markets);
+
+        // 强平/止盈/止损订单只在触发瞬间产生一次，按新增订单识别并留档。
+        const newOrders = engine
+          .getState()
+          .orders.filter(
+            (order) =>
+              !beforeOrders.has(order.orderId) &&
+              ['liquidation', 'tp', 'sl'].includes(order.source) &&
+              order.status === 'filled',
+          );
+        for (const order of newOrders) {
+          const position = engine
+            .getState()
+            .positions.find((item) => item.id === order.positionId);
+          this.notifications.notifyTriggeredOrder(
+            userId,
+            {
+              orderId: order.orderId,
+              symbol: order.symbol,
+              side: order.side,
+              qty: order.filledQty || order.qty,
+              avgFillPrice: order.avgFillPrice,
+              source: order.source as 'liquidation' | 'tp' | 'sl',
+              positionId: order.positionId,
+            },
+            position?.realizedPnl,
+          );
+        }
+
+        // 风险等级跨档预警；同一档位只提醒一次。
+        this.notifications.syncRisk(
+          userId,
+          engine.listPositions(markets).map((position) => ({
+            id: position.id,
+            symbol: position.symbol,
+            side: position.side,
+            leverage: position.leverage,
+            qty: position.qty,
+            entryPrice: position.entryPrice,
+            markPrice: position.markPrice,
+            liquidationPrice: position.liquidationPrice,
+            unrealizedPnl: position.unrealizedPnl,
+          })),
+        );
+
         if (result.changed) {
           this.saveUser(userId);
           for (const event of result.events) this.logger.log(`[${userId}] ${event}`);

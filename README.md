@@ -312,6 +312,17 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 
 超级账号在实盘模式下可在设置中开启「超级权限 · 实盘模拟数据」，以只读方式查看模拟预测和现货持仓；普通账号即使伪造请求头，服务端也会拒绝。
 
+### 强平预警与通知中心
+
+- 后台撮合每 3 秒检查一次持仓强平距离
+- 风险跨档时生成站内通知；同一仓位同一档位只提醒一次，风险改善后再次恶化会重新提醒
+- 强平、止盈触发、止损触发分别生成不可自动消失的事件通知
+- 通知通过 `/notifications` WebSocket 实时推送，同时保留 10 秒轮询兜底
+- 顶部铃铛显示未读红点，通知中心保留最近 200 条历史
+- `GET /api/v1/notifications`、`POST /api/v1/notifications/:id/read`、`POST /api/v1/notifications/read-all`
+
+通知存储按 `userId` 隔离，游客过期清理时同步删除。
+
 ### 实盘下单与幂等
 
 `live_trading` 状态下支持 OKX USDT 永续市价/限价开平仓：

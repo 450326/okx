@@ -40,6 +40,8 @@ export class GuestCleanupService implements OnModuleInit, OnModuleDestroy {
       `simulation-${safe}.json.tmp`,
       `account-mode-${safe}.json`,
       `account-mode-${safe}.json.tmp`,
+      `notifications-${safe}.json`,
+      `notifications-${safe}.json.tmp`,
     ];
     for (const name of names) {
       const target = path.join(this.dataDir, name);

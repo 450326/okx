@@ -370,6 +370,31 @@ export interface LiveOrderStatusResponse {
   list: LiveOrderStatusItem[];
 }
 
+export type NotificationType =
+  | 'risk_warning'
+  | 'liquidation'
+  | 'take_profit'
+  | 'stop_loss'
+  | 'system';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  severity: 'info' | 'success' | 'warning' | 'danger';
+  title: string;
+  message: string;
+  symbol?: string;
+  positionId?: string;
+  data?: Record<string, unknown>;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationListResponse {
+  list: AppNotification[];
+  unreadCount: number;
+}
+
 // 交易所账户信息
 export interface ExchangeAccount {
   id: string;            // 账户 ID

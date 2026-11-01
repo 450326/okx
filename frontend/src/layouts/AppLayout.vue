@@ -29,6 +29,57 @@
             <div :class="['stat-value', unrealizedPnlClass]">{{ formatSignedCurrency(totalUnrealizedPnl) }}</div>
           </div>
         </div>
+
+        <div class="topbar-actions">
+          <button
+            class="notification-bell"
+            type="button"
+            :aria-label="$t('notifications.title')"
+            @click="notificationStore.togglePanel()"
+          >
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <span v-if="notificationStore.hasUnread" class="notification-dot"></span>
+          </button>
+
+          <div v-if="notificationStore.panelOpen" class="notification-panel card">
+            <div class="notification-panel-head">
+              <strong>{{ $t('notifications.title') }}</strong>
+              <div class="notification-panel-actions">
+                <button
+                  v-if="notificationStore.hasUnread"
+                  class="notification-link"
+                  type="button"
+                  @click="notificationStore.markAllRead()"
+                >
+                  {{ $t('notifications.markAllRead') }}
+                </button>
+                <button class="notification-close" type="button" @click="notificationStore.panelOpen = false">×</button>
+              </div>
+            </div>
+            <div class="notification-list">
+              <button
+                v-for="item in notificationStore.notifications"
+                :key="item.id"
+                :class="['notification-item', { unread: !item.read }]"
+                type="button"
+                @click="notificationStore.markRead(item.id)"
+              >
+                <span :class="['notification-severity', `notification-${item.severity}`]"></span>
+                <span class="notification-content">
+                  <span class="notification-title">{{ item.title }}</span>
+                  <span class="notification-message">{{ item.message }}</span>
+                  <span class="notification-time">{{ formatNotificationTime(item.createdAt) }}</span>
+                </span>
+              </button>
+              <div v-if="!notificationStore.notifications.length" class="empty-state">
+                {{ $t('notifications.empty') }}
+              </div>
+            </div>
+          </div>
+        </div>
       </header>
 
       <!-- 手机端非首页的导航；首页使用底部 dock -->
@@ -61,10 +112,19 @@
     @cancel="modeConfirmOpen = false"
     @confirm="handleToggleMode()"
   />
+
+  <div v-if="notificationStore.toast" :class="['notification-toast', `toast-${notificationStore.toast.severity}`]">
+    <div class="notification-toast-icon">!</div>
+    <div class="notification-toast-body">
+      <strong>{{ notificationStore.toast.title }}</strong>
+      <p>{{ notificationStore.toast.message }}</p>
+    </div>
+    <button class="notification-toast-close" type="button" @click="notificationStore.dismissToast()">×</button>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import ConfirmModal from '../components/common/ConfirmModal.vue';
 import { useAssetStore } from '../stores/assets';
@@ -72,6 +132,7 @@ import { useAuthStore } from '../stores/auth';
 import { useExchangeStore } from '../stores/exchange';
 import { useModeStore } from '../stores/mode';
 import { useCurrencyStore } from '../stores/currency';
+import { useNotificationStore } from '../stores/notifications';
 import { formatCurrency, formatSignedCurrency, getTrendClass } from '../utils/format';
 import { $t } from '../utils/i18n';
 
@@ -80,6 +141,7 @@ const authStore = useAuthStore();
 const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
 const currencyStore = useCurrencyStore();
+const notificationStore = useNotificationStore();
 const router = useRouter();
 const route = useRoute();
 const modeConfirmOpen = ref(false);
@@ -146,9 +208,21 @@ onMounted(() => {
   void loadGlobalData();
   currencyStore.initQuote();
   currencyStore.fetchRate();
+  notificationStore.startPolling();
 });
 
+onUnmounted(() => {
+  notificationStore.stopPolling();
+});
+
+function formatNotificationTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
 async function handleLogout() {
+  notificationStore.stopPolling();
   await authStore.logout();
   await router.replace('/login');
 }
@@ -249,6 +323,211 @@ async function handleLogout() {
 
 .stat-value.up { color: #00c087; }
 .stat-value.down { color: #f6465d; }
+
+.topbar-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.notification-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.notification-bell:hover {
+  color: var(--text-primary);
+  border-color: rgba(187, 255, 39, 0.35);
+}
+
+.notification-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  box-shadow: 0 0 0 2px var(--bg-soft);
+}
+
+.notification-panel {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  z-index: 45;
+  width: min(92vw, 380px);
+  max-height: 480px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.notification-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+}
+
+.notification-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-link,
+.notification-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.notification-close {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.notification-list {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  display: flex;
+  gap: 9px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-item.unread {
+  background: rgba(187, 255, 39, 0.035);
+}
+
+.notification-item:hover {
+  background: var(--bg-soft);
+}
+
+.notification-severity {
+  width: 4px;
+  min-width: 4px;
+  border-radius: 999px;
+  margin-top: 2px;
+  background: var(--text-secondary);
+}
+
+.notification-danger { background: #ff4d4f; }
+.notification-warning { background: #f5a623; }
+.notification-success { background: #00c087; }
+.notification-info { background: #4d9fff; }
+
+.notification-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.notification-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.notification-message {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.notification-time {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.notification-toast {
+  position: fixed;
+  top: 76px;
+  right: 20px;
+  z-index: 95;
+  display: flex;
+  gap: 10px;
+  width: min(92vw, 420px);
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-left: 4px solid #f5a623;
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+}
+
+.notification-toast.toast-danger { border-left-color: #ff4d4f; }
+.notification-toast.toast-warning { border-left-color: #f5a623; }
+.notification-toast.toast-success { border-left-color: #00c087; }
+.notification-toast.toast-info { border-left-color: #4d9fff; }
+
+.notification-toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(245, 166, 35, 0.16);
+  color: #f5a623;
+  font-weight: 900;
+}
+
+.toast-danger .notification-toast-icon {
+  background: rgba(255, 77, 79, 0.16);
+  color: #ff6b6b;
+}
+
+.toast-success .notification-toast-icon {
+  background: rgba(0, 192, 135, 0.16);
+  color: #00c087;
+}
+
+.notification-toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-toast-body strong {
+  font-size: 13px;
+}
+
+.notification-toast-body p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.notification-toast-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+}
 
 .main-view {
   flex: 1;

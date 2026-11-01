@@ -24,6 +24,7 @@ import type {
   KlineResponse,
   LiveOrderStatusItem,
   LiveOrderStatusResponse,
+  NotificationListResponse,
   RecentTradeListResponse,
   LoginResponse,
   LoginResult,
@@ -253,6 +254,22 @@ export const positionApi = {
       `/positions/${id}/risk`,
       payload,
     );
+  },
+};
+
+// 通知中心 API
+export const notificationApi = {
+  list(limit = 50) {
+    return get<NotificationListResponse>('/notifications', { limit });
+  },
+  markRead(id: string) {
+    return post<{ read: boolean }, Record<string, never>>(`/notifications/${encodeURIComponent(id)}/read`, {});
+  },
+  markAllRead() {
+    return post<{ read: boolean }, Record<string, never>>('/notifications/read-all', {});
+  },
+  unreadCount() {
+    return get<{ unreadCount: number }>('/notifications/unread-count');
   },
 };
 
