@@ -3,9 +3,10 @@
     <h1 class="page-title">{{ $t('positions.pageTitle') }}</h1>
 
     <!-- 现货持仓：不占保证金、不加杠杆，单独成组展示 -->
-    <section class="card">
+    <section v-if="canSpot" class="card">
       <div class="section-head">
         <h2 class="section-title">{{ $t('spot.holdings') }}</h2>
+        <span v-if="modeStore.overlayEnabled" class="status-text">{{ $t('settings.superOverlay') }}</span>
         <div class="prediction-totals">
           <span>
             {{ $t('spot.currentValue') }}
@@ -58,12 +59,17 @@
       </div>
       <div v-if="!spotStore.holdings.length" class="empty-state">{{ $t('spot.noHoldings') }}</div>
     </section>
+    <section v-else class="card">
+      <h2 class="section-title">{{ $t('spot.holdings') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('spotHoldings') }}</p>
+    </section>
 
     <!-- 预测市场持仓：与合约交易对分开成组，避免和永续持仓混在一起 -->
-    <section class="card prediction-section">
+    <section v-if="canPrediction" class="card prediction-section">
       <div class="section-head">
         <div class="section-title-group">
           <h2 class="section-title">{{ $t('positions.predictionPositions') }}</h2>
+          <span v-if="modeStore.overlayEnabled" class="status-text">{{ $t('settings.superOverlay') }}</span>
         </div>
         <div class="prediction-totals">
           <span>
@@ -115,6 +121,7 @@
               </td>
               <td>
                 <button
+                  v-if="canPredictionTrade"
                   class="action-btn"
                   :disabled="closingPredictionId === item.id"
                   @click="handleClosePrediction(item)"
@@ -134,8 +141,12 @@
       </div>
       <div v-if="predictionError" class="status-text error-text">{{ predictionError }}</div>
     </section>
+    <section v-else class="card">
+      <h2 class="section-title">{{ $t('positions.predictionPositions') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('predictionPositions') }}</p>
+    </section>
 
-    <section class="card">
+    <section v-if="canFutures" class="card">
       <h2 class="section-title">{{ $t('positions.currentPositions') }}</h2>
       <table class="table">
         <thead>
@@ -167,7 +178,7 @@
             <td>{{ item.liquidationPrice }}</td>
             <td :class="getTrendClass(item.unrealizedPnl)">{{ formatSignedValue(item.unrealizedPnl) }}</td>
             <td>
-              <button class="action-btn" :disabled="closingId === item.id" @click="handleClose(item)">
+              <button v-if="canFuturesTrade" class="action-btn" :disabled="closingId === item.id" @click="handleClose(item)">
                 {{ closingId === item.id ? '...' : $t('summary.close') }}
               </button>
             </td>
@@ -175,9 +186,14 @@
         </tbody>
       </table>
       <div v-if="!livePositions.length" class="empty-state">{{ $t('positions.noData') }}</div>
+      <div v-if="positionStore.error" class="status-text error-text">{{ positionStore.error }}</div>
+    </section>
+    <section v-else class="card">
+      <h2 class="section-title">{{ $t('positions.currentPositions') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('futuresPositions') }}</p>
     </section>
 
-    <section class="card">
+    <section v-if="canOpenOrders" class="card">
       <h2 class="section-title">{{ $t('positions.openOrders') }}</h2>
       <table class="table">
         <thead>
@@ -202,7 +218,7 @@
             <td>{{ item.qty }}</td>
             <td>{{ formatOrderStatus(item.status) }}</td>
             <td>
-              <button class="action-btn" :disabled="cancellingId === item.orderId" @click="handleCancel(item)">
+              <button v-if="canFuturesTrade" class="action-btn" :disabled="cancellingId === item.orderId" @click="handleCancel(item)">
                 {{ cancellingId === item.orderId ? '...' : $t('summary.cancel') }}
               </button>
             </td>
@@ -210,7 +226,12 @@
         </tbody>
       </table>
       <div v-if="!orderStore.openOrders.length" class="empty-state">{{ $t('positions.noOrders') }}</div>
+      <div v-if="orderStore.error" class="status-text error-text">{{ orderStore.error }}</div>
       <div v-if="errorMessage" class="status-text error-text">{{ errorMessage }}</div>
+    </section>
+    <section v-else class="card">
+      <h2 class="section-title">{{ $t('positions.openOrders') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('futuresOpenOrders') }}</p>
     </section>
   </div>
 </template>
@@ -253,6 +274,13 @@ const closingPredictionId = ref('');
 const cancellingId = ref('');
 const errorMessage = ref('');
 const predictionError = ref('');
+
+const canFutures = computed(() => modeStore.can('futuresPositions'));
+const canOpenOrders = computed(() => modeStore.can('futuresOpenOrders'));
+const canPrediction = computed(() => modeStore.can('predictionPositions'));
+const canSpot = computed(() => modeStore.can('spotHoldings'));
+const canFuturesTrade = computed(() => modeStore.can('futuresTrade'));
+const canPredictionTrade = computed(() => modeStore.can('predictionTrade'));
 
 // 利用 WebSocket 实时行情重算持仓盈亏
 const livePositions = computed(() =>
@@ -312,13 +340,39 @@ function formatRoe(value?: string | number | null): string {
 }
 
 async function loadPageData() {
-  await Promise.all([
-    positionStore.fetchPositions(modeStore.mode),
-    orderStore.fetchOpenOrders(modeStore.mode),
-    assetStore.fetchAssets(modeStore.mode),
-    spotStore.fetchHoldings(),
-    predictionStore.fetchPositions(),
-  ]);
+  // 切模式时先清空，避免实盘接口失败后继续显示上一模式的模拟持仓。
+  positionStore.positions = [];
+  orderStore.openOrders = [];
+  spotStore.holdings = [];
+  predictionStore.positions = [];
+
+  const tasks: Promise<unknown>[] = [assetStore.fetchAssets(modeStore.mode)];
+
+  if (canFutures.value) {
+    tasks.push(positionStore.fetchPositions(modeStore.mode));
+  } else {
+    positionStore.positions = [];
+  }
+
+  if (canOpenOrders.value) {
+    tasks.push(orderStore.fetchOpenOrders(modeStore.mode));
+  } else {
+    orderStore.openOrders = [];
+  }
+
+  if (canSpot.value) {
+    tasks.push(spotStore.fetchHoldings());
+  } else {
+    spotStore.holdings = [];
+  }
+
+  if (canPrediction.value) {
+    tasks.push(predictionStore.fetchPositions());
+  } else {
+    predictionStore.positions = [];
+  }
+
+  await Promise.all(tasks);
 }
 
 async function handleClose(item: PositionItem) {

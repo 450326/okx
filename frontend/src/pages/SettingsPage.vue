@@ -55,6 +55,17 @@
         <p v-if="modeStore.state === 'live_readonly'" class="status-text mode-hint">
           {{ $t('settings.liveTradingHint') }}
         </p>
+        <div v-if="modeStore.isSuper && modeStore.mode === 'live'" class="settings-row">
+          <span class="settings-label">{{ $t('settings.superOverlay') }}</span>
+          <div class="settings-actions-row">
+            <button class="ghost-btn" :disabled="modeStore.loading" @click="toggleSimulationOverlay">
+              {{ modeStore.overlayEnabled ? $t('settings.superOverlayOn') : $t('settings.superOverlayOff') }}
+            </button>
+          </div>
+        </div>
+        <p v-if="modeStore.isSuper && modeStore.mode === 'live'" class="status-text mode-hint">
+          {{ $t('settings.superOverlayHint') }}
+        </p>
         <div class="settings-row">
           <span class="settings-label">{{ $t('settings.apibinding') }}</span>
           <div class="settings-actions-row">
@@ -224,6 +235,14 @@ async function handleDisableLiveTrading() {
   const changed = await modeStore.disableLiveTrading();
   if (changed) {
     await assetStore.fetchAssets(modeStore.mode);
+  }
+}
+
+async function toggleSimulationOverlay() {
+  const changed = await modeStore.setSimulationOverlay(!modeStore.overlayEnabled);
+  if (changed) {
+    // 各页面在挂载时按能力矩阵取数，刷新一次避免残留上一模式的数据
+    window.location.reload();
   }
 }
 

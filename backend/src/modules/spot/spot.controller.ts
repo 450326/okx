@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post, Query } from '@nestjs/common';
 import { ok } from '../../common/api-response';
 import { MarketService } from '../market/market.service';
 import { SimulationState } from '../simulation/simulation-state';
 import type { SpotTradeInput } from '../simulation/simulation.types';
+import { CapabilityService } from '../account/capability.service';
 
 // 现货行情 + 现货模拟交易
 @Controller('spot')
@@ -10,6 +11,7 @@ export class SpotController {
   constructor(
     private readonly market: MarketService,
     private readonly sim: SimulationState,
+    private readonly capabilities: CapabilityService,
   ) {}
 
   @Get('markets')
@@ -47,18 +49,44 @@ export class SpotController {
   }
 
   @Get('holdings')
-  async getHoldings() {
+  async getHoldings(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    const capability = this.capabilities.assert('spotHoldings', authorization, overlay);
+    const matrix = this.capabilities.getMatrix(authorization, overlay);
     const list = await this.sim.getSpotHoldings();
-    return ok({ mode: 'simulation', list });
+    return ok({
+      mode: matrix.state === 'simulation' ? 'simulation' : 'live',
+      source: capability.source,
+      overlay: matrix.overlayEnabled,
+      list,
+    });
   }
 
   @Get('orders')
-  getOrders(@Query('symbol') symbol?: string) {
-    return ok({ mode: 'simulation', list: this.sim.getSpotOrders(symbol) });
+  getOrders(
+    @Query('symbol') symbol?: string,
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    const capability = this.capabilities.assert('spotHoldings', authorization, overlay);
+    const matrix = this.capabilities.getMatrix(authorization, overlay);
+    return ok({
+      mode: matrix.state === 'simulation' ? 'simulation' : 'live',
+      source: capability.source,
+      overlay: matrix.overlayEnabled,
+      list: this.sim.getSpotOrders(symbol),
+    });
   }
 
   @Post('orders')
-  async placeOrder(@Body() body: SpotTradeInput) {
+  async placeOrder(
+    @Body() body: SpotTradeInput,
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    this.capabilities.assert('spotTrade', authorization, overlay);
     return ok(await this.sim.placeSpotOrder(body));
   }
 

@@ -34,7 +34,11 @@
         v-model="klineInterval"
         @click-price="handleKlineClickPrice"
       />
-      <OrderForm :symbol="currentSymbol" :kline-price="klineClickPrice" @submitted="handleOrderSubmitted" />
+      <OrderForm v-if="canFuturesTrade" :symbol="currentSymbol" :kline-price="klineClickPrice" @submitted="handleOrderSubmitted" />
+      <section v-else class="card">
+        <h2 class="section-title">{{ $t('trade.workbench') }}</h2>
+        <p class="status-text">{{ modeStore.reasonOf('futuresTrade') }}</p>
+      </section>
     </section>
 
     <!-- 持仓 + 委托汇总：只显示当前交易对，紧跟交易区下方并按 5 秒轮询刷新 -->
@@ -190,6 +194,10 @@ if (route.query.asset === 'stock') {
 }
 const assetStore = useAssetStore();
 const modeStore = useModeStore();
+const canFuturesTrade = computed(() => modeStore.can('futuresTrade'));
+const canFuturesPositions = computed(() => modeStore.can('futuresPositions'));
+const canOpenOrders = computed(() => modeStore.can('futuresOpenOrders'));
+const canOrderHistory = computed(() => modeStore.can('futuresOrderHistory'));
 const orderStore = useOrderStore();
 const positionStore = usePositionStore();
 
@@ -306,12 +314,15 @@ function formatTradeTime(value: number) {
 
 // 刷新账户持仓/委托/成交，供手动操作和定时轮询复用
 async function refreshAccountData() {
-  await Promise.all([
-    positionStore.fetchPositions(modeStore.mode),
-    orderStore.fetchOpenOrders(modeStore.mode),
-    orderStore.fetchHistory(modeStore.mode),
-    assetStore.fetchAssets(modeStore.mode),
-  ]);
+  positionStore.positions = [];
+  orderStore.openOrders = [];
+  orderStore.historyOrders = [];
+
+  const tasks: Promise<unknown>[] = [assetStore.fetchAssets(modeStore.mode)];
+  if (canFuturesPositions.value) tasks.push(positionStore.fetchPositions(modeStore.mode));
+  if (canOpenOrders.value) tasks.push(orderStore.fetchOpenOrders(modeStore.mode));
+  if (canOrderHistory.value) tasks.push(orderStore.fetchHistory(modeStore.mode));
+  await Promise.all(tasks);
 }
 
 // 加载交易页面数据

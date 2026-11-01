@@ -93,7 +93,7 @@
       <div v-if="!exchangeStore.accounts.length" class="empty-state">{{ $t('assets.noApiAccounts') }}</div>
     </section>
 
-    <section class="card">
+    <section v-if="canLedger" class="card">
       <h2 class="section-title">{{ $t('assets.ledger') }}</h2>
       <table class="table">
         <thead>
@@ -122,6 +122,10 @@
       </table>
       <div v-if="!assetStore.ledger.length" class="empty-state">{{ $t('assets.noLedger') }}</div>
     </section>
+    <section v-else class="card">
+      <h2 class="section-title">{{ $t('assets.ledger') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('ledger') }}</p>
+    </section>
   </div>
 
   <ApiBindingModal
@@ -133,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { $t } from '../utils/i18n';
 import ApiBindingModal from '../components/assets/ApiBindingModal.vue';
@@ -147,6 +151,7 @@ import { exchangeFromSymbol } from '../utils/symbol';
 const assetStore = useAssetStore();
 const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
+const canLedger = computed(() => modeStore.can('ledger'));
 const router = useRouter();
 const bindingModalOpen = ref(false);
 
@@ -179,11 +184,17 @@ function handleLedgerClick(item: LedgerItem): void {
 }
 
 async function loadPageData() {
-  await Promise.all([
+  assetStore.ledger = [];
+  const tasks: Promise<unknown>[] = [
     assetStore.fetchAssets(modeStore.mode),
-    assetStore.fetchLedger(modeStore.mode),
     exchangeStore.fetchAccounts(),
-  ]);
+  ];
+  if (canLedger.value) {
+    tasks.push(assetStore.fetchLedger(modeStore.mode));
+  } else {
+    assetStore.ledger = [];
+  }
+  await Promise.all(tasks);
 }
 
 async function handleTestConnection() {

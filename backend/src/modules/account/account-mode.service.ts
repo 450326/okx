@@ -6,6 +6,12 @@ import {
   ModeTransitionLog,
 } from './account-mode.store';
 import { OkxApiService } from './okx-api.service';
+import {
+  CapabilityMatrix,
+  CapabilityService,
+  CapabilityState,
+  CapabilityKey,
+} from './capability.service';
 
 export const MODE_ERROR = {
   INVALID_TRANSITION: 4100,
@@ -27,7 +33,10 @@ export interface AccountModeView {
   mode: 'simulation' | 'live';
   /** 服务端真实状态机。 */
   state: AccountTradingState;
+  isSuper: boolean;
+  overlayEnabled: boolean;
   capabilities: ModeCapabilities;
+  matrix: Record<CapabilityKey, CapabilityState>;
   blockers: string[];
   updatedAt: string;
   lastTransition: ModeTransitionLog | null;
@@ -58,9 +67,10 @@ export class AccountModeService {
     private readonly modeStore: AccountModeStore,
     private readonly accountStore: AccountStore,
     private readonly okxApi: OkxApiService,
+    private readonly capabilityService: CapabilityService,
   ) {}
 
-  async getView(): Promise<AccountModeView> {
+  async getView(authorization?: string, overlayHeader?: string): Promise<AccountModeView> {
     let state = this.modeStore.getState();
     const account = this.accountStore.getActiveOkx();
 
@@ -71,12 +81,16 @@ export class AccountModeService {
       state = 'simulation';
     }
 
-    return this.buildView(state, account);
+    return this.buildView(state, account, this.capabilityService.getMatrix(authorization, overlayHeader));
   }
 
-  async changeMode(input: { mode?: string; reason?: string }): Promise<AccountModeView> {
+  async changeMode(
+    input: { mode?: string; reason?: string },
+    authorization?: string,
+    overlayHeader?: string,
+  ): Promise<AccountModeView> {
     // 先做一次状态修正：API 账户被删除后，不允许继续停留在实盘状态。
-    await this.getView();
+    await this.getView(authorization, overlayHeader);
     const current = this.modeStore.getState();
     const target = this.normalizeTarget(input?.mode);
     const reason = String(input?.reason || 'user_request').slice(0, 200);
@@ -86,7 +100,11 @@ export class AccountModeService {
     }
 
     if (target === current) {
-      return this.buildView(current, this.accountStore.getActiveOkx());
+      return this.buildView(
+        current,
+        this.accountStore.getActiveOkx(),
+        this.capabilityService.getMatrix(authorization, overlayHeader),
+      );
     }
 
     this.assertTransition(current, target);
@@ -130,7 +148,11 @@ export class AccountModeService {
 
     this.modeStore.setState(target, reason);
     this.logger.log(`交易模式切换：${STATE_LABEL[current]} -> ${STATE_LABEL[target]}`);
-    return this.buildView(target, this.accountStore.getActiveOkx());
+    return this.buildView(
+      target,
+      this.accountStore.getActiveOkx(),
+      this.capabilityService.getMatrix(authorization, overlayHeader),
+    );
   }
 
   private normalizeTarget(mode?: string): AccountTradingState | null {
@@ -164,12 +186,18 @@ export class AccountModeService {
     throw new ModeTransitionError(message, code, blockers);
   }
 
-  private buildView(state: AccountTradingState, account?: StoredAccount): AccountModeView {
+  private buildView(
+    state: AccountTradingState,
+    account?: StoredAccount,
+    matrix?: CapabilityMatrix,
+  ): AccountModeView {
     const hasApi = Boolean(account);
     const snapshot = this.modeStore.getSnapshot();
     return {
       mode: state === 'simulation' ? 'simulation' : 'live',
       state,
+      isSuper: matrix?.isSuper ?? false,
+      overlayEnabled: matrix?.overlayEnabled ?? false,
       capabilities: {
         canUseSimulation: true,
         canReadLive: hasApi,
@@ -177,6 +205,7 @@ export class AccountModeService {
         canEnterLiveReadonly: hasApi,
         canEnterLiveTrading: state === 'live_readonly' && hasApi,
       },
+      matrix: matrix?.capabilities ?? ({} as Record<CapabilityKey, CapabilityState>),
       blockers: hasApi ? [] : ['NO_ACTIVE_API_ACCOUNT'],
       updatedAt: snapshot.updatedAt,
       lastTransition: snapshot.lastTransition,

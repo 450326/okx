@@ -40,8 +40,11 @@
 
       <div v-if="globalError" class="status-text">{{ globalError }}</div>
 
-      <main class="main-view">
+      <main v-if="appReady" class="main-view">
         <RouterView />
+      </main>
+      <main v-else class="main-view">
+        <div class="card empty-state">{{ $t('common.loading') }}</div>
       </main>
     </div>
   </div>
@@ -80,6 +83,7 @@ const currencyStore = useCurrencyStore();
 const router = useRouter();
 const route = useRoute();
 const modeConfirmOpen = ref(false);
+const appReady = ref(false);
 
 const navItems = [
   { to: '/', labelKey: 'nav.home' },
@@ -113,8 +117,13 @@ const modeConfirmWarning = computed(() =>
 );
 
 async function loadGlobalData() {
-  await Promise.all([authStore.fetchMe(), modeStore.fetchMode(), exchangeStore.fetchAccounts()]);
-  await assetStore.fetchAssets(modeStore.mode);
+  try {
+    await Promise.all([authStore.fetchMe(), modeStore.fetchMode(), exchangeStore.fetchAccounts()]);
+    await assetStore.fetchAssets(modeStore.mode);
+  } finally {
+    // 等能力矩阵就绪后再挂载页面，避免页面先按 simulation 取到模拟数据。
+    appReady.value = true;
+  }
 }
 
 function openModeConfirm() {

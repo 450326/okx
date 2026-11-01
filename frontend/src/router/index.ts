@@ -60,9 +60,9 @@ const router = createRouter({
 
 // 全局路由前置守卫：自动登录 / 认证检查
 router.beforeEach(async (to, _from, next) => {
-  // 如果已登录则重定向到首页
+  // 登录页始终可访问，方便从 demo 切换到超级权限账号
   if (to.name === 'login') {
-    next({ name: 'home' });
+    next();
     return;
   }
   // 检查需要认证的路由

@@ -2,7 +2,7 @@
   <div class="page">
     <h1 class="page-title">{{ $t('orders.pageTitle') }}</h1>
 
-    <section class="card">
+    <section v-if="canFuturesHistory" class="card">
       <h2 class="section-title">{{ $t('orders.history') }}</h2>
       <table class="table">
         <thead>
@@ -39,8 +39,12 @@
       </table>
       <div v-if="!orderStore.historyOrders.length" class="empty-state">{{ $t('orders.noHistory') }}</div>
     </section>
+    <section v-else class="card">
+      <h2 class="section-title">{{ $t('orders.history') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('futuresOrderHistory') }}</p>
+    </section>
 
-    <section class="card">
+    <section v-if="canSpotOrders" class="card">
       <div class="section-head">
         <h2 class="section-title">{{ $t('spot.orders') }}</h2>
         <span class="status-text">{{ $t('spot.simulation') }}</span>
@@ -82,11 +86,15 @@
       </table>
       <div v-if="!spotStore.orders.length" class="empty-state">{{ $t('spot.noOrders') }}</div>
     </section>
+    <section v-else class="card">
+      <h2 class="section-title">{{ $t('spot.orders') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('spotHoldings') }}</p>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import CoinIcon from '../components/common/CoinIcon.vue';
 import { useModeStore } from '../stores/mode';
 import { useOrderStore } from '../stores/orders';
@@ -105,6 +113,8 @@ import { $t } from '../utils/i18n';
 const modeStore = useModeStore();
 const orderStore = useOrderStore();
 const spotStore = useSpotStore();
+const canFuturesHistory = computed(() => modeStore.can('futuresOrderHistory'));
+const canSpotOrders = computed(() => modeStore.can('spotHoldings'));
 
 function formatDirection(item: OrderItem): string {
   if (item.action === 'open') {
@@ -133,10 +143,20 @@ function formatTime(value?: string): string {
 }
 
 async function loadPageData() {
-  await Promise.all([
-    orderStore.fetchHistory(modeStore.mode),
-    spotStore.fetchOrders(),
-  ]);
+  orderStore.historyOrders = [];
+  spotStore.orders = [];
+  const tasks: Promise<unknown>[] = [];
+  if (canFuturesHistory.value) {
+    tasks.push(orderStore.fetchHistory(modeStore.mode));
+  } else {
+    orderStore.historyOrders = [];
+  }
+  if (canSpotOrders.value) {
+    tasks.push(spotStore.fetchOrders());
+  } else {
+    spotStore.orders = [];
+  }
+  await Promise.all(tasks);
 }
 
 watch(

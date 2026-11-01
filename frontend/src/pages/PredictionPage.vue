@@ -69,10 +69,11 @@
     <div v-if="store.error" class="error-banner">{{ store.error }}</div>
 
     <!-- 我的预测持仓：与合约模拟盘共用资金 -->
-    <section v-if="store.positions.length" class="card prediction-positions">
+    <section v-if="canPrediction && store.positions.length" class="card prediction-positions">
       <div class="positions-head">
         <div>
           <h2 class="section-title">{{ $t('prediction.myPositions') }}</h2>
+          <p v-if="modeStore.overlayEnabled" class="positions-summary">{{ $t('settings.superOverlay') }}</p>
           <p class="positions-summary">{{ $t('prediction.myPositionsSummary') }}</p>
         </div>
         <div class="positions-totals">
@@ -254,6 +255,15 @@ import { $t } from '../utils/i18n';
 const store = usePredictionStore();
 const assetStore = useAssetStore();
 const modeStore = useModeStore();
+const canPrediction = computed(() => modeStore.can('predictionPositions'));
+
+watch(
+  () => modeStore.mode,
+  () => {
+    store.positions = [];
+    if (canPrediction.value) void store.fetchPositions();
+  },
+);
 
 const searchInput = ref(store.keyword);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -272,8 +282,10 @@ watch(
 async function retryPrediction(): Promise<void> {
   showUnavailableModal.value = false;
   await store.fetchMarkets(true);
-  if (!store.error) {
+  if (!store.error && canPrediction.value) {
     await store.fetchPositions();
+  } else if (!canPrediction.value) {
+    store.positions = [];
   }
 }
 
@@ -367,8 +379,13 @@ function clearSearch(): void {
 }
 
 onMounted(() => {
+  store.positions = [];
   void store.fetchMarkets(true);
-  void store.fetchPositions();
+  if (canPrediction.value) {
+    void store.fetchPositions();
+  } else {
+    store.positions = [];
+  }
 
   // 列表每分钟静默刷新一次，保持概率接近实时
   refreshTimer = setInterval(() => {
@@ -379,7 +396,7 @@ onMounted(() => {
       store.markets.length <= 24
     ) {
       void store.refresh();
-      void store.fetchPositions();
+      if (canPrediction.value) void store.fetchPositions();
     }
   }, 60_000);
 });

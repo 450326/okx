@@ -22,6 +22,10 @@ http.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
+  // 只有超级权限账号才允许在实盘下请求模拟数据；服务端会再次校验。
+  if (localStorage.getItem('simulationOverlay') === '1') {
+    config.headers['X-Simulation-Overlay'] = '1';
+  }
   // 返回配置
   return config;
 });

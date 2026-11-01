@@ -14,7 +14,9 @@
       </div>
     </div>
 
-    <div class="equity-stats">
+    <div v-if="isLive" class="status-text">{{ $t('equity.liveUnavailable') }}</div>
+
+    <div v-if="!isLive" class="equity-stats">
       <div class="eq-stat">
         <span>{{ $t('equity.startEquity') }}</span>
         <strong>{{ formatEquity(startEquity) }}</strong>
@@ -74,6 +76,7 @@ const ranges = [
 const activeRange = ref(props.range);
 const chartContainer = ref<HTMLDivElement | null>(null);
 const points = ref<EquityPoint[]>([]);
+const isLive = computed(() => props.mode === 'live');
 const currencyStore = useCurrencyStore();
 
 let chart: IChartApi | null = null;
@@ -106,6 +109,11 @@ function formatSignedEquity(val: number): string {
 }
 
 async function fetchData() {
+  if (isLive.value) {
+    points.value = [];
+    if (chart) updateChart();
+    return;
+  }
   const seq = ++requestSeq;
   try {
     const data = await accountApi.getEquityHistory(props.mode, activeRange.value);

@@ -20,6 +20,36 @@ export interface ModeTransition {
   result: 'ok' | 'rejected';
 }
 
+export type CapabilityKey =
+  | 'marketData'
+  | 'futuresPositions'
+  | 'futuresOpenOrders'
+  | 'futuresOrderHistory'
+  | 'futuresTrade'
+  | 'spotHoldings'
+  | 'spotTrade'
+  | 'predictionPositions'
+  | 'predictionTrade'
+  | 'ledger'
+  | 'equityHistory'
+  | 'simulationReset';
+
+export type CapabilitySource = 'public' | 'simulation' | 'okx' | 'none';
+
+export interface CapabilityState {
+  allowed: boolean;
+  source: CapabilitySource;
+  reason?: string;
+  code?: number;
+}
+
+export interface CapabilityMatrix {
+  state: TradingState;
+  isSuper: boolean;
+  overlayEnabled: boolean;
+  capabilities: Record<CapabilityKey, CapabilityState>;
+}
+
 // 主题模式：深色 / 浅色
 export type Theme = 'dark' | 'light';
 
@@ -37,6 +67,7 @@ export interface UserProfile {
   id: string;          // 用户 ID
   email: string;       // 用户邮箱
   nickname: string;    // 用户昵称
+  isSuper?: boolean;   // 超级权限账号
   defaultMode: TradeMode;  // 默认交易模式
 }
 
@@ -62,7 +93,10 @@ export interface EquityHistoryResponse {
 export interface AccountModeResponse {
   mode: TradeMode;  // 兼容字段：当前有效模式
   state: TradingState;
+  isSuper: boolean;
+  overlayEnabled: boolean;
   capabilities: ModeCapabilities;
+  matrix: Record<CapabilityKey, CapabilityState>;
   blockers: string[];
   updatedAt: string;
   lastTransition: ModeTransition | null;
@@ -71,6 +105,7 @@ export interface AccountModeResponse {
 // 资产快照
 export interface AssetSnapshot {
   mode: TradeMode;          // 交易模式
+  source?: CapabilitySource; // simulation / okx
   currency: string;         // 币种
   walletBalance: string;    // 钱包余额
   availableBalance: string; // 可用余额
@@ -98,6 +133,7 @@ export interface LedgerItem {
 // 账本流水列表响应
 export interface LedgerListResponse {
   mode: TradeMode;    // 交易模式
+  source?: CapabilitySource;
   list: LedgerItem[]; // 流水列表
 }
 
@@ -217,6 +253,7 @@ export interface PositionItem {
 // 持仓列表响应
 export interface PositionListResponse {
   mode: TradeMode;      // 交易模式
+  source?: CapabilitySource;
   list: PositionItem[]; // 持仓列表
 }
 
@@ -280,6 +317,7 @@ export interface OrderItem {
 // 订单列表响应
 export interface OrderListResponse {
   mode: TradeMode;    // 交易模式
+  source?: CapabilitySource;
   list: OrderItem[];  // 订单列表
 }
 
@@ -327,6 +365,8 @@ export interface SpotHoldingRecord {
 
 export interface SpotHoldingListResponse {
   mode: TradeMode;
+  source?: CapabilitySource;
+  overlay?: boolean;
   list: SpotHoldingRecord[];
 }
 
@@ -346,6 +386,8 @@ export interface SpotOrderRecord {
 
 export interface SpotOrderListResponse {
   mode: TradeMode;
+  source?: CapabilitySource;
+  overlay?: boolean;
   list: SpotOrderRecord[];
 }
 
@@ -520,6 +562,8 @@ export interface PredictionPositionRecord {
 // 预测持仓列表响应
 export interface PredictionPositionListResponse {
   mode: TradeMode;
+  source?: CapabilitySource;
+  overlay?: boolean;
   list: PredictionPositionRecord[];
 }
 
@@ -544,6 +588,8 @@ export interface PredictionOrderRecord {
 // 预测成交列表响应
 export interface PredictionOrderListResponse {
   mode: TradeMode;
+  source?: CapabilitySource;
+  overlay?: boolean;
   list: PredictionOrderRecord[];
 }
 

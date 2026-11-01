@@ -7,6 +7,8 @@ import { accountApi } from '../api/services';
 // 导入交易模式类型
 import type {
   AccountModeResponse,
+  CapabilityKey,
+  CapabilityState,
   ModeCapabilities,
   TradeMode,
   TradingState,
@@ -20,6 +22,21 @@ const EMPTY_CAPABILITIES: ModeCapabilities = {
   canEnterLiveTrading: false,
 };
 
+const EMPTY_MATRIX: Record<CapabilityKey, CapabilityState> = {
+  marketData: { allowed: true, source: 'public' },
+  futuresPositions: { allowed: false, source: 'none' },
+  futuresOpenOrders: { allowed: false, source: 'none' },
+  futuresOrderHistory: { allowed: false, source: 'none' },
+  futuresTrade: { allowed: false, source: 'none' },
+  spotHoldings: { allowed: false, source: 'none' },
+  spotTrade: { allowed: false, source: 'none' },
+  predictionPositions: { allowed: false, source: 'none' },
+  predictionTrade: { allowed: false, source: 'none' },
+  ledger: { allowed: false, source: 'none' },
+  equityHistory: { allowed: false, source: 'none' },
+  simulationReset: { allowed: false, source: 'none' },
+};
+
 // 交易模式状态 store
 export const useModeStore = defineStore('mode', () => {
   // 兼容现有页面的有效模式
@@ -27,6 +44,9 @@ export const useModeStore = defineStore('mode', () => {
   // 服务端真实状态机
   const state = ref<TradingState>('simulation');
   const capabilities = ref<ModeCapabilities>({ ...EMPTY_CAPABILITIES });
+  const matrix = ref<Record<CapabilityKey, CapabilityState>>({ ...EMPTY_MATRIX });
+  const isSuper = ref(false);
+  const overlayEnabled = ref(false);
   const blockers = ref<string[]>([]);
   const updatedAt = ref('');
   // 加载状态
@@ -38,8 +58,34 @@ export const useModeStore = defineStore('mode', () => {
     mode.value = data.mode === 'live' ? 'live' : 'simulation';
     state.value = data.state || (data.mode === 'live' ? 'live_readonly' : 'simulation');
     capabilities.value = { ...EMPTY_CAPABILITIES, ...(data.capabilities || {}) };
+    matrix.value = { ...EMPTY_MATRIX, ...(data.matrix || {}) };
+    isSuper.value = Boolean(data.isSuper);
+    overlayEnabled.value = Boolean(data.overlayEnabled);
     blockers.value = data.blockers || [];
     updatedAt.value = data.updatedAt || '';
+  }
+
+  function can(key: CapabilityKey): boolean {
+    return Boolean(matrix.value[key]?.allowed);
+  }
+
+  function reasonOf(key: CapabilityKey): string {
+    return matrix.value[key]?.reason || '';
+  }
+
+  function sourceOf(key: CapabilityKey): CapabilityState['source'] {
+    return matrix.value[key]?.source || 'none';
+  }
+
+  async function setSimulationOverlay(enabled: boolean) {
+    if (!isSuper.value) return false;
+    if (enabled) {
+      localStorage.setItem('simulationOverlay', '1');
+    } else {
+      localStorage.removeItem('simulationOverlay');
+    }
+    await fetchMode();
+    return true;
   }
 
   // 从服务端获取当前交易模式
@@ -97,10 +143,17 @@ export const useModeStore = defineStore('mode', () => {
     mode,
     state,
     capabilities,
+    matrix,
+    isSuper,
+    overlayEnabled,
     blockers,
     updatedAt,
     loading,
     error,
+    can,
+    reasonOf,
+    sourceOf,
+    setSimulationOverlay,
     fetchMode,
     updateMode,
     toggleMode,

@@ -5,7 +5,13 @@
         <h1 class="page-title">{{ $t('spot.pageTitle') }}</h1>
         <p class="page-subtitle">{{ $t('spot.subtitle') }}</p>
       </div>
-      <span class="mode-badge">{{ $t('spot.simulation') }}</span>
+      <span class="mode-badge">
+        {{ modeStore.state === 'live_trading'
+          ? $t('settings.modeLiveTrading')
+          : modeStore.mode === 'live'
+            ? $t('settings.modeLiveReadonly')
+            : $t('spot.simulation') }}
+      </span>
     </div>
 
     <section class="card">
@@ -82,6 +88,7 @@
       </section>
 
       <SpotOrderForm
+        v-if="canSpotTrade"
         v-model:side="side"
         v-model:qty="qty"
         :symbol="selectedSymbol"
@@ -90,11 +97,17 @@
         :available="availableCash"
         @submitted="handleSubmitted"
       />
+      <section v-else class="card readonly-card">
+        <h2 class="section-title">{{ $t('spot.trade') }}</h2>
+        <p class="status-text">{{ modeStore.reasonOf('spotTrade') }}</p>
+        <p v-if="modeStore.overlayEnabled" class="status-text">{{ $t('settings.superOverlayHint') }}</p>
+      </section>
     </div>
 
-    <section class="card">
+    <section v-if="canSpotRead" class="card">
       <div class="card-head">
         <h2 class="section-title">{{ $t('spot.holdings') }}</h2>
+        <span v-if="modeStore.overlayEnabled" class="status-text">{{ $t('settings.superOverlay') }}</span>
         <span class="muted">{{ formatCurrency(spotValue) }}</span>
       </div>
 
@@ -127,7 +140,7 @@
               <small>({{ formatPercent(Number(item.roe) * 100) }})</small>
             </td>
             <td>
-              <button class="ghost-btn small" type="button" @click="startSell(item)">
+              <button v-if="canSpotTrade" class="ghost-btn small" type="button" @click="startSell(item)">
                 {{ $t('spot.sell') }}
               </button>
             </td>
@@ -136,8 +149,12 @@
       </table>
       <div v-if="!spotStore.holdings.length" class="empty-state">{{ $t('spot.noHoldings') }}</div>
     </section>
+    <section v-else class="card readonly-card">
+      <h2 class="section-title">{{ $t('spot.holdings') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('spotHoldings') }}</p>
+    </section>
 
-    <section class="card">
+    <section v-if="canSpotRead" class="card">
       <h2 class="section-title">{{ $t('spot.orders') }}</h2>
       <table class="table spot-table">
         <thead>
@@ -171,6 +188,10 @@
       </table>
       <div v-if="!spotStore.orders.length" class="empty-state">{{ $t('spot.noOrders') }}</div>
     </section>
+    <section v-else class="card readonly-card">
+      <h2 class="section-title">{{ $t('spot.orders') }}</h2>
+      <p class="status-text">{{ modeStore.reasonOf('spotHoldings') }}</p>
+    </section>
   </div>
 </template>
 
@@ -182,6 +203,7 @@ import KlineChart from '../components/trade/KlineChart.vue';
 import SpotOrderForm from '../components/spot/SpotOrderForm.vue';
 import { useSpotStore } from '../stores/spot';
 import { useAssetStore } from '../stores/assets';
+import { useModeStore } from '../stores/mode';
 import type { SpotHoldingRecord } from '../api/types';
 import {
   formatCompactVolume,
@@ -195,6 +217,7 @@ import { $t } from '../utils/i18n';
 
 const spotStore = useSpotStore();
 const assetStore = useAssetStore();
+const modeStore = useModeStore();
 const route = useRoute();
 
 const exchanges = [
@@ -207,6 +230,8 @@ const selectedSymbol = ref('BTC-USDT');
 const interval = ref('5m');
 const side = ref<'buy' | 'sell'>('buy');
 const qty = ref('');
+const canSpotRead = computed(() => modeStore.can('spotHoldings'));
+const canSpotTrade = computed(() => modeStore.can('spotTrade'));
 let tickerTimer: ReturnType<typeof setInterval> | null = null;
 
 const ticker = computed(() => spotStore.tickerMap[selectedSymbol.value]);
@@ -272,21 +297,33 @@ function pickSymbol(preferredBase?: string): string {
 
 async function loadSymbolData() {
   if (!selectedSymbol.value) return;
-  await Promise.all([
-    spotStore.fetchKlines(selectedSymbol.value, interval.value),
-    spotStore.fetchOrders(selectedSymbol.value),
-  ]);
+  if (canSpotRead.value) {
+    await Promise.all([
+      spotStore.fetchKlines(selectedSymbol.value, interval.value),
+      spotStore.fetchOrders(selectedSymbol.value),
+    ]);
+  } else {
+    spotStore.orders = [];
+    await spotStore.fetchKlines(selectedSymbol.value, interval.value);
+  }
 }
 
 async function loadPage(preferredBase?: string) {
+  spotStore.holdings = [];
+  spotStore.orders = [];
   await spotStore.fetchMarkets();
   selectedSymbol.value = pickSymbol(preferredBase);
-  await Promise.all([
-    spotStore.fetchHoldings(),
-    spotStore.fetchOrders(selectedSymbol.value),
-    assetStore.fetchAssets('simulation'),
+  const tasks: Promise<unknown>[] = [
+    assetStore.fetchAssets(modeStore.mode),
     spotStore.fetchKlines(selectedSymbol.value, interval.value),
-  ]);
+  ];
+  if (canSpotRead.value) {
+    tasks.push(spotStore.fetchHoldings(), spotStore.fetchOrders(selectedSymbol.value));
+  } else {
+    spotStore.holdings = [];
+    spotStore.orders = [];
+  }
+  await Promise.all(tasks);
 }
 
 async function changeExchange(next: 'okx' | 'coinbase') {
@@ -324,6 +361,18 @@ watch(interval, () => {
   void spotStore.fetchKlines(selectedSymbol.value, interval.value);
 });
 
+watch(
+  () => modeStore.mode,
+  () => {
+    spotStore.holdings = [];
+    spotStore.orders = [];
+    if (canSpotRead.value) {
+      void spotStore.fetchHoldings();
+      void spotStore.fetchOrders(selectedSymbol.value);
+    }
+  },
+);
+
 onMounted(async () => {
   const routeSymbol = String(route.params.symbol || '');
   if (routeSymbol.endsWith('-USD') || routeSymbol.endsWith('-USDC')) {
@@ -339,7 +388,7 @@ onMounted(async () => {
   }
   tickerTimer = setInterval(() => {
     void spotStore.refreshTickers();
-    void spotStore.fetchHoldings();
+    if (canSpotRead.value) void spotStore.fetchHoldings();
   }, 5000);
 });
 

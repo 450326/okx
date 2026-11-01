@@ -255,6 +255,9 @@
               {{ tradeOutcome.toUpperCase() }}
             </button>
 
+            <p v-if="!canPredictionTrade" class="trade-warning">
+              {{ modeStore.reasonOf('predictionTrade') }}
+            </p>
             <p v-if="market.closed" class="trade-warning">{{ $t('prediction.closedMarket') }}</p>
             <p v-if="store.tradeError" class="trade-error">{{ store.tradeError }}</p>
             <p v-else-if="tradeSuccess" class="trade-success">{{ $t('prediction.orderFilled') }}</p>
@@ -268,7 +271,7 @@
                 <strong :class="getTrendClass(position.unrealizedPnl)">
                   {{ formatSignedCurrency(position.unrealizedPnl) }}
                 </strong>
-                <button type="button" @click="closeMarketPosition(position)">
+                <button v-if="canPredictionTrade" type="button" @click="closeMarketPosition(position)">
                   {{ $t('prediction.closePosition') }}
                 </button>
               </div>
@@ -398,11 +401,17 @@ const props = defineProps<{ slug: string }>();
 const store = usePredictionStore();
 const assetStore = useAssetStore();
 const modeStore = useModeStore();
+const canPrediction = computed(() => modeStore.can('predictionPositions'));
+const canPredictionTrade = computed(() => modeStore.can('predictionTrade'));
 
 // 预测交易固定使用模拟钱包，不能跟随实盘/模拟模式，否则实盘模式下可用余额为 0 会导致无法下单
 const predictionAvailable = ref(0);
 
 async function refreshPredictionBalance(): Promise<void> {
+  if (!canPredictionTrade.value) {
+    predictionAvailable.value = 0;
+    return;
+  }
   try {
     const data = await accountApi.getAssets('simulation');
     predictionAvailable.value = Number(data.availableBalance || 0);
@@ -482,6 +491,7 @@ const maxQty = computed(() => {
 });
 
 const canSubmit = computed(() => {
+  if (!canPredictionTrade.value) return false;
   if (!market.value) return false;
   if (tradeAction.value === 'buy' && market.value.closed) return false;
   const qty = tradeQtyNumber.value;
@@ -646,6 +656,8 @@ async function closeMarketPosition(position: PredictionPositionRecord): Promise<
 
 async function loadMarket(slug: string): Promise<void> {
   store.clearDetail();
+  store.positions = [];
+  store.orders = [];
   tradeQty.value = '';
   tradeSuccess.value = false;
   tradeAction.value = 'buy';
@@ -656,8 +668,8 @@ async function loadMarket(slug: string): Promise<void> {
     store.fetchHistory(slug, '1w'),
     store.fetchOrderBook(slug),
     store.fetchTrades(slug),
-    store.fetchPositions(),
-    store.fetchOrders(slug),
+    canPrediction.value ? store.fetchPositions() : Promise.resolve([]),
+    canPrediction.value ? store.fetchOrders(slug) : Promise.resolve([]),
     refreshPredictionBalance(),
   ]);
 }
@@ -679,7 +691,7 @@ function startPolling(): void {
   pollTimer = setInterval(() => {
     void store.fetchOrderBook(props.slug);
     void store.fetchTrades(props.slug);
-    void store.fetchPositions();
+    if (canPrediction.value) void store.fetchPositions();
     void refreshPredictionBalance();
   }, 10_000);
 }
@@ -696,6 +708,20 @@ watch(
   (slug) => {
     if (!slug) return;
     void loadMarket(slug);
+  },
+);
+
+watch(
+  () => modeStore.mode,
+  () => {
+    store.positions = [];
+    store.orders = [];
+    if (canPrediction.value) {
+      void store.fetchPositions();
+      void store.fetchOrders(props.slug);
+    } else {
+      predictionAvailable.value = 0;
+    }
   },
 );
 

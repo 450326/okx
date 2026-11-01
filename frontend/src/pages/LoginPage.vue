@@ -59,6 +59,8 @@
           </button>
         </form>
 
+        <p class="login-hint">{{ $t('login.accountHint') }}</p>
+
         <div class="login-divider">
           <span>{{ $t('login.or') }}</span>
         </div>
@@ -366,6 +368,14 @@ async function handleFaceLogin() {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.login-hint {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .login-divider {

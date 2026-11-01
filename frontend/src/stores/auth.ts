@@ -19,6 +19,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => Boolean(user.value));
   // 登录状态中文标签
   const authLabel = computed(() => (user.value ? `已登录: ${user.value.nickname}` : '未登录'));
+  // 超级权限账号（服务端还会再次校验）
+  const isSuper = computed(() => Boolean(user.value?.isSuper));
 
   // 邮箱密码登录
   async function login(email: string, password: string) {
@@ -88,6 +90,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading,
     error,
     isAuthenticated,
+    isSuper,
     authLabel,
     login,
     loginWithBiometric,

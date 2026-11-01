@@ -1,6 +1,7 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { ok } from '../../common/api-response';
 import type { PredictionOrderInput } from '../simulation/simulation.types';
+import { CapabilityService } from '../account/capability.service';
 import { PolymarketService } from './polymarket.service';
 import { PredictionTradingService } from './prediction-trading.service';
 
@@ -10,6 +11,7 @@ export class PredictionController {
   constructor(
     private readonly polymarketService: PolymarketService,
     private readonly trading: PredictionTradingService,
+    private readonly capabilities: CapabilityService,
   ) {}
 
   // 市场列表：支持分页、排序和关键词搜索
@@ -67,26 +69,58 @@ export class PredictionController {
 
   // 当前预测持仓
   @Get('positions')
-  async getPositions() {
+  async getPositions(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    const capability = this.capabilities.assert('predictionPositions', authorization, overlay);
+    const matrix = this.capabilities.getMatrix(authorization, overlay);
     const list = await this.trading.getPositions();
-    return ok({ mode: 'simulation', list });
+    return ok({
+      mode: matrix.state === 'simulation' ? 'simulation' : 'live',
+      source: capability.source,
+      overlay: matrix.overlayEnabled,
+      list,
+    });
   }
 
   // 预测成交记录
   @Get('orders')
-  getOrders(@Query('slug') slug?: string) {
-    return ok({ mode: 'simulation', list: this.trading.getOrders(slug) });
+  getOrders(
+    @Query('slug') slug?: string,
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    const capability = this.capabilities.assert('predictionPositions', authorization, overlay);
+    const matrix = this.capabilities.getMatrix(authorization, overlay);
+    return ok({
+      mode: matrix.state === 'simulation' ? 'simulation' : 'live',
+      source: capability.source,
+      overlay: matrix.overlayEnabled,
+      list: this.trading.getOrders(slug),
+    });
   }
 
   // 买入/卖出预测份额（市价成交）
   @Post('orders')
-  async placeOrder(@Body() body: PredictionOrderInput) {
+  async placeOrder(
+    @Body() body: PredictionOrderInput,
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    this.capabilities.assert('predictionTrade', authorization, overlay);
     return ok(await this.trading.placeOrder(body));
   }
 
   // 按持仓 id 平仓（qty 不传表示全部卖出）
   @Post('positions/:id/close')
-  async closePosition(@Param('id') id: string, @Body() body: { qty?: string }) {
+  async closePosition(
+    @Param('id') id: string,
+    @Body() body: { qty?: string },
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    this.capabilities.assert('predictionTrade', authorization, overlay);
     return ok(await this.trading.closePosition(id, body?.qty));
   }
 
