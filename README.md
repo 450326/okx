@@ -271,6 +271,17 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 | 现货买卖 / 预测买卖 | 允许 | 禁止（返回 `4201`） |
 | 资金流水 / 收益曲线 | 模拟 | 禁止（返回 `4201`） |
 
+### 交易所 API 密钥安全
+
+- `apiKey` / `apiSecret` / `passphrase` 使用 AES-256-GCM 加密后写入 `backend/data/accounts.json`
+- 主密钥来自 `ACCOUNT_ENCRYPTION_KEY`（64 位 hex 或 32 字节 base64）
+- 生产环境未设置该环境变量会拒绝启动；开发环境回退到 `backend/data/account-encryption.key`
+- 文件里只有密文、`apiKeyMasked`（后 4 位）和不可逆 SHA-256 指纹
+- 旧版明文 `accounts.json` 启动时自动加密重写，不保留明文备份
+- 绑定 API Key 时调用 OKX 账户配置接口做权限自检；检测到 `withdraw` 权限直接拒绝，不落盘
+- OKX 请求日志只记录状态码/业务码/数据条数，不打印完整响应、请求头或密钥
+- `GET /exchange-accounts`、绑定和测试响应只返回脱敏字段，不含任何明文密钥
+
 ### 认证与用户隔离
 
 - 用户、密码哈希和 refresh token 存在 `backend/data/app.db`（SQLite）

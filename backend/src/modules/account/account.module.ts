@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AccountController } from './account.controller';
 import { OkxApiService } from './okx-api.service';
+import { AccountCryptoService } from './account-crypto.service';
 import { AccountStore } from './account-store';
 import { AccountModeStore } from './account-mode.store';
 import { AccountModeService } from './account-mode.service';
@@ -15,6 +16,7 @@ import { LiveTradingService } from './live-trading.service';
   controllers: [AccountController],
   providers: [
     OkxApiService,
+    AccountCryptoService,
     AccountStore,
     AccountModeStore,
     AccountModeService,
@@ -27,6 +29,7 @@ import { LiveTradingService } from './live-trading.service';
   exports: [
     AccountStore,
     OkxApiService,
+    AccountCryptoService,
     AccountModeStore,
     AccountModeService,
     CapabilityService,

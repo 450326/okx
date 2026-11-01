@@ -375,6 +375,9 @@ export interface ExchangeAccount {
   id: string;            // 账户 ID
   exchange: string;      // 交易所名称
   label: string;         // 账户标签
+  apiKeyMasked?: string; // 脱敏 Key
+  apiKeyFingerprint?: string; // 不可逆指纹
+  permissions?: string[];
   status: string;        // 账户状态
   isTestnet: boolean;    // 是否测试网
   lastTestAt?: string;   // 最后测试时间

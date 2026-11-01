@@ -60,7 +60,9 @@ export class AccountController {
 
     this.logger.log(`获取实盘余额: ${account.label}`);
     const data = await this.okxApi.getBalance(account);
-    this.logger.log(`OKX 响应: ${JSON.stringify(data).slice(0, 500)}`);
+    this.logger.log(
+      `OKX 余额响应: code=${data?.code ?? '-'} data=${Array.isArray(data?.data) ? data.data.length : 0}`,
+    );
 
     if (!data) {
       this.logger.error('OKX API 请求失败，返回 null');

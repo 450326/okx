@@ -129,12 +129,14 @@ export class OkxApiService {
         httpsAgent: this.proxyAgent ?? undefined,
         proxy: false,
       });
-      this.logger.log(`响应: ${res.status} ${JSON.stringify(res.data).slice(0, 500)}`);
+      this.logger.log(`响应: ${res.status} ${this.summary(res.data)}`);
       return res.data;
     } catch (err: any) {
       if (err.response) {
         const okxBody = err.response.data;
-        this.logger.error(`OKX API 错误 | 状态: ${err.response.status} | 响应: ${JSON.stringify(okxBody)}`);
+        const code = okxBody?.code;
+        const msg = okxBody?.msg || okxBody?.data?.[0]?.msg || '';
+        this.logger.error(`OKX API 错误 | 状态: ${err.response.status} | code: ${code ?? '-'} | msg: ${String(msg).slice(0, 200)}`);
         if (okxBody && okxBody.code !== undefined) {
           return okxBody;
         }
@@ -145,5 +147,14 @@ export class OkxApiService {
       }
       return null;
     }
+  }
+
+  /** 只记录上游响应的状态和计数，禁止把完整响应/请求头写入日志。 */
+  private summary(data: any): string {
+    if (!data || typeof data !== 'object') return 'empty';
+    const code = data.code ?? '-';
+    const msg = String(data.msg || '').slice(0, 200);
+    const count = Array.isArray(data.data) ? data.data.length : 0;
+    return `code=${code} msg=${msg || '-'} data=${count}`;
   }
 }
