@@ -100,6 +100,19 @@
     </div>
 
     <div v-if="localMessage || orderStore.error" class="status-text order-msg">{{ localMessage || orderStore.error }}</div>
+
+    <OrderConfirmModal
+      :open="confirmOpen"
+      :payload="pendingPayload"
+      :preview="pendingPreview"
+      :risk-level="pendingRiskLevel"
+      :distance="pendingDistance"
+      :live="isLiveTrading"
+      :warnings="pendingWarnings"
+      :loading="orderStore.submitting"
+      @confirm="confirmOrder"
+      @cancel="cancelConfirm"
+    />
   </section>
 </template>
 
@@ -111,8 +124,14 @@ import { $t } from '../../utils/i18n';
 import { useModeStore } from '../../stores/mode';
 import { useOrderStore } from '../../stores/orders';
 // 导入订单相关类型定义
-import type { OrderPayload, OrderPreviewPayload } from '../../api/types';
+import type { OrderPayload, OrderPreviewPayload, OrderPreviewResult } from '../../api/types';
 import { formatOrderId } from '../../utils/format';
+import OrderConfirmModal from './OrderConfirmModal.vue';
+import {
+  liquidationDistance,
+  riskLevelFromDistance,
+  type RiskLevel,
+} from '../../utils/risk';
 
 // 定义 props：当前交易对、K 线价格（用于填充限价单价格）
 const props = defineProps<{
@@ -151,10 +170,18 @@ const pendingClientOrderId = ref('');
 const pendingSignature = ref('');
 // 试算结果展开状态
 const showPreview = ref(false);
+// 下单确认弹窗状态
+const confirmOpen = ref(false);
+const pendingPayload = ref<OrderPayload | null>(null);
+const pendingPreview = ref<OrderPreviewResult | null>(null);
+const pendingRiskLevel = ref<RiskLevel>('unknown');
+const pendingDistance = ref<number | null>(null);
+const pendingWarnings = ref<Array<{ level: RiskLevel; text: string }>>([]);
 // 做多按钮文本：开仓/平多
 const longActionText = computed(() => form.action === 'open' ? $t('order.openLong') : $t('order.closeLong'));
 // 做空按钮文本：开空/平空
 const shortActionText = computed(() => form.action === 'open' ? $t('order.openShort') : $t('order.closeShort'));
+const isLiveTrading = computed(() => modeStore.state === 'live_trading');
 
 // 自动化试算的防抖计时器
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
@@ -260,11 +287,8 @@ async function handlePreview(side: 'long' | 'short' = form.side) {
   await refreshPreview(side);
 }
 
-// 执行下单提交
-async function handleSubmit(side: 'long' | 'short') {
-  localMessage.value = '';
-  form.side = side;
-
+// 构建最终下单参数（实盘生成/复用幂等键）
+function buildOrderPayload(side: 'long' | 'short'): OrderPayload {
   const previewPayload = buildPreviewPayload(side);
   const signature = JSON.stringify({
     symbol: previewPayload.symbol,
@@ -281,28 +305,121 @@ async function handleSubmit(side: 'long' | 'short') {
     pendingClientOrderId.value = `okx${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 32);
     pendingSignature.value = signature;
   }
-  const payload: OrderPayload = {
+  return {
     ...previewPayload,
     marginMode: 'isolated',
     clientOrderId: modeStore.mode === 'live' ? pendingClientOrderId.value : undefined,
   };
+}
 
+function buildWarnings(
+  preview: OrderPreviewResult,
+  side: 'long' | 'short',
+  payload: OrderPayload,
+): Array<{ level: RiskLevel; text: string }> {
+  const warnings: Array<{ level: RiskLevel; text: string }> = [];
+  const notional = Number(preview.estimatedNotional);
+  const available = Number(preview.availableBalance);
+  const distance = liquidationDistance(
+    preview.estimatedLiquidationPrice,
+    preview.markPrice || preview.price,
+    side,
+  );
+
+  if (isLiveTrading.value) {
+    warnings.push({ level: 'danger', text: $t('orderConfirm.warnLive') });
+  }
+  if (payload.orderType === 'market') {
+    warnings.push({ level: 'warning', text: $t('orderConfirm.warnMarket') });
+  }
+  if (
+    Number.isFinite(notional) &&
+    notional > 0 &&
+    (!Number.isFinite(available) || available <= 0 || notional > available * 0.2)
+  ) {
+    warnings.push({ level: 'warning', text: $t('orderConfirm.warnNotional') });
+  }
+  if (payload.leverage >= 20) {
+    warnings.push({ level: 'danger', text: $t('orderConfirm.warnLeverage') });
+  }
+  if (distance != null && distance < 5) {
+    warnings.push({
+      level: 'danger',
+      text: $t('orderConfirm.warnLiquidation').replace('{distance}', distance.toFixed(2)),
+    });
+  }
+  if (payload.action === 'close') {
+    warnings.push({ level: 'warning', text: $t('orderConfirm.warnClose') });
+  }
+  return warnings;
+}
+
+async function submitOrderPayload(payload: OrderPayload): Promise<void> {
   const result = await orderStore.submitOrder(payload);
-
   if (result) {
     pendingClientOrderId.value = '';
     pendingSignature.value = '';
+    confirmOpen.value = false;
+    pendingPayload.value = null;
+    pendingPreview.value = null;
     localMessage.value = `${$t('order.orderSuccess')} ${formatOrderId(result.orderId)}`;
     emit('submitted');
     if (form.action === 'open') {
       // 成交后可用余额、最大可开数量都会变化，刷新一次试算。
-      void refreshPreview(side);
+      void refreshPreview(payload.side);
     } else {
       // 全部平仓后已经无仓位，继续试算只会报“没有可平仓位”。
       orderStore.clearPreview();
       showPreview.value = false;
     }
   }
+}
+
+// 执行下单：先强制试算，再按风险矩阵决定是否二次确认。
+async function handleSubmit(side: 'long' | 'short') {
+  localMessage.value = '';
+  form.side = side;
+  if (!canPreview()) {
+    localMessage.value = $t('order.qtyRequired');
+    return;
+  }
+
+  showPreview.value = true;
+  const preview = await orderStore.previewOrder(buildPreviewPayload(side));
+  if (!preview) return;
+
+  const payload = buildOrderPayload(side);
+  const warnings = buildWarnings(preview, side, payload);
+  if (warnings.length > 0) {
+    const distance = liquidationDistance(
+      preview.estimatedLiquidationPrice,
+      preview.markPrice || preview.price,
+      side,
+    );
+    pendingPayload.value = payload;
+    pendingPreview.value = preview;
+    pendingDistance.value = distance;
+    pendingRiskLevel.value = riskLevelFromDistance(distance);
+    pendingWarnings.value = warnings;
+    confirmOpen.value = true;
+    return;
+  }
+
+  await submitOrderPayload(payload);
+}
+
+async function confirmOrder() {
+  if (!pendingPayload.value) return;
+  await submitOrderPayload(pendingPayload.value);
+}
+
+function cancelConfirm() {
+  confirmOpen.value = false;
+  pendingPayload.value = null;
+  pendingPreview.value = null;
+  pendingWarnings.value = [];
+  pendingDistance.value = null;
+  pendingRiskLevel.value = 'unknown';
 }
 
 onMounted(() => {

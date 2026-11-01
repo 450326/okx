@@ -158,6 +158,7 @@
             <th>{{ $t('positions.entryPrice') }}</th>
             <th>{{ $t('positions.markPrice') }}</th>
             <th>{{ $t('positions.liquidationPrice') }}</th>
+            <th>{{ $t('positions.risk') }}</th>
             <th>{{ $t('positions.pnl') }}</th>
             <th></th>
           </tr>
@@ -176,6 +177,11 @@
             <td>{{ item.entryPrice }}</td>
             <td>{{ item.markPrice }}</td>
             <td>{{ item.liquidationPrice }}</td>
+            <td>
+              <span :class="['risk-badge', `risk-${riskLevelFromPosition(item)}`]">
+                {{ $t(`risk.${riskLevelFromPosition(item)}`) }}
+              </span>
+            </td>
             <td :class="getTrendClass(item.unrealizedPnl)">{{ formatSignedValue(item.unrealizedPnl) }}</td>
             <td>
               <button v-if="canFuturesTrade" class="action-btn" :disabled="closingId === item.id" @click="handleClose(item)">
@@ -293,6 +299,7 @@ import {
   getTrendClass,
 } from '../utils/format';
 import { $t } from '../utils/i18n';
+import { riskLevelFromPosition } from '../utils/risk';
 
 const modeStore = useModeStore();
 const marketStore = useMarketStore();
@@ -617,4 +624,40 @@ watch(
   margin-top: 8px;
   color: var(--color-down);
 }
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.risk-safe {
+  color: var(--color-up);
+  background: rgba(0, 200, 120, 0.12);
+}
+
+.risk-watch {
+  color: #7db8ff;
+  background: rgba(64, 158, 255, 0.12);
+}
+
+.risk-warning {
+  color: var(--color-warning);
+  background: rgba(245, 166, 35, 0.12);
+}
+
+.risk-danger {
+  color: #ff6b6b;
+  background: rgba(255, 70, 70, 0.14);
+}
+
+.risk-unknown {
+  color: var(--text-secondary);
+  background: var(--bg-soft);
+}
+
 </style>
