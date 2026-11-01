@@ -1,9 +1,9 @@
 import { Body, Controller, Delete, Get, Logger, Param, Post } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { ok } from '../../common/api-response';
 import { AccountStore, StoredAccount } from '../account/account-store';
 import { OkxApiService } from '../account/okx-api.service';
-
-let nextId = 1;
+import { RequestContextService } from '../auth/request-context.service';
 
 @Controller('exchange-accounts')
 export class ExchangeController {
@@ -12,6 +12,7 @@ export class ExchangeController {
   constructor(
     private readonly accountStore: AccountStore,
     private readonly okxApi: OkxApiService,
+    private readonly context: RequestContextService,
   ) {}
 
   @Get()
@@ -40,11 +41,12 @@ export class ExchangeController {
       isTestnet: boolean;
     },
   ) {
-    const id = `ex_${String(nextId++).padStart(4, '0')}`;
+    const id = `ex_${crypto.randomBytes(8).toString('hex')}`;
     const now = new Date().toISOString();
 
     const account: StoredAccount = {
       id,
+      userId: this.context.userId(),
       exchange: body.exchange || 'okx',
       label: body.label,
       apiKey: body.apiKey,

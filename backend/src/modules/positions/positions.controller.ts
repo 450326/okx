@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Headers, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Headers, Param, Post, Put, Query } from '@nestjs/common';
 import { ok } from '../../common/api-response';
 import { SimulationState } from '../simulation/simulation-state';
+import { SIM_ERROR, SimulationError } from '../simulation/simulation.types';
 import { CapabilityService } from '../account/capability.service';
 import { LiveAccountService } from '../account/live-account.service';
 
@@ -36,7 +37,14 @@ export class PositionsController {
     @Headers('x-simulation-overlay') overlay?: string,
   ) {
     this.capabilities.assert('futuresTrade', authorization, overlay);
-    return ok(this.sim.updatePositionRisk(id, body.takeProfitPrice, body.stopLossPrice));
+    try {
+      return ok(this.sim.updatePositionRisk(id, body.takeProfitPrice, body.stopLossPrice));
+    } catch (error) {
+      if (error instanceof SimulationError && error.code === SIM_ERROR.POSITION_NOT_FOUND) {
+        throw new ForbiddenException('无权访问该持仓');
+      }
+      throw error;
+    }
   }
 
   @Post(':id/close')
@@ -47,7 +55,14 @@ export class PositionsController {
     @Headers('x-simulation-overlay') overlay?: string,
   ) {
     this.capabilities.assert('futuresTrade', authorization, overlay);
-    const result = await this.sim.closePosition(id, body?.qty, body?.symbol);
-    return ok(result);
+    try {
+      const result = await this.sim.closePosition(id, body?.qty, body?.symbol);
+      return ok(result);
+    } catch (error) {
+      if (error instanceof SimulationError && error.code === SIM_ERROR.POSITION_NOT_FOUND) {
+        throw new ForbiddenException('无权访问该持仓');
+      }
+      throw error;
+    }
   }
 }

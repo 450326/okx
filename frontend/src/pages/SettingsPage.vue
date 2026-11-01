@@ -257,9 +257,9 @@ async function handleResetSimulation() {
   }
 }
 
-function handleLogout() {
-  authStore.logout();
-  router.replace('/login');
+async function handleLogout() {
+  await authStore.logout();
+  await router.replace('/login');
 }
 
 function handleOpenApiBinding() {

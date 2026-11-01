@@ -68,6 +68,7 @@ export interface UserProfile {
   email: string;       // 用户邮箱
   nickname: string;    // 用户昵称
   isSuper?: boolean;   // 超级权限账号
+  isGuest?: boolean;   // 游客账号
   defaultMode: TradeMode;  // 默认交易模式
 }
 
@@ -75,6 +76,7 @@ export interface UserProfile {
 export interface LoginResponse {
   accessToken: string;   // 访问令牌
   refreshToken: string;  // 刷新令牌
+  expiresIn?: number;
   user: UserProfile;     // 用户信息
 }
 

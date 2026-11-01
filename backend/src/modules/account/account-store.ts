@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { RequestContextService } from '../auth/request-context.service';
 
 export interface StoredAccount {
   id: string;
+  userId: string;
   exchange: string;
   label: string;
   apiKey: string;
@@ -21,7 +23,7 @@ export class AccountStore {
   private accounts = new Map<string, StoredAccount>();
   private readonly filePath: string;
 
-  constructor() {
+  constructor(private readonly context: RequestContextService) {
     this.filePath = path.resolve(__dirname, '../../../data/accounts.json');
     this.load();
   }
@@ -31,7 +33,10 @@ export class AccountStore {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
         const arr: StoredAccount[] = JSON.parse(raw);
-        arr.forEach((a) => this.accounts.set(a.id, a));
+        arr.forEach((a) => {
+          // 旧数据没有 userId，统一归属演示账号。
+          this.accounts.set(a.id, { ...a, userId: a.userId || 'u_demo' });
+        });
         console.log(`[AccountStore] 已加载 ${arr.length} 个 API 账户`);
       }
     } catch (err) {
@@ -62,8 +67,9 @@ export class AccountStore {
     this.save();
   }
 
-  get(id: string): StoredAccount | undefined {
-    return this.accounts.get(id);
+  get(id: string, userId = this.context.userId()): StoredAccount | undefined {
+    const account = this.accounts.get(id);
+    return account && account.userId === userId ? account : undefined;
   }
 
   delete(id: string) {
@@ -71,13 +77,13 @@ export class AccountStore {
     this.save();
   }
 
-  getAll(): StoredAccount[] {
-    return Array.from(this.accounts.values());
+  getAll(userId = this.context.userId()): StoredAccount[] {
+    return Array.from(this.accounts.values()).filter((account) => account.userId === userId);
   }
 
-  getActiveOkx(): StoredAccount | undefined {
+  getActiveOkx(userId = this.context.userId()): StoredAccount | undefined {
     for (const acc of this.accounts.values()) {
-      if (acc.exchange === 'okx' && acc.status === 'active') return acc;
+      if (acc.userId === userId && acc.exchange === 'okx' && acc.status === 'active') return acc;
     }
     return undefined;
   }

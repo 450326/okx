@@ -61,6 +61,10 @@
 
         <p class="login-hint">{{ $t('login.accountHint') }}</p>
 
+        <button class="guest-login-btn" type="button" :disabled="submitting" @click="handleGuestLogin">
+          {{ $t('login.guestLogin') }}
+        </button>
+
         <div class="login-divider">
           <span>{{ $t('login.or') }}</span>
         </div>
@@ -134,6 +138,19 @@ async function handleLogin() {
 
   try {
     await authStore.login(form.value.email, form.value.password);
+    router.replace('/');
+  } catch (err) {
+    errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function handleGuestLogin() {
+  submitting.value = true;
+  errorMsg.value = '';
+  try {
+    await authStore.loginAsGuest();
     router.replace('/');
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
@@ -376,6 +393,24 @@ async function handleFaceLogin() {
   font-size: 11px;
   line-height: 1.5;
   text-align: center;
+}
+
+.guest-login-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.guest-login-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--color-up);
 }
 
 .login-divider {

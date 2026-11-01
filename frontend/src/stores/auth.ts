@@ -5,31 +5,37 @@ import { defineStore } from 'pinia';
 // 导入认证 API
 import { authApi } from '../api/services';
 // 导入用户信息类型
-import type { UserProfile } from '../api/types';
+import type { LoginResponse, UserProfile } from '../api/types';
+
+let refreshPromise: Promise<string | null> | null = null;
+
+function persistSession(result: LoginResponse): void {
+  localStorage.setItem('accessToken', result.accessToken);
+  localStorage.setItem('refreshToken', result.refreshToken);
+}
+
+function clearSession(): void {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('lastLoginEmail');
+}
 
 // 认证状态 store
 export const useAuthStore = defineStore('auth', () => {
-  // 当前登录用户信息
   const user = ref<UserProfile | null>(null);
-  // 加载状态
   const loading = ref(false);
-  // 错误信息
   const error = ref('');
-  // 是否已登录
   const isAuthenticated = computed(() => Boolean(user.value));
-  // 登录状态中文标签
   const authLabel = computed(() => (user.value ? `已登录: ${user.value.nickname}` : '未登录'));
-  // 超级权限账号（服务端还会再次校验）
   const isSuper = computed(() => Boolean(user.value?.isSuper));
+  const isGuest = computed(() => Boolean(user.value?.isGuest));
 
-  // 邮箱密码登录
   async function login(email: string, password: string) {
     loading.value = true;
     error.value = '';
-
     try {
       const result = await authApi.login(email, password);
-      localStorage.setItem('accessToken', result.accessToken);
+      persistSession(result);
       localStorage.setItem('lastLoginEmail', email);
       user.value = result.user;
       return result.user;
@@ -41,42 +47,68 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 生物识别登录
-  async function loginWithBiometric() {
+  async function loginAsGuest() {
     loading.value = true;
     error.value = '';
-
     try {
-      const result = await authApi.login('biometric@user.com', 'biometric-auto');
-      localStorage.setItem('accessToken', result.accessToken);
+      const result = await authApi.guest();
+      persistSession(result);
       user.value = result.user;
       return result.user;
     } catch (err) {
-      error.value = String((err as any)?.message || '生物识别登录失败');
+      error.value = String((err as any)?.message || '游客登录失败');
       throw err;
     } finally {
       loading.value = false;
     }
   }
 
-  // 退出登录：清除 token 及用户信息
-  function logout() {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('lastLoginEmail');
-    user.value = null;
+  async function loginWithBiometric() {
+    return login('demo@test.com', 'demo');
   }
 
-  // 获取当前登录用户信息
+  // 单飞刷新：多个 401 同时发生时只发一次 refresh 请求
+  async function ensureFreshAccessToken(): Promise<string | null> {
+    if (refreshPromise) return refreshPromise;
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) return null;
+    refreshPromise = (async () => {
+      try {
+        const result = await authApi.refresh(refreshToken);
+        persistSession(result);
+        user.value = result.user;
+        return result.accessToken;
+      } catch {
+        clearSession();
+        user.value = null;
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+    return refreshPromise;
+  }
+
+  async function logout() {
+    const refreshToken = localStorage.getItem('refreshToken') || undefined;
+    try {
+      await authApi.logout(refreshToken);
+    } catch {
+      // 网络失败也要清本地会话
+    } finally {
+      clearSession();
+      user.value = null;
+    }
+  }
+
   async function fetchMe() {
     loading.value = true;
     error.value = '';
-
     try {
       user.value = await authApi.me();
       return user.value;
     } catch (err) {
-      const msg = (err as Error).message;
-      error.value = msg || '获取用户信息失败';
+      error.value = (err as Error).message || '获取用户信息失败';
       user.value = null;
       return null;
     } finally {
@@ -84,16 +116,18 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 导出 store 状态与方法
   return {
     user,
     loading,
     error,
     isAuthenticated,
     isSuper,
+    isGuest,
     authLabel,
     login,
+    loginAsGuest,
     loginWithBiometric,
+    ensureFreshAccessToken,
     logout,
     fetchMe,
   };

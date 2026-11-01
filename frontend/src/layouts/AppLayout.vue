@@ -148,9 +148,9 @@ onMounted(() => {
   currencyStore.fetchRate();
 });
 
-function handleLogout() {
-  authStore.logout();
-  router.replace('/login');
+async function handleLogout() {
+  await authStore.logout();
+  await router.replace('/login');
 }
 </script>
 

@@ -4,6 +4,7 @@ import { MarketService } from '../market/market.service';
 import { SimulationState } from '../simulation/simulation-state';
 import type { SpotTradeInput } from '../simulation/simulation.types';
 import { CapabilityService } from '../account/capability.service';
+import { Public } from '../auth/public.decorator';
 
 // 现货行情 + 现货模拟交易
 @Controller('spot')
@@ -14,12 +15,14 @@ export class SpotController {
     private readonly capabilities: CapabilityService,
   ) {}
 
+  @Public()
   @Get('markets')
   async getMarkets(@Query('exchange') exchange = 'okx') {
     const list = await this.market.getSpotSymbols(exchange);
     return ok({ exchange, list });
   }
 
+  @Public()
   @Get('tickers')
   async getTickers(
     @Query('symbols') symbols?: string,
@@ -32,6 +35,7 @@ export class SpotController {
     return ok({ exchange, list });
   }
 
+  @Public()
   @Get('klines')
   async getKlines(
     @Query('symbol') symbol = 'BTC-USDT',

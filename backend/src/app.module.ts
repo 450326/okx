@@ -1,13 +1,14 @@
 // 引入 NestJS 模块装饰器
 import { Module } from '@nestjs/common';
 // 引入全局异常过滤器注册令牌
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 // 引入环境变量配置模块
 import { ConfigModule } from '@nestjs/config';
 // 引入健康检查模块
 import { HealthModule } from './modules/health/health.module';
 // 引入认证授权模块
 import { AuthModule } from './modules/auth/auth.module';
+import { AuthGuard } from './modules/auth/auth.guard';
 // 引入账户管理模块
 import { AccountModule } from './modules/account/account.module';
 // 引入行情数据模块
@@ -60,6 +61,7 @@ import { LiveOrderExceptionFilter } from './modules/account/live-order-exception
     WsModule,
   ],
   providers: [
+    { provide: APP_GUARD, useClass: AuthGuard },
     // 模拟盘业务错误统一返回 { code, message, data }，避免 Nest 默认 400 结构丢失业务码。
     { provide: APP_FILTER, useClass: SimulationExceptionFilter },
     { provide: APP_FILTER, useClass: CapabilityExceptionFilter },

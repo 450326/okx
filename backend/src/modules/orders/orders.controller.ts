@@ -1,9 +1,7 @@
-import { Body, Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { ok } from '../../common/api-response';
 import { SimulationState } from '../simulation/simulation-state';
-import {
-  SimulationOrderInput,
-} from '../simulation/simulation.types';
+import { SIM_ERROR, SimulationError, SimulationOrderInput } from '../simulation/simulation.types';
 import { CapabilityService } from '../account/capability.service';
 import { LiveAccountService } from '../account/live-account.service';
 import { LiveTradingService } from '../account/live-trading.service';
@@ -105,6 +103,13 @@ export class OrdersController {
     if (capability.source === 'okx') {
       return ok(await this.liveTrading.cancel(id, body?.symbol));
     }
-    return ok(this.sim.cancelOrder(id));
+    try {
+      return ok(this.sim.cancelOrder(id));
+    } catch (error) {
+      if (error instanceof SimulationError && error.code === SIM_ERROR.ORDER_NOT_FOUND) {
+        throw new ForbiddenException('无权访问该订单');
+      }
+      throw error;
+    }
   }
 }

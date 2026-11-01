@@ -3,10 +3,38 @@ import axios from 'axios';
 // 引入 axios 错误类型
 import type { AxiosError } from 'axios';
 // 引入 API 响应信封类型
-import type { ApiEnvelope } from './types';
+import type { ApiEnvelope, LoginResponse } from './types';
 
 // API 基础地址
 const API_BASE_URL = 'http://localhost:3000/api/v1';
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) return null;
+  refreshPromise = (async () => {
+    try {
+      const response = await axios.post<ApiEnvelope<LoginResponse>>(
+        `${API_BASE_URL}/auth/refresh`,
+        { refreshToken },
+        { timeout: 10000 },
+      );
+      const data = response.data?.data;
+      if (!data?.accessToken || !data?.refreshToken) return null;
+      localStorage.setItem('accessToken', data.accessToken);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      return data.accessToken;
+    } catch {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
 
 // 创建 axios 实例并配置基础参数
 export const http = axios.create({
@@ -48,6 +76,31 @@ http.interceptors.response.use(
     return response.data;
   },
   (error: AxiosError<{ message?: string }>) => {
+    const status = error.response?.status;
+    const url = error.config?.url || '';
+    const config = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
+
+    if (
+      status === 401 &&
+      config &&
+      !config._retry &&
+      !url.startsWith('/auth/login') &&
+      !url.startsWith('/auth/register') &&
+      !url.startsWith('/auth/guest') &&
+      !url.startsWith('/auth/refresh')
+    ) {
+      config._retry = true;
+      return refreshAccessToken().then((token) => {
+        if (!token) {
+          if (location.pathname !== '/login') location.href = '/login';
+          return Promise.reject(new Error('登录已过期，请重新登录'));
+        }
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+        return http(config);
+      });
+    }
+
     // 提取错误信息，优先使用服务端返回的消息
     const message = error.response?.data?.message || error.message || '网络请求失败';
     return Promise.reject(new Error(message));

@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Headers, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Headers, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { ok } from '../../common/api-response';
 import type { PredictionOrderInput } from '../simulation/simulation.types';
+import { SIM_ERROR, SimulationError } from '../simulation/simulation.types';
 import { CapabilityService } from '../account/capability.service';
+import { Public } from '../auth/public.decorator';
 import { PolymarketService } from './polymarket.service';
 import { PredictionTradingService } from './prediction-trading.service';
 
@@ -15,6 +17,7 @@ export class PredictionController {
   ) {}
 
   // 市场列表：支持分页、排序和关键词搜索
+  @Public()
   @Get('markets')
   async getMarkets(
     @Query('limit') limit?: string,
@@ -32,6 +35,7 @@ export class PredictionController {
   }
 
   // 市场详情：问题、概率、盘口摘要、相关市场
+  @Public()
   @Get('markets/:slug')
   async getMarket(@Param('slug') slug: string) {
     const detail = await this.polymarketService.getMarketDetail(slug);
@@ -40,6 +44,7 @@ export class PredictionController {
   }
 
   // YES 概率走势
+  @Public()
   @Get('markets/:slug/history')
   async getHistory(@Param('slug') slug: string, @Query('interval') interval = '1w') {
     const history = await this.polymarketService.getHistory(slug, interval);
@@ -48,6 +53,7 @@ export class PredictionController {
   }
 
   // YES 代币订单簿
+  @Public()
   @Get('markets/:slug/orderbook')
   async getOrderBook(@Param('slug') slug: string, @Query('depth') depth?: string) {
     const book = await this.polymarketService.getOrderBook(slug, this.toInt(depth, 20));
@@ -56,6 +62,7 @@ export class PredictionController {
   }
 
   // 最近成交
+  @Public()
   @Get('markets/:slug/trades')
   async getTrades(@Param('slug') slug: string, @Query('limit') limit?: string) {
     const trades = await this.polymarketService.getTrades(slug, this.toInt(limit, 50));
@@ -121,7 +128,14 @@ export class PredictionController {
     @Headers('x-simulation-overlay') overlay?: string,
   ) {
     this.capabilities.assert('predictionTrade', authorization, overlay);
-    return ok(await this.trading.closePosition(id, body?.qty));
+    try {
+      return ok(await this.trading.closePosition(id, body?.qty));
+    } catch (error) {
+      if (error instanceof SimulationError && error.code === SIM_ERROR.POSITION_NOT_FOUND) {
+        throw new ForbiddenException('无权访问该预测持仓');
+      }
+      throw error;
+    }
   }
 
   // 把查询参数安全地转成整数，非法输入回退到默认值

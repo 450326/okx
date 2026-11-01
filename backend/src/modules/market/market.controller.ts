@@ -4,8 +4,10 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ok } from '../../common/api-response';
 // 引入行情数据服务
 import { MarketService } from './market.service';
+import { Public } from '../auth/public.decorator';
 
 // 行情数据控制器
+@Public()
 @Controller('market')
 export class MarketController {
   constructor(private readonly marketService: MarketService) {}

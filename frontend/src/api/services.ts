@@ -53,6 +53,18 @@ export const authApi = {
   me() {
     return get<UserProfile>('/auth/me');
   },
+  // 游客登录
+  guest() {
+    return post<LoginResponse, Record<string, never>>('/auth/guest', {});
+  },
+  // 刷新访问令牌
+  refresh(refreshToken: string) {
+    return post<LoginResponse, { refreshToken: string }>('/auth/refresh', { refreshToken });
+  },
+  // 注销
+  logout(refreshToken?: string) {
+    return post<{ loggedOut: boolean }, { refreshToken?: string }>('/auth/logout', { refreshToken });
+  },
 };
 
 // 账户相关 API

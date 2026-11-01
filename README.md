@@ -271,13 +271,23 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 | 现货买卖 / 预测买卖 | 允许 | 禁止（返回 `4201`） |
 | 资金流水 / 收益曲线 | 模拟 | 禁止（返回 `4201`） |
 
-### 超级权限账号
+### 认证与用户隔离
 
-Mock 登录阶段可以使用超级权限账号：
+- 用户、密码哈希和 refresh token 存在 `backend/data/app.db`（SQLite）
+- 密码使用 scrypt + 随机盐哈希
+- access token 为 HS256 JWT（15 分钟），refresh token 为不透明随机串（30 天）并持久化
+- refresh token 单次使用、轮换；前端 401 后用单飞刷新重试
+- 全局 `AuthGuard`：无 token/错误 token 返回 401
+- 行情、K 线、预测市场列表等只读行情接口匿名开放；账户、持仓、委托、流水、凭证、模式接口必须登录
+- 游客账号：`POST /api/v1/auth/guest`，拥有独立的模拟账户和订单/持仓/流水
+- 模拟账户、交易模式、API 账户均按 `userId` 隔离；跨用户按资源 ID 操作返回 403
+
+内置账号：
 
 ```text
-邮箱：super@test.com
-密码：任意（当前为 Mock 登录）
+演示账号：demo@test.com / demo
+超级账号：super@test.com / super
+游客：登录页「游客登录」
 ```
 
 超级账号在实盘模式下可在设置中开启「超级权限 · 实盘模拟数据」，以只读方式查看模拟预测和现货持仓；普通账号即使伪造请求头，服务端也会拒绝。

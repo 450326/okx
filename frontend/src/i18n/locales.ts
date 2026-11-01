@@ -484,7 +484,8 @@ export const locales: Record<string, Record<string, string>> = {
 
     'login.welcome': '欢迎回来',
     'login.subtitle': '登录您的账户以继续',
-    'login.accountHint': '演示账号 demo@test.com；超级权限账号 super@test.com（密码任意）',
+    'login.accountHint': '演示账号 demo@test.com / demo；超级账号 super@test.com / super',
+    'login.guestLogin': '游客登录',
     'login.email': '邮箱地址',
     'login.password': '密码',
     'login.loginBtn': '登录',
@@ -1000,7 +1001,8 @@ export const locales: Record<string, Record<string, string>> = {
 
     'login.welcome': 'Welcome Back',
     'login.subtitle': 'Sign in to your account to continue',
-    'login.accountHint': 'Demo: demo@test.com; super account: super@test.com (any password)',
+    'login.accountHint': 'Demo: demo@test.com / demo; super: super@test.com / super',
+    'login.guestLogin': 'Continue as Guest',
     'login.email': 'Email',
     'login.password': 'Password',
     'login.loginBtn': 'Sign In',
@@ -1516,7 +1518,8 @@ export const locales: Record<string, Record<string, string>> = {
 
     'login.welcome': 'おかえりなさい',
     'login.subtitle': 'アカウントにログインして続行',
-    'login.accountHint': 'デモ: demo@test.com / スーパー権限: super@test.com（パスワード任意）',
+    'login.accountHint': 'デモ: demo@test.com / demo、スーパー: super@test.com / super',
+    'login.guestLogin': 'ゲストとして続行',
     'login.email': 'メールアドレス',
     'login.password': 'パスワード',
     'login.loginBtn': 'ログイン',
@@ -2032,7 +2035,8 @@ export const locales: Record<string, Record<string, string>> = {
 
     'login.welcome': '돌아오신 것을 환영합니다',
     'login.subtitle': '계정에 로그인하여 계속하세요',
-    'login.accountHint': '데모: demo@test.com / 슈퍼 권한: super@test.com (비밀번호 임의)',
+    'login.accountHint': '데모: demo@test.com / demo, 슈퍼: super@test.com / super',
+    'login.guestLogin': '게스트로 계속',
     'login.email': '이메일',
     'login.password': '비밀번호',
     'login.loginBtn': '로그인',

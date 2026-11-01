@@ -1,11 +1,15 @@
 import { Global, Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { AuthStore } from './auth.store';
+import { AuthGuard } from './auth.guard';
 import { CurrentUserService } from './current-user.service';
+import { RequestContextService } from './request-context.service';
 
 @Global()
 @Module({
   controllers: [AuthController],
-  providers: [CurrentUserService],
-  exports: [CurrentUserService],
+  providers: [AuthStore, AuthService, AuthGuard, CurrentUserService, RequestContextService],
+  exports: [AuthStore, AuthService, AuthGuard, CurrentUserService, RequestContextService],
 })
 export class AuthModule {}

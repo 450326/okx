@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export interface LiveOrderRecord {
+  userId: string;
   clientOrderId: string;
   requestHash: string;
   instId: string;
@@ -38,16 +39,22 @@ export class LiveOrderStore {
     this.data = this.load();
   }
 
-  get(clientOrderId: string): LiveOrderRecord | undefined {
-    return this.data.orders.find((order) => order.clientOrderId === clientOrderId);
+  get(clientOrderId: string, userId: string): LiveOrderRecord | undefined {
+    return this.data.orders.find(
+      (order) => order.clientOrderId === clientOrderId && order.userId === userId,
+    );
   }
 
-  findByExchangeOrderId(orderId: string): LiveOrderRecord | undefined {
-    return this.data.orders.find((order) => order.exchangeOrderId === orderId);
+  findByExchangeOrderId(orderId: string, userId: string): LiveOrderRecord | undefined {
+    return this.data.orders.find(
+      (order) => order.exchangeOrderId === orderId && order.userId === userId,
+    );
   }
 
-  list(): LiveOrderRecord[] {
-    return [...this.data.orders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  list(userId: string): LiveOrderRecord[] {
+    return [...this.data.orders]
+      .filter((order) => order.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   save(record: LiveOrderRecord): LiveOrderRecord {
@@ -71,7 +78,10 @@ export class LiveOrderStore {
       return {
         version: 1,
         orders: Array.isArray(raw.orders)
-          ? raw.orders.filter((order): order is LiveOrderRecord => Boolean(order?.clientOrderId)).slice(-MAX_ORDERS)
+          ? raw.orders
+              .filter((order): order is LiveOrderRecord => Boolean(order?.clientOrderId))
+              .map((order) => ({ ...order, userId: order.userId || 'u_demo' }))
+              .slice(-MAX_ORDERS)
           : [],
       };
     } catch (error) {

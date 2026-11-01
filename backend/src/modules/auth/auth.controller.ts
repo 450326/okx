@@ -1,54 +1,44 @@
-// 引入 NestJS 控制器相关装饰器
-import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
-// 引入统一响应成功方法
+import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import { ok } from '../../common/api-response';
-import { CurrentUserService } from './current-user.service';
+import { AuthService } from './auth.service';
+import { Public } from './public.decorator';
 
-// 认证授权控制器
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly currentUser: CurrentUserService) {}
+  constructor(private readonly auth: AuthService) {}
 
-  // 用户注册接口
+  @Public()
   @Post('register')
-  register(@Body() body: { email: string; password: string; nickname: string }) {
-    const user = this.currentUser.resolve(this.currentUser.createMockToken(body.email));
-    return ok({
-      userId: user.id,
-      ...body,
-      isSuper: user.isSuper,
-    });
+  register(@Body() body: { email: string; password: string; nickname?: string }) {
+    return ok(this.auth.register(body.email, body.password, body.nickname));
   }
 
-  // 用户登录接口，返回 JWT token
+  @Public()
   @Post('login')
   login(@Body() body: { email: string; password: string }) {
-    const email = String(body.email || 'demo@test.com');
-    const token = this.currentUser.createMockToken(email);
-    const user = this.currentUser.resolve(token);
-    return ok({
-      accessToken: token,
-      refreshToken: token,
-      user: {
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        isSuper: user.isSuper,
-        defaultMode: 'simulation',
-      },
-    });
+    return ok(this.auth.login(body.email, body.password));
   }
 
-  // 获取当前登录用户信息
+  @Public()
+  @Post('guest')
+  guest() {
+    return ok(this.auth.guest());
+  }
+
+  @Public()
+  @Post('refresh')
+  refresh(@Body() body: { refreshToken: string }) {
+    return ok(this.auth.refresh(body.refreshToken));
+  }
+
+  @Post('logout')
+  logout(@Body() body: { refreshToken?: string }) {
+    this.auth.logout(body?.refreshToken);
+    return ok({ loggedOut: true });
+  }
+
   @Get('me')
-  me(@Headers('authorization') authorization?: string) {
-    const user = this.currentUser.resolve(authorization);
-    return ok({
-      id: user.id,
-      email: user.email,
-      nickname: user.nickname,
-      isSuper: user.isSuper,
-      defaultMode: 'simulation',
-    });
+  me(@Req() request: any) {
+    return ok(this.auth.profile(request.user));
   }
 }

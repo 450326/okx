@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import * as fs from 'fs';
 import * as path from 'path';
 import { MarketService } from '../market/market.service';
+import { RequestContextService } from '../auth/request-context.service';
 import { createInitialState, round, SimulationEngine } from './simulation-engine';
 import {
   AccountSnapshot,
@@ -59,22 +60,66 @@ const TICK_INTERVAL_MS = 3_000;
 @Injectable()
 export class SimulationState implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SimulationState.name);
-  private readonly filePath: string;
-  private readonly engine: SimulationEngine;
+  private readonly dataDir: string;
+  private readonly primaryUserId = 'u_demo';
+  private readonly engines = new Map<string, SimulationEngine>();
+  private readonly engineFiles = new Map<string, string>();
   private readonly priceCache = new Map<string, CachedMarket>();
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
   private capitalRebased = false;
 
-  constructor(private readonly marketService: MarketService) {
-    this.filePath = path.resolve(__dirname, '../../../data/simulation.json');
-    const loaded = this.loadState();
-    this.engine = new SimulationEngine(loaded);
-    const state = this.engine.getState();
-    if (this.capitalRebased) this.save();
+  constructor(
+    private readonly marketService: MarketService,
+    private readonly context: RequestContextService,
+  ) {
+    this.dataDir = path.resolve(__dirname, '../../../data');
+    this.getEngine(this.primaryUserId);
+  }
+
+  private get engine(): SimulationEngine {
+    return this.getEngine(this.context.userId());
+  }
+
+  private hashUserId(userId: string): number {
+    let hash = 0;
+    for (let index = 0; index < userId.length; index += 1) {
+      hash = (hash * 31 + userId.charCodeAt(index)) >>> 0;
+    }
+    return hash;
+  }
+
+  private getEngine(userId: string): SimulationEngine {
+    const key = userId || this.primaryUserId;
+    const existing = this.engines.get(key);
+    if (existing) return existing;
+
+    const safe = key.replace(/[^A-Za-z0-9_-]/g, '_');
+    const filePath = path.join(this.dataDir, key === this.primaryUserId ? 'simulation.json' : `simulation-${safe}.json`);
+    const loaded = this.loadState(filePath);
+    const engine = new SimulationEngine(loaded);
+    if (key !== this.primaryUserId) {
+      // 让不同用户的资源 ID 落在不同区段，跨用户按 ID 访问时不会误命中自己的订单/持仓。
+      const base = 100000 + (this.hashUserId(key) % 800000);
+      const state = engine.getState();
+      state.nextOrderId = Math.max(state.nextOrderId, base);
+      state.nextPositionId = Math.max(state.nextPositionId, base);
+      state.nextSpotOrderId = Math.max(state.nextSpotOrderId, base);
+      state.nextSpotHoldingId = Math.max(state.nextSpotHoldingId, base);
+      state.nextPredictionOrderId = Math.max(state.nextPredictionOrderId, base);
+      state.nextPredictionPositionId = Math.max(state.nextPredictionPositionId, base);
+    }
+    this.engines.set(key, engine);
+    this.engineFiles.set(key, filePath);
+    if (this.capitalRebased) {
+      this.capitalRebased = false;
+      this.saveUser(key);
+    }
+    const state = engine.getState();
     this.logger.log(
-      `模拟盘已加载：钱包 ${state.walletBalance.toFixed(2)} USDT，持仓 ${state.positions.length} 个，预测持仓 ${state.predictionPositions.length} 个，委托 ${state.orders.filter((o) => o.status === 'pending').length} 笔`,
+      `模拟盘[${key}]已加载：钱包 ${state.walletBalance.toFixed(2)} USDT，持仓 ${state.positions.length} 个，预测持仓 ${state.predictionPositions.length} 个`,
     );
+    return engine;
   }
 
   onModuleInit(): void {
@@ -86,7 +131,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
-    this.save();
+    for (const userId of this.engines.keys()) this.saveUser(userId);
   }
 
   // ---------------------------------------------------------------- 对外查询
@@ -287,14 +332,20 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      const symbols = this.engine.trackedSymbols();
+      const symbols = Array.from(
+        new Set(
+          Array.from(this.engines.values()).flatMap((engine) => engine.trackedSymbols()),
+        ),
+      );
       if (!symbols.length) return;
 
       const markets = await this.fetchMarkets(symbols);
-      const result = this.engine.processMarkets(markets);
-      if (result.changed) {
-        this.save();
-        for (const event of result.events) this.logger.log(event);
+      for (const [userId, engine] of this.engines) {
+        const result = engine.processMarkets(markets);
+        if (result.changed) {
+          this.saveUser(userId);
+          for (const event of result.events) this.logger.log(`[${userId}] ${event}`);
+        }
       }
     } catch (error) {
       this.logger.error(`模拟盘后台撮合失败: ${(error as Error).message}`);
@@ -412,19 +463,19 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
   // ---------------------------------------------------------------- 持久化
 
-  private loadState(): SimAccountState | undefined {
+  private loadState(filePath: string): SimAccountState | undefined {
     try {
-      if (!fs.existsSync(this.filePath)) return undefined;
+      if (!fs.existsSync(filePath)) return undefined;
 
-      const raw = fs.readFileSync(this.filePath, 'utf-8');
+      const raw = fs.readFileSync(filePath, 'utf-8');
       const parsed = JSON.parse(raw);
 
       if (parsed?.version === 2 && parsed.account) {
-        return this.rebaseAccount(parsed.account as SimAccountState);
+        return this.rebaseAccount(parsed.account as SimAccountState, filePath);
       }
 
       if (parsed && Array.isArray(parsed.orders)) {
-        const migrated = this.rebaseAccount(this.migrateLegacy(parsed));
+        const migrated = this.rebaseAccount(this.migrateLegacy(parsed), filePath);
         this.logger.warn('检测到旧版模拟盘数据，已迁移到 v2 账务模型');
         return migrated;
       }
@@ -432,7 +483,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       throw new Error('未知的数据格式');
     } catch (error) {
       this.logger.error(`加载模拟盘数据失败: ${(error as Error).message}`);
-      this.backupCorruptFile();
+      this.backupCorruptFile(filePath);
       return undefined;
     }
   }
@@ -518,7 +569,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
   // 旧账户以 100,000 为初始资金；这里一次性等比例换算到 8,000 基准。
   // 只缩放数量/金额，不改价格、杠杆、订单号和时间，收益率保持不变。
-  private rebaseAccount(account: SimAccountState): SimAccountState {
+  private rebaseAccount(account: SimAccountState, filePath: string): SimAccountState {
     const target = round(DEFAULT_ENGINE_CONFIG.initialWallet, 2);
     const current = Number(account.initialCapital) || this.detectInitialCapital(account);
 
@@ -543,7 +594,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       return account;
     }
 
-    this.backupBeforeRebase();
+    this.backupBeforeRebase(filePath);
     const scaleMoney = (value: number) => round((Number(value) || 0) * factor, 8);
     const scaleQty = (value: number) => round((Number(value) || 0) * factor, 8);
 
@@ -616,22 +667,22 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     return DEFAULT_ENGINE_CONFIG.initialWallet;
   }
 
-  private backupBeforeRebase(): void {
+  private backupBeforeRebase(filePath: string): void {
     try {
-      if (!fs.existsSync(this.filePath)) return;
-      const backup = `${this.filePath}.before-rebase-${Date.now()}.json`;
-      fs.copyFileSync(this.filePath, backup);
+      if (!fs.existsSync(filePath)) return;
+      const backup = `${filePath}.before-rebase-${Date.now()}.json`;
+      fs.copyFileSync(filePath, backup);
       this.logger.warn(`已备份换算前的模拟盘数据到 ${backup}`);
     } catch (error) {
       this.logger.error(`备份换算前数据失败: ${(error as Error).message}`);
     }
   }
 
-  private backupCorruptFile(): void {
+  private backupCorruptFile(filePath: string): void {
     try {
-      if (!fs.existsSync(this.filePath)) return;
-      const backup = `${this.filePath}.corrupt-${Date.now()}`;
-      fs.renameSync(this.filePath, backup);
+      if (!fs.existsSync(filePath)) return;
+      const backup = `${filePath}.corrupt-${Date.now()}`;
+      fs.renameSync(filePath, backup);
       this.logger.warn(`已备份损坏的模拟盘数据到 ${backup}`);
     } catch (error) {
       this.logger.error(`备份损坏数据失败: ${(error as Error).message}`);
@@ -639,21 +690,28 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   }
 
   private save(): void {
+    this.saveUser(this.context.userId());
+  }
+
+  private saveUser(userId: string): void {
+    const filePath = this.engineFiles.get(userId);
+    const engine = this.engines.get(userId);
+    if (!filePath || !engine) return;
     try {
-      const dir = path.dirname(this.filePath);
+      const dir = path.dirname(filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-      const payload: PersistedFile = { version: 2, account: this.engine.getState() };
+      const payload: PersistedFile = { version: 2, account: engine.getState() };
       const json = JSON.stringify(payload, null, 2);
-      const tmp = `${this.filePath}.tmp`;
+      const tmp = `${filePath}.tmp`;
       fs.writeFileSync(tmp, json, 'utf-8');
 
       try {
-        fs.renameSync(tmp, this.filePath);
+        fs.renameSync(tmp, filePath);
       } catch {
         // Windows 上 rename 覆盖已存在文件可能失败，退化为先删后改名。
-        if (fs.existsSync(this.filePath)) fs.rmSync(this.filePath, { force: true });
-        fs.renameSync(tmp, this.filePath);
+        if (fs.existsSync(filePath)) fs.rmSync(filePath, { force: true });
+        fs.renameSync(tmp, filePath);
       }
     } catch (error) {
       this.logger.error(`保存模拟盘数据失败: ${(error as Error).message}`);

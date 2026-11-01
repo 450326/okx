@@ -5,6 +5,7 @@ import { OkxApiService } from './okx-api.service';
 import { OkxInstrumentService } from './okx-instrument.service';
 import { LiveOrderRecord, LiveOrderStore } from './live-order.store';
 import { SimulationOrderInput } from '../simulation/simulation.types';
+import { RequestContextService } from '../auth/request-context.service';
 
 export const LIVE_ORDER_ERROR = {
   ID_CONFLICT: 4301,
@@ -43,6 +44,7 @@ export class LiveTradingService {
     private readonly okxApi: OkxApiService,
     private readonly instruments: OkxInstrumentService,
     private readonly orders: LiveOrderStore,
+    private readonly context: RequestContextService,
   ) {}
 
   async preview(input: SimulationOrderInput): Promise<Record<string, unknown>> {
@@ -141,7 +143,8 @@ export class LiveTradingService {
     }
 
     const requestHash = this.hashRequest(input, symbol);
-    const existing = this.orders.get(clientOrderId);
+    const userId = this.context.userId();
+    const existing = this.orders.get(clientOrderId, userId);
     if (existing) {
       if (existing.requestHash !== requestHash) {
         throw new LiveOrderError('clientOrderId 已用于另一笔不同参数的订单', LIVE_ORDER_ERROR.ID_CONFLICT);
@@ -167,6 +170,7 @@ export class LiveTradingService {
 
     const now = new Date().toISOString();
     const record: LiveOrderRecord = {
+      userId,
       clientOrderId,
       requestHash,
       instId: symbol,
@@ -274,7 +278,7 @@ export class LiveTradingService {
 
   async cancel(orderId: string, symbol?: string): Promise<Record<string, unknown>> {
     const account = this.requireAccount();
-    const record = this.orders.findByExchangeOrderId(orderId);
+    const record = this.orders.findByExchangeOrderId(orderId, this.context.userId());
     const instId = symbol || record?.instId;
     if (!instId) {
       throw new LiveOrderError('缺少交易对，无法撤单', LIVE_ORDER_ERROR.NOT_FOUND);
@@ -298,11 +302,11 @@ export class LiveTradingService {
   }
 
   listOrders(): Record<string, unknown>[] {
-    return this.orders.list().map((order) => this.resultOf(order));
+    return this.orders.list(this.context.userId()).map((order) => this.resultOf(order));
   }
 
   async sync(clientOrderId: string): Promise<Record<string, unknown>> {
-    const record = this.orders.get(clientOrderId);
+    const record = this.orders.get(clientOrderId, this.context.userId());
     if (!record) {
       throw new LiveOrderError('实盘订单不存在', LIVE_ORDER_ERROR.NOT_FOUND, clientOrderId);
     }
