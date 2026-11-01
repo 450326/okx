@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Logger, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Logger, Param, Post } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { ok } from '../../common/api-response';
 import { AccountStore, StoredAccount } from '../account/account-store';
@@ -126,6 +126,9 @@ export class ExchangeController {
 
   @Delete(':id')
   deleteAccount(@Param('id') id: string) {
+    if (!this.accountStore.get(id)) {
+      throw new ForbiddenException('无权删除该 API 账户');
+    }
     this.accountStore.delete(id);
     return ok({ deleted: true });
   }
