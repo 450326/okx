@@ -26,7 +26,7 @@
           </div>
           <div>
             <div class="stat-label">{{ $t('layout.unrealizedPnl') }}</div>
-            <div :class="['stat-value', unrealizedPnlClass]">{{ formatSignedCurrency(assetSnapshot?.unrealizedPnl) }}</div>
+            <div :class="['stat-value', unrealizedPnlClass]">{{ formatSignedCurrency(totalUnrealizedPnl) }}</div>
           </div>
         </div>
       </header>
@@ -98,7 +98,10 @@ const navItems = [
 ];
 
 const assetSnapshot = computed(() => assetStore.snapshot);
-const unrealizedPnlClass = computed(() => getTrendClass(assetSnapshot.value?.unrealizedPnl));
+const totalUnrealizedPnl = computed(
+  () => assetSnapshot.value?.totalUnrealizedPnl ?? assetSnapshot.value?.unrealizedPnl,
+);
+const unrealizedPnlClass = computed(() => getTrendClass(totalUnrealizedPnl.value));
 const globalError = computed(() => authStore.error || modeStore.error || assetStore.error || exchangeStore.error);
 
 const modeConfirmTitle = computed(() => $t('layout.switchConfirmTitle'));

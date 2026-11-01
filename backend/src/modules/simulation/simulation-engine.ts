@@ -63,6 +63,9 @@ export function createInitialState(initialWallet = DEFAULT_ENGINE_CONFIG.initial
     initialCapital: round(initialWallet, 2),
     walletBalance: round(initialWallet, 2),
     realizedPnl: 0,
+    contractRealizedPnl: 0,
+    spotRealizedPnl: 0,
+    predictionRealizedPnl: 0,
     totalFee: 0,
     positions: [],
     orders: [],
@@ -201,11 +204,27 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
       }))
     : [];
 
+  const totalRealizedPnl = round(Number(input.realizedPnl) || 0, 8);
+  const spotRealizedPnl = round(
+    Number((input as any).spotRealizedPnl) ||
+      spotOrders.reduce((sum, order) => sum + Number(order.realizedPnl || 0), 0),
+    8,
+  );
+  const predictionRealizedPnl = round(
+    Number((input as any).predictionRealizedPnl) ||
+      predictionOrders.reduce((sum, order) => sum + Number(order.realizedPnl || 0), 0),
+    8,
+  );
+  const contractRealizedPnl = round(totalRealizedPnl - spotRealizedPnl - predictionRealizedPnl, 8);
+
   return {
     version: 2,
     initialCapital: round(Number(input.initialCapital) || config.initialWallet, 2),
     walletBalance: round(Number(input.walletBalance) || fallback.walletBalance, 2),
-    realizedPnl: round(Number(input.realizedPnl) || 0),
+    realizedPnl: totalRealizedPnl,
+    contractRealizedPnl,
+    spotRealizedPnl,
+    predictionRealizedPnl,
     totalFee: round(Number(input.totalFee) || 0),
     positions,
     orders,
@@ -265,29 +284,33 @@ export class SimulationEngine {
   // ---------------------------------------------------------------- 账户视图
 
   snapshot(markets: Record<string, MarketSnapshot> = {}): AccountSnapshot {
-    let unrealizedPnl = 0;
+    let contractPnl = 0;
     let positionMargin = 0;
 
     for (const position of this.openPositions()) {
       const mark = this.markPrice(position, markets);
-      unrealizedPnl += this.pnl(position, mark);
+      contractPnl += this.pnl(position, mark);
       positionMargin += position.margin;
     }
 
     // 现货持仓按最新价计入权益
     let spotValue = 0;
+    let spotCost = 0;
     let spotUnrealizedPnl = 0;
     for (const holding of this.state.spotHoldings) {
       const mark = this.spotMarkPrice(holding, markets);
+      spotCost += holding.avgCost * holding.qty;
       spotValue += mark * holding.qty;
       spotUnrealizedPnl += (mark - holding.avgCost) * holding.qty;
     }
 
     // 预测份额是全额买入的资产：钱包里已经扣掉成本，权益里按当前概率加回市值。
     let predictionValue = 0;
+    let predictionCost = 0;
     let predictionUnrealizedPnl = 0;
     for (const position of this.openPredictionPositions()) {
       const mark = this.predictionMarkPrice(position);
+      predictionCost += position.entryPrice * position.qty;
       predictionValue += mark * position.qty;
       predictionUnrealizedPnl += (mark - position.entryPrice) * position.qty;
     }
@@ -297,19 +320,37 @@ export class SimulationEngine {
     let availableBalance = round(walletBalance - positionMargin - orderMargin, 8);
     if (Math.abs(availableBalance) < EPS) availableBalance = 0;
 
+    const roundedContractPnl = round(contractPnl, 8);
+    const roundedSpotValue = round(spotValue, 8);
+    const roundedPredictionValue = round(predictionValue, 8);
+    const roundedSpotPnl = round(spotUnrealizedPnl, 8);
+    const roundedPredictionPnl = round(predictionUnrealizedPnl, 8);
+    const totalUnrealizedPnl = round(
+      roundedContractPnl + roundedSpotPnl + roundedPredictionPnl,
+      8,
+    );
+
     return {
       walletBalance,
       availableBalance,
       positionMargin: round(positionMargin, 8),
       orderMargin: round(orderMargin, 8),
-      unrealizedPnl: round(unrealizedPnl + spotUnrealizedPnl + predictionUnrealizedPnl, 8),
+      contractPnl: roundedContractPnl,
+      // 兼容字段：三种资产浮动盈亏之和；权益恒等式请使用 contractPnl + spotValue + predictionValue。
+      unrealizedPnl: totalUnrealizedPnl,
+      totalUnrealizedPnl,
       realizedPnl: round(this.state.realizedPnl, 8),
-      equity: round(walletBalance + unrealizedPnl + spotValue + predictionValue, 8),
+      contractRealizedPnl: round(this.state.contractRealizedPnl, 8),
+      spotRealizedPnl: round(this.state.spotRealizedPnl, 8),
+      predictionRealizedPnl: round(this.state.predictionRealizedPnl, 8),
+      equity: round(walletBalance + roundedContractPnl + roundedSpotValue + roundedPredictionValue, 8),
       totalFee: round(this.state.totalFee, 8),
-      spotValue: round(spotValue, 8),
-      spotUnrealizedPnl: round(spotUnrealizedPnl, 8),
-      predictionValue: round(predictionValue, 8),
-      predictionUnrealizedPnl: round(predictionUnrealizedPnl, 8),
+      spotCost: round(spotCost, 8),
+      spotValue: roundedSpotValue,
+      spotUnrealizedPnl: roundedSpotPnl,
+      predictionCost: round(predictionCost, 8),
+      predictionValue: roundedPredictionValue,
+      predictionUnrealizedPnl: roundedPredictionPnl,
       updatedAt: this.state.updatedAt,
     };
   }
@@ -709,6 +750,7 @@ export class SimulationEngine {
       realizedPnl = round((price - holding.avgCost) * qty - fee, 8);
       this.state.walletBalance = round(this.state.walletBalance + proceeds, 8);
       this.state.realizedPnl = round(this.state.realizedPnl + realizedPnl, 8);
+      this.state.spotRealizedPnl = round(this.state.spotRealizedPnl + realizedPnl, 8);
       this.state.totalFee = round(this.state.totalFee + fee, 8);
       holding.qty = round(holding.qty - qty, 8);
       if (holding.qty <= EPS) {
@@ -856,6 +898,7 @@ export class SimulationEngine {
     const realizedPnl = round((price - existing.entryPrice) * qty, 8);
     this.state.walletBalance = round(this.state.walletBalance + notional, 8);
     this.state.realizedPnl = round(this.state.realizedPnl + realizedPnl, 8);
+    this.state.predictionRealizedPnl = round(this.state.predictionRealizedPnl + realizedPnl, 8);
     existing.qty = round(existing.qty - qty, 8);
     existing.updatedAt = iso();
     if (existing.qty <= EPS) {
@@ -1406,6 +1449,7 @@ export class SimulationEngine {
     this.state.walletBalance = round(balanceAfterPnl - fee, 8);
     this.state.totalFee = round(this.state.totalFee + fee, 8);
     this.state.realizedPnl = round(this.state.realizedPnl + pnl - fee, 8);
+    this.state.contractRealizedPnl = round(this.state.contractRealizedPnl + pnl - fee, 8);
 
     position.qty = round(position.qty - qty, 8);
     position.margin = round(position.margin - marginPortion, 8);

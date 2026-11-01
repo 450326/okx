@@ -58,6 +58,37 @@ function approx(actual: number, expected: number, message: string, epsilon = 1e-
   );
 }
 
+function assertAccountIdentity(snapshot: {
+  walletBalance: number;
+  contractPnl: number;
+  spotValue: number;
+  predictionValue: number;
+  equity: number;
+  totalUnrealizedPnl: number;
+  spotUnrealizedPnl: number;
+  predictionUnrealizedPnl: number;
+  realizedPnl: number;
+  contractRealizedPnl: number;
+  spotRealizedPnl: number;
+  predictionRealizedPnl: number;
+}): void {
+  approx(
+    snapshot.equity,
+    snapshot.walletBalance + snapshot.contractPnl + snapshot.spotValue + snapshot.predictionValue,
+    'equity identity',
+  );
+  approx(
+    snapshot.totalUnrealizedPnl,
+    snapshot.contractPnl + snapshot.spotUnrealizedPnl + snapshot.predictionUnrealizedPnl,
+    'unrealized pnl identity',
+  );
+  approx(
+    snapshot.realizedPnl,
+    snapshot.contractRealizedPnl + snapshot.spotRealizedPnl + snapshot.predictionRealizedPnl,
+    'realized pnl identity',
+  );
+}
+
 function expectError(fn: () => unknown, code: number, messagePart: string): void {
   try {
     fn();
@@ -662,6 +693,26 @@ test('现货余额不足和卖出未持有会被拒绝', () => {
     SIM_ERROR.POSITION_NOT_FOUND,
     '可用数量不足',
   );
+});
+
+test('权益恒等式与已实现盈亏分项始终成立', () => {
+  const engine = newEngine();
+  assertAccountIdentity(engine.snapshot());
+
+  engine.placeSpotOrder(
+    { symbol: 'BTC-USDT', side: 'buy', qty: '0.1' },
+    market(65000, 'BTC-USDT'),
+  );
+  assertAccountIdentity(engine.snapshot({ 'BTC-USDT': market(66000, 'BTC-USDT') }));
+
+  engine.placePredictionOrder(
+    { slug: PREDICTION_SLUG, outcome: 'yes', action: 'buy', qty: '100' },
+    predictionMarket(0.5),
+  );
+  assertAccountIdentity(engine.snapshot({ 'BTC-USDT': market(66000, 'BTC-USDT') }));
+
+  openLong(engine);
+  assertAccountIdentity(engine.snapshot({ 'BTC-USDT': market(66000, 'BTC-USDT') }));
 });
 
 console.log(`\n全部通过：${passed} 项`);

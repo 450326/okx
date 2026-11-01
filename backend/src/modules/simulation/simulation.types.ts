@@ -293,8 +293,14 @@ export interface SimAccountState {
   /** 账户创建时的初始资金，用于权益曲线和收益率基准。 */
   initialCapital: number;
   walletBalance: number;
-  /** 累计已实现盈亏（已扣手续费）。 */
+  /** 累计已实现盈亏（合约 + 现货 + 预测，已扣手续费）。 */
   realizedPnl: number;
+  /** 已实现盈亏分项：合约平仓/强平。 */
+  contractRealizedPnl: number;
+  /** 已实现盈亏分项：现货卖出。 */
+  spotRealizedPnl: number;
+  /** 已实现盈亏分项：预测卖出。 */
+  predictionRealizedPnl: number;
   /** 累计手续费。 */
   totalFee: number;
   positions: SimPosition[];
@@ -322,17 +328,29 @@ export interface AccountSnapshot {
   availableBalance: number;
   positionMargin: number;
   orderMargin: number;
+  /** 合约浮动盈亏（不含现货/预测）。 */
+  contractPnl: number;
+  /** 三种资产浮动盈亏之和，保留兼容字段。 */
   unrealizedPnl: number;
+  /** 三种资产浮动盈亏之和。 */
+  totalUnrealizedPnl: number;
   realizedPnl: number;
+  contractRealizedPnl: number;
+  spotRealizedPnl: number;
+  predictionRealizedPnl: number;
   equity: number;
   totalFee: number;
+  /** 现货持仓成本基数。 */
+  spotCost: number;
   /** 现货持仓市值。 */
   spotValue: number;
-  /** 现货持仓浮动盈亏（已包含在 unrealizedPnl 中）。 */
+  /** 现货持仓浮动盈亏。 */
   spotUnrealizedPnl: number;
+  /** 预测持仓成本基数。 */
+  predictionCost: number;
   /** 预测持仓按当前概率计算的市值。 */
   predictionValue: number;
-  /** 预测持仓浮动盈亏（已包含在 unrealizedPnl 中）。 */
+  /** 预测持仓浮动盈亏。 */
   predictionUnrealizedPnl: number;
   updatedAt: string;
 }

@@ -23,6 +23,24 @@
             <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.orderMargin) }}</div>
           </div>
           <div>
+            <div class="stat-label">{{ $t('assets.contractPnl') }}</div>
+            <div :class="['stat-value', getTrendClass(assetStore.snapshot?.contractPnl)]">
+              {{ formatSignedCurrency(assetStore.snapshot?.contractPnl) }}
+            </div>
+          </div>
+          <div>
+            <div class="stat-label">{{ $t('assets.totalUnrealizedPnl') }}</div>
+            <div :class="['stat-value', getTrendClass(assetStore.snapshot?.totalUnrealizedPnl ?? assetStore.snapshot?.unrealizedPnl)]">
+              {{ formatSignedCurrency(assetStore.snapshot?.totalUnrealizedPnl ?? assetStore.snapshot?.unrealizedPnl) }}
+            </div>
+          </div>
+          <div>
+            <div class="stat-label">{{ $t('assets.realizedPnl') }}</div>
+            <div :class="['stat-value', getTrendClass(assetStore.snapshot?.realizedPnl)]">
+              {{ formatSignedCurrency(assetStore.snapshot?.realizedPnl) }}
+            </div>
+          </div>
+          <div>
             <div class="stat-label">{{ $t('assets.spotValue') }}</div>
             <div class="stat-value">{{ formatCurrency(assetStore.snapshot?.spotValue) }}</div>
           </div>
@@ -37,6 +55,78 @@
             </div>
           </div>
         </div>
+
+        <details class="recon-details">
+          <summary>{{ $t('assets.reconDetails') }}</summary>
+          <p class="recon-formula">{{ $t('assets.equityFormula') }}</p>
+
+          <div class="recon-row">
+            <span>{{ $t('assets.walletBalance') }}</span>
+            <strong>{{ formatCurrency(assetStore.snapshot?.walletBalance) }}</strong>
+          </div>
+          <div class="recon-row">
+            <span>+ {{ $t('assets.contractPnl') }}</span>
+            <strong :class="getTrendClass(assetStore.snapshot?.contractPnl)">
+              {{ formatSignedCurrency(assetStore.snapshot?.contractPnl) }}
+            </strong>
+          </div>
+          <div class="recon-row">
+            <span>+ {{ $t('assets.spotValue') }}</span>
+            <strong>{{ formatCurrency(assetStore.snapshot?.spotValue) }}</strong>
+          </div>
+          <div class="recon-row recon-sub">
+            <span>{{ $t('assets.spotCost') }}</span>
+            <span>{{ formatCurrency(assetStore.snapshot?.spotCost) }}</span>
+          </div>
+          <div class="recon-row recon-sub">
+            <span>{{ $t('assets.spotUnrealizedPnl') }}</span>
+            <span :class="getTrendClass(assetStore.snapshot?.spotUnrealizedPnl)">
+              {{ formatSignedCurrency(assetStore.snapshot?.spotUnrealizedPnl) }}
+            </span>
+          </div>
+          <div class="recon-row">
+            <span>+ {{ $t('assets.predictionValue') }}</span>
+            <strong>{{ formatCurrency(assetStore.snapshot?.predictionValue) }}</strong>
+          </div>
+          <div class="recon-row recon-sub">
+            <span>{{ $t('assets.predictionCost') }}</span>
+            <span>{{ formatCurrency(assetStore.snapshot?.predictionCost) }}</span>
+          </div>
+          <div class="recon-row recon-sub">
+            <span>{{ $t('assets.predictionPnl') }}</span>
+            <span :class="getTrendClass(assetStore.snapshot?.predictionUnrealizedPnl)">
+              {{ formatSignedCurrency(assetStore.snapshot?.predictionUnrealizedPnl) }}
+            </span>
+          </div>
+          <div class="recon-row recon-total">
+            <span>= {{ $t('assets.equity') }}</span>
+            <strong>{{ formatCurrency(assetStore.snapshot?.equity) }}</strong>
+          </div>
+
+          <h4 class="recon-section-title">{{ $t('assets.realizedSplit') }}</h4>
+          <div class="recon-row recon-sub">
+            <span>{{ $t('assets.contractRealized') }}</span>
+            <span :class="getTrendClass(assetStore.snapshot?.contractRealizedPnl)">
+              {{ formatSignedCurrency(assetStore.snapshot?.contractRealizedPnl) }}
+            </span>
+          </div>
+          <div class="recon-row recon-sub">
+            <span>{{ $t('assets.spotRealized') }}</span>
+            <span :class="getTrendClass(assetStore.snapshot?.spotRealizedPnl)">
+              {{ formatSignedCurrency(assetStore.snapshot?.spotRealizedPnl) }}
+            </span>
+          </div>
+          <div class="recon-row recon-sub">
+            <span>{{ $t('assets.predictionRealized') }}</span>
+            <span :class="getTrendClass(assetStore.snapshot?.predictionRealizedPnl)">
+              {{ formatSignedCurrency(assetStore.snapshot?.predictionRealizedPnl) }}
+            </span>
+          </div>
+          <div class="recon-row recon-total">
+            <span>= {{ $t('assets.realizedPnl') }}</span>
+            <strong>{{ formatSignedCurrency(assetStore.snapshot?.realizedPnl) }}</strong>
+          </div>
+        </details>
       </div>
 
       <div class="card">
@@ -261,4 +351,58 @@ watch(
 .ledger-row.clickable:hover {
   background: var(--bg-soft);
 }
+.recon-details {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.recon-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.recon-formula {
+  margin: 10px 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.recon-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.recon-row strong {
+  color: var(--text-primary);
+}
+
+.recon-sub {
+  padding-left: 16px;
+  font-size: 11px;
+}
+
+.recon-total {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.recon-section-title {
+  margin: 14px 0 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 </style>

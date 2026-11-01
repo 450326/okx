@@ -60,8 +60,8 @@
           </div>
           <div class="hero-yield">
             {{ $t('layout.unrealizedPnl') }}
-            <span :class="getTrendClass(assetStore.snapshot?.unrealizedPnl)">
-              {{ formatSignedCurrency(assetStore.snapshot?.unrealizedPnl) }}
+            <span :class="getTrendClass(assetStore.snapshot?.totalUnrealizedPnl ?? assetStore.snapshot?.unrealizedPnl)">
+              {{ formatSignedCurrency(assetStore.snapshot?.totalUnrealizedPnl ?? assetStore.snapshot?.unrealizedPnl) }}
               ({{ yieldPercent }})
             </span>
           </div>

@@ -549,6 +549,9 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
     account.walletBalance = scaleMoney(account.walletBalance);
     account.realizedPnl = scaleMoney(account.realizedPnl);
+    account.contractRealizedPnl = scaleMoney(account.contractRealizedPnl);
+    account.spotRealizedPnl = scaleMoney(account.spotRealizedPnl);
+    account.predictionRealizedPnl = scaleMoney(account.predictionRealizedPnl);
     account.totalFee = scaleMoney(account.totalFee);
 
     for (const position of account.positions) {
@@ -673,12 +676,19 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       availableBalance: this.money(snapshot.availableBalance),
       positionMargin: this.money(snapshot.positionMargin),
       orderMargin: this.money(snapshot.orderMargin),
+      contractPnl: this.money(snapshot.contractPnl),
       unrealizedPnl: this.money(snapshot.unrealizedPnl),
+      totalUnrealizedPnl: this.money(snapshot.totalUnrealizedPnl),
       realizedPnl: this.money(snapshot.realizedPnl),
+      contractRealizedPnl: this.money(snapshot.contractRealizedPnl),
+      spotRealizedPnl: this.money(snapshot.spotRealizedPnl),
+      predictionRealizedPnl: this.money(snapshot.predictionRealizedPnl),
       equity: this.money(snapshot.equity),
       totalFee: this.money(snapshot.totalFee),
+      spotCost: this.money(snapshot.spotCost),
       spotValue: this.money(snapshot.spotValue),
       spotUnrealizedPnl: this.money(snapshot.spotUnrealizedPnl),
+      predictionCost: this.money(snapshot.predictionCost),
       predictionValue: this.money(snapshot.predictionValue),
       predictionUnrealizedPnl: this.money(snapshot.predictionUnrealizedPnl),
       updatedAt: snapshot.updatedAt,

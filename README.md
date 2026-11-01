@@ -312,13 +312,16 @@ Mock 登录阶段可以使用超级权限账号：
 | 强平 | `margin + uPnL <= 维持保证金` 时平仓 |
 
 - 可用余额 = 钱包余额 − 持仓保证金 − 挂单冻结
-- 权益 = 钱包余额 + 合约未实现盈亏 + 现货市值 + 预测持仓市值
+- 权益恒等式：`equity = walletBalance + contractPnl + spotValue + predictionValue`
+- 总浮动盈亏：`totalUnrealizedPnl = contractPnl + spotUnrealizedPnl + predictionUnrealizedPnl`
+- 已实现盈亏：`realizedPnl = contractRealizedPnl + spotRealizedPnl + predictionRealizedPnl`
+- `spotCost` / `predictionCost` 是成本基数，用于资产页对账明细
 - 同一币种在不同交易所是独立持仓，例如 `BTC-USDT-SWAP` 与 `BTC-USD` 不互相覆盖
 
 ## 测试与构建
 
 ```bash
-# 模拟盘账务自测（29 项，含预测盘和现货交易）
+# 模拟盘账务自测（30 项，含预测盘、现货交易和权益恒等式）
 cd backend
 npm run test:simulation
 

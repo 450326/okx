@@ -111,11 +111,18 @@ export interface AssetSnapshot {
   availableBalance: string; // 可用余额
   positionMargin: string;   // 持仓保证金
   orderMargin: string;      // 委托保证金
-  unrealizedPnl: string;    // 未实现盈亏
-  realizedPnl: string;      // 已实现盈亏
+  contractPnl?: string;     // 合约浮动盈亏
+  unrealizedPnl: string;    // 总浮动盈亏（兼容字段）
+  totalUnrealizedPnl?: string; // 总浮动盈亏
+  realizedPnl: string;      // 总已实现盈亏
+  contractRealizedPnl?: string;
+  spotRealizedPnl?: string;
+  predictionRealizedPnl?: string;
   equity: string;           // 账户权益
+  spotCost?: string;        // 现货成本基数
   spotValue?: string;       // 现货持仓市值
   spotUnrealizedPnl?: string; // 现货浮动盈亏
+  predictionCost?: string;  // 预测成本基数
   predictionValue?: string;        // 预测持仓市值
   predictionUnrealizedPnl?: string; // 预测持仓浮动盈亏
 }
