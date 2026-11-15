@@ -9,6 +9,7 @@ import { HealthModule } from './modules/health/health.module';
 // 引入认证授权模块
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthGuard } from './modules/auth/auth.guard';
+import { AccountEventModule } from './modules/account-events/account-event.module';
 import { NotificationModule } from './modules/notifications/notification.module';
 // 引入账户管理模块
 import { AccountModule } from './modules/account/account.module';
@@ -48,6 +49,7 @@ import { LiveOrderExceptionFilter } from './modules/account/live-order-exception
     ConfigModule.forRoot({ isGlobal: true }),
     HealthModule,
     AuthModule,
+    AccountEventModule,
     NotificationModule,
     AccountModule,
     MarketModule,

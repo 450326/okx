@@ -57,6 +57,13 @@ export const useNotificationStore = defineStore('notifications', () => {
     }
   }
 
+  function receiveNotification(notification: AppNotification): void {
+    if (!notification?.id || notifications.value.some((item) => item.id === notification.id)) return;
+    notifications.value.unshift(notification);
+    unreadCount.value += 1;
+    toast.value = notification;
+  }
+
   function dismissToast() {
     toast.value = null;
   }
@@ -71,10 +78,7 @@ export const useNotificationStore = defineStore('notifications', () => {
       auth: { token: localStorage.getItem('accessToken') || '' },
     });
     socket.on('notification', (notification: AppNotification) => {
-      if (!notification?.id || notifications.value.some((item) => item.id === notification.id)) return;
-      notifications.value.unshift(notification);
-      unreadCount.value += 1;
-      toast.value = notification;
+      receiveNotification(notification);
     });
     pollTimer = setInterval(() => {
       void fetchNotifications(true);
@@ -104,6 +108,7 @@ export const useNotificationStore = defineStore('notifications', () => {
     toast,
     hasUnread,
     fetchNotifications,
+    receiveNotification,
     markRead,
     markAllRead,
     dismissToast,

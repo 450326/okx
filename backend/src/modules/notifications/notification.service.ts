@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AccountEventService } from '../account-events/account-event.service';
 import { RequestContextService } from '../auth/request-context.service';
 import { NotificationGateway } from './notification.gateway';
 import {
@@ -38,6 +39,7 @@ export class NotificationService {
     private readonly store: NotificationStore,
     private readonly context: RequestContextService,
     private readonly gateway: NotificationGateway,
+    private readonly accountEvents: AccountEventService,
   ) {}
 
   list(limit = 50): { list: AppNotification[]; unreadCount: number } {
@@ -136,6 +138,7 @@ export class NotificationService {
   ): AppNotification {
     const notification = this.store.add(userId, input);
     this.gateway.emitToUser(userId, notification);
+    this.accountEvents.emitNotification(userId, notification);
     return notification;
   }
 

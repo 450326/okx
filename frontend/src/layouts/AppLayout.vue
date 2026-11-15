@@ -90,6 +90,9 @@
       </nav>
 
       <div v-if="globalError" class="status-text">{{ globalError }}</div>
+      <div v-if="realtimeStore.disconnected" class="realtime-banner">
+        {{ $t('realtime.disconnected') }}
+      </div>
 
       <main v-if="appReady" class="main-view">
         <RouterView />
@@ -133,6 +136,7 @@ import { useExchangeStore } from '../stores/exchange';
 import { useModeStore } from '../stores/mode';
 import { useCurrencyStore } from '../stores/currency';
 import { useNotificationStore } from '../stores/notifications';
+import { useRealtimeStore } from '../stores/realtime';
 import { formatCurrency, formatSignedCurrency, getTrendClass } from '../utils/format';
 import { $t } from '../utils/i18n';
 
@@ -142,6 +146,7 @@ const exchangeStore = useExchangeStore();
 const modeStore = useModeStore();
 const currencyStore = useCurrencyStore();
 const notificationStore = useNotificationStore();
+const realtimeStore = useRealtimeStore();
 const router = useRouter();
 const route = useRoute();
 const modeConfirmOpen = ref(false);
@@ -209,10 +214,12 @@ onMounted(() => {
   currencyStore.initQuote();
   currencyStore.fetchRate();
   notificationStore.startPolling();
+  realtimeStore.start();
 });
 
 onUnmounted(() => {
   notificationStore.stopPolling();
+  realtimeStore.stop();
 });
 
 function formatNotificationTime(value: string): string {
@@ -223,6 +230,7 @@ function formatNotificationTime(value: string): string {
 
 async function handleLogout() {
   notificationStore.stopPolling();
+  realtimeStore.stop();
   await authStore.logout();
   await router.replace('/login');
 }
@@ -527,6 +535,16 @@ async function handleLogout() {
   color: var(--text-secondary);
   font-size: 18px;
   cursor: pointer;
+}
+
+.realtime-banner {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  border-radius: 8px;
+  background: rgba(245, 166, 35, 0.1);
+  color: var(--color-warning);
+  font-size: 12px;
 }
 
 .main-view {

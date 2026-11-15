@@ -312,6 +312,21 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 
 超级账号在实盘模式下可在设置中开启「超级权限 · 实盘模拟数据」，以只读方式查看模拟预测和现货持仓；普通账号即使伪造请求头，服务端也会拒绝。
 
+### 账户实时推送
+
+`/account` WebSocket 命名空间按 `user:<userId>` 房间隔离，连接时在 handshake `auth.token` 携带 access token：
+
+| 事件 | 内容 |
+|---|---|
+| `order:update` | 当前委托 + 最近历史委托 |
+| `position:update` | 全部模拟持仓快照 |
+| `position:closed` | 平仓原因：manual / tp / sl / liquidation |
+| `asset:update` | 最新账户权益快照 |
+| `risk:warning` | 风险跨档通知 |
+| `notification` | 通用站内通知 |
+
+所有事件由 `SimulationState` 在领域变更后发布，网关只负责广播。连接断开时前端切换为 5 秒轮询并显示「实时连接已断开」；重连成功后自动拉取资产、持仓、委托全量快照对账。
+
 ### 强平预警与通知中心
 
 - 后台撮合每 3 秒检查一次持仓强平距离

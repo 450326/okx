@@ -4,6 +4,7 @@ import * as path from 'path';
 import { MarketService } from '../market/market.service';
 import { RequestContextService } from '../auth/request-context.service';
 import { NotificationService } from '../notifications/notification.service';
+import { AccountEventService } from '../account-events/account-event.service';
 import { createInitialState, round, SimulationEngine } from './simulation-engine';
 import {
   AccountSnapshot,
@@ -74,6 +75,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     private readonly marketService: MarketService,
     private readonly context: RequestContextService,
     private readonly notifications: NotificationService,
+    private readonly accountEvents: AccountEventService,
   ) {
     this.dataDir = path.resolve(__dirname, '../../../data');
     this.getEngine(this.primaryUserId);
@@ -190,6 +192,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
     const result = this.engine.placeSpotOrder(input, market);
     this.save();
+    this.publishRealtime(this.context.userId(), markets);
     return this.toSpotResult(result);
   }
 
@@ -215,7 +218,10 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
   applyPredictionMarks(marks: Record<string, PredictionMarketSnapshot>): void {
     const changed = this.engine.updatePredictionMarks(marks);
-    if (changed) this.save();
+    if (changed) {
+      this.save();
+      this.publishRealtime(this.context.userId());
+    }
   }
 
   placePredictionOrder(
@@ -225,6 +231,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     this.assertSimulationMode(input.mode);
     const result = this.engine.placePredictionOrder(input, market);
     this.save();
+    this.publishRealtime(this.context.userId());
     return this.toPredictionResult(result);
   }
 
@@ -235,6 +242,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   ): Record<string, unknown> {
     const result = this.engine.closePredictionPosition(positionId, qty, market);
     this.save();
+    this.publishRealtime(this.context.userId());
     return this.toPredictionResult(result);
   }
 
@@ -277,14 +285,17 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   async placeOrder(input: SimulationOrderInput): Promise<Record<string, unknown>> {
     this.assertSimulationMode(input.mode);
     const market = await this.requireMarket(input.symbol);
+    const userId = this.context.userId();
 
     try {
       const result = this.engine.placeOrder(input, market);
       this.save();
+      this.publishRealtime(userId, { [input.symbol]: market });
       return this.toPlaceOrderResult(result);
     } catch (error) {
       // 失败的下单也会留下 rejected 订单，便于前端/审计看到拒绝原因。
       this.save();
+      this.publishRealtime(userId, { [input.symbol]: market });
       throw error;
     }
   }
@@ -292,6 +303,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   cancelOrder(orderId: string): Record<string, unknown> {
     const order = this.engine.cancelOrder(orderId);
     this.save();
+    this.publishRealtime(this.context.userId());
     return this.toOrder(this.toOrderSnapshot(order));
   }
 
@@ -311,12 +323,29 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     if (!position) throw new SimulationError(SIM_ERROR.POSITION_NOT_FOUND, '持仓不存在');
 
     const market = await this.requireMarket(position.symbol);
+    const userId = this.context.userId();
     try {
       const result = this.engine.closePosition(resolvedId, qty, market);
       this.save();
+      this.publishRealtime(userId, { [position.symbol]: market });
+      const stillOpen = this.engine
+        .listPositions({})
+        .some((item) => item.id === resolvedId);
+      if (!stillOpen) {
+        const realizedPnl = this.engine
+          .getState()
+          .positions.find((item) => item.id === resolvedId)?.realizedPnl;
+        this.accountEvents.emitPositionClosed(userId, {
+          positionId: resolvedId,
+          symbol: position.symbol,
+          reason: 'manual',
+          realizedPnl,
+        });
+      }
       return this.toPlaceOrderResult(result);
     } catch (error) {
       this.save();
+      this.publishRealtime(userId, { [position.symbol]: market });
       throw error;
     }
   }
@@ -328,6 +357,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   ): Record<string, unknown> {
     this.engine.updateRisk(positionId, takeProfitPrice, stopLossPrice);
     this.save();
+    this.publishRealtime(this.context.userId());
     const position = this.engine.listPositions({}).find((p) => p.id === positionId);
     return position ? this.toPosition(position) : { positionId, status: 'updated' };
   }
@@ -335,6 +365,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   reset(): Record<string, unknown> {
     const snapshot = this.engine.reset();
     this.save();
+    this.publishRealtime(this.context.userId());
     return this.toAccount(snapshot);
   }
 
@@ -354,6 +385,9 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       const markets = await this.fetchMarkets(symbols);
       for (const [userId, engine] of this.engines) {
         const beforeOrders = new Set(engine.getState().orders.map((order) => order.orderId));
+        const beforePositions = new Map(
+          engine.listPositions({}).map((position) => [position.id, position]),
+        );
         const result = engine.processMarkets(markets);
 
         // 强平/止盈/止损订单只在触发瞬间产生一次，按新增订单识别并留档。
@@ -365,7 +399,11 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
               ['liquidation', 'tp', 'sl'].includes(order.source) &&
               order.status === 'filled',
           );
+        const closeReasons = new Map<string, 'liquidation' | 'tp' | 'sl'>();
         for (const order of newOrders) {
+          if (order.positionId) {
+            closeReasons.set(order.positionId, order.source as 'liquidation' | 'tp' | 'sl');
+          }
           const position = engine
             .getState()
             .positions.find((item) => item.id === order.positionId);
@@ -400,10 +438,26 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
           })),
         );
 
+        const afterPositionIds = new Set(engine.listPositions({}).map((position) => position.id));
+        for (const [positionId, position] of beforePositions) {
+          if (afterPositionIds.has(positionId)) continue;
+          this.accountEvents.emitPositionClosed(userId, {
+            positionId,
+            symbol: position.symbol,
+            reason: closeReasons.get(positionId) || 'manual',
+            realizedPnl: engine
+              .getState()
+              .positions.find((item) => item.id === positionId)?.realizedPnl,
+          });
+        }
+
         if (result.changed) {
           this.saveUser(userId);
           for (const event of result.events) this.logger.log(`[${userId}] ${event}`);
         }
+
+        // 每个 tick 都推送最新快照；即使没有成交，持仓保证金率/PnL 也会变化。
+        this.publishRealtime(userId, markets);
       }
     } catch (error) {
       this.logger.error(`模拟盘后台撮合失败: ${(error as Error).message}`);
@@ -781,6 +835,26 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   private assertSimulationMode(mode?: string): void {
     if (mode && mode !== 'simulation') {
       throw new SimulationError(SIM_ERROR.BAD_REQUEST, '模拟盘接口不支持实盘模式');
+    }
+  }
+
+  private publishRealtime(
+    userId: string,
+    markets: Record<string, MarketSnapshot> = {},
+  ): void {
+    try {
+      const engine = this.getEngine(userId);
+      this.accountEvents.emitSnapshot(userId, {
+        account: { ...this.toAccount(engine.snapshot(markets)), source: 'simulation' },
+        positions: engine.listPositions(markets).map((position) => this.toPosition(position)),
+        orders: engine.getOrderSnapshots('open').map((order) => this.toOrder(order)),
+        history: engine
+          .getOrderSnapshots('history')
+          .slice(0, 30)
+          .map((order) => this.toOrder(order)),
+      });
+    } catch (error) {
+      this.logger.warn(`推送账户快照失败[${userId}]: ${(error as Error).message}`);
     }
   }
 
