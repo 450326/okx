@@ -127,6 +127,24 @@ export class AccountController {
     return ok({ mode: 'simulation', source: capability.source, list: this.sim.getLedger('simulation') });
   }
 
+  @Get('ledger-reconcile')
+  reconcileLedger(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    this.capabilityService.assert('ledger', authorization, overlay);
+    return ok({ mode: 'simulation', ...this.sim.verifyLedger() });
+  }
+
+  @Post('ledger-rebuild')
+  rebuildLedger(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    this.capabilityService.assert('ledger', authorization, overlay);
+    return ok({ mode: 'simulation', ...this.sim.rebuildLedgerWallet() });
+  }
+
   @Post('simulation/reset')
   resetSimulation(
     @Body() body: { confirm: boolean },

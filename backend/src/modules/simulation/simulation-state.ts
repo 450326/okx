@@ -5,6 +5,7 @@ import { MarketService } from '../market/market.service';
 import { RequestContextService } from '../auth/request-context.service';
 import { NotificationService } from '../notifications/notification.service';
 import { AccountEventService } from '../account-events/account-event.service';
+import { SimulationRepository } from './simulation.repository';
 import { createInitialState, round, SimulationEngine } from './simulation-engine';
 import {
   AccountSnapshot,
@@ -46,11 +47,6 @@ interface CachedMarket {
   ts: number;
 }
 
-interface PersistedFile {
-  version: 2;
-  account: SimAccountState;
-}
-
 const PRICE_CACHE_TTL_MS = 15_000;
 const TICK_INTERVAL_MS = 3_000;
 
@@ -76,12 +72,14 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     private readonly context: RequestContextService,
     private readonly notifications: NotificationService,
     private readonly accountEvents: AccountEventService,
+    private readonly repository: SimulationRepository,
   ) {
     this.dataDir = path.resolve(__dirname, '../../../data');
     this.getEngine(this.primaryUserId);
 
     // 启动时加载所有已有模拟账户，确保用户不在线时仍能触发强平/止盈止损通知。
     try {
+      for (const userId of this.repository.listUserIds()) this.getEngine(userId);
       for (const name of fs.readdirSync(this.dataDir)) {
         const match = /^simulation-([A-Za-z0-9_-]+)\.json$/.exec(name);
         if (match && !match[1].startsWith('u_guest_')) this.getEngine(match[1]);
@@ -110,8 +108,9 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
     const safe = key.replace(/[^A-Za-z0-9_-]/g, '_');
     const filePath = path.join(this.dataDir, key === this.primaryUserId ? 'simulation.json' : `simulation-${safe}.json`);
-    const loaded = this.loadState(filePath);
-    const engine = new SimulationEngine(loaded);
+    const stored = this.repository.load(key);
+    const legacy = stored ? undefined : this.loadState(filePath);
+    const engine = new SimulationEngine(stored || legacy);
     if (key !== this.primaryUserId) {
       // 让不同用户的资源 ID 落在不同区段，跨用户按 ID 访问时不会误命中自己的订单/持仓。
       const base = 100000 + (this.hashUserId(key) % 800000);
@@ -122,9 +121,27 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       state.nextSpotHoldingId = Math.max(state.nextSpotHoldingId, base);
       state.nextPredictionOrderId = Math.max(state.nextPredictionOrderId, base);
       state.nextPredictionPositionId = Math.max(state.nextPredictionPositionId, base);
+      // 账本 ID 在旧数据里从 ledger_1001 开始，多个用户会撞主键；非主账号使用独立区段。
+      state.ledger = state.ledger.map((entry, index) => ({
+        ...entry,
+        id: `ledger_${base + index}`,
+      }));
+      state.nextLedgerId = Math.max(state.nextLedgerId, base + state.ledger.length);
     }
     this.engines.set(key, engine);
     this.engineFiles.set(key, filePath);
+    if (!stored) {
+      this.repository.save(key, engine.getState());
+      if (legacy && fs.existsSync(filePath)) {
+        const archive = `${filePath}.migrated-${Date.now()}`;
+        try {
+          fs.renameSync(filePath, archive);
+          this.logger.log(`模拟账本已迁移到 SQLite，JSON 归档到 ${archive}`);
+        } catch (error) {
+          this.logger.warn(`归档旧 JSON 失败: ${(error as Error).message}`);
+        }
+      }
+    }
     if (this.capitalRebased) {
       this.capitalRebased = false;
       this.saveUser(key);
@@ -153,6 +170,20 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   async getAccountSnapshot(): Promise<Record<string, unknown>> {
     const markets = await this.fetchMarkets(this.engine.trackedSymbols());
     return this.toAccount(this.engine.snapshot(markets));
+  }
+
+  verifyLedger() {
+    return this.repository.verifyLedger(this.context.userId());
+  }
+
+  rebuildLedgerWallet() {
+    const result = this.repository.rebuildWallet(this.context.userId());
+    if (result) {
+      const state = this.engine.getState();
+      state.walletBalance = result.walletBalance;
+      this.save();
+    }
+    return result;
   }
 
   async getPositions(): Promise<Record<string, unknown>[]> {
@@ -808,27 +839,12 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   }
 
   private saveUser(userId: string): void {
-    const filePath = this.engineFiles.get(userId);
     const engine = this.engines.get(userId);
-    if (!filePath || !engine) return;
+    if (!engine) return;
     try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-      const payload: PersistedFile = { version: 2, account: engine.getState() };
-      const json = JSON.stringify(payload, null, 2);
-      const tmp = `${filePath}.tmp`;
-      fs.writeFileSync(tmp, json, 'utf-8');
-
-      try {
-        fs.renameSync(tmp, filePath);
-      } catch {
-        // Windows 上 rename 覆盖已存在文件可能失败，退化为先删后改名。
-        if (fs.existsSync(filePath)) fs.rmSync(filePath, { force: true });
-        fs.renameSync(tmp, filePath);
-      }
+      this.repository.save(userId, engine.getState());
     } catch (error) {
-      this.logger.error(`保存模拟盘数据失败: ${(error as Error).message}`);
+      this.logger.error(`保存模拟盘数据失败[${userId}]: ${(error as Error).message}`);
     }
   }
 

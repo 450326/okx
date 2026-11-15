@@ -352,6 +352,28 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 
 实盘暂不支持同时设置止盈止损，也不支持实盘现货；`live_readonly` 下所有写操作由前后端双重拒绝。
 
+### 模拟账本持久化
+
+模拟账本已从单文件迁移到 SQLite（`backend/data/app.db`，WAL 模式）：
+
+- `sim_accounts`：用户账户快照和下一 ID 序列
+- `sim_positions` / `sim_orders`
+- `sim_ledger`：资金流水
+- `sim_spot_holdings` / `sim_spot_orders`
+- `sim_prediction_positions` / `sim_prediction_orders`
+- `sim_equity_history`
+
+每个用户使用独立的 `user_id` 行，启动时加载全部已有模拟账户。旧 `simulation*.json` 会在首次加载时迁移到 SQLite，并归档为 `.migrated-<timestamp>`。
+
+也可显式执行：
+
+```bash
+cd backend
+npm run migrate:simulation
+```
+
+账本以流水为准：`GET /api/v1/account/ledger-reconcile` 返回 `ledgerSum`、`walletBalance` 和 `diff`，用于重算校验；`POST /api/v1/account/ledger-rebuild` 可按流水重建钱包余额。
+
 ### 品种元数据与下单校验
 
 `/market/symbols` 现在返回完整品种元数据：

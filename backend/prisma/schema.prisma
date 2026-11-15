@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 运行时模拟账本由 simulation.repository.ts 使用 node:sqlite 直接读写，
+// 这里保留同构的模型定义，便于后续切换到 Prisma/迁移工具。
+// 金额当前以 8 位小数写入 SQLite REAL；精度统一方案见 ISSUE-15。
+
 model User {
   id           String             @id
   email        String             @unique
@@ -115,4 +119,166 @@ model ExchangeAccount {
   user       User     @relation(fields: [userId], references: [id])
 
   @@map("exchange_accounts")
+}
+
+model SimulationAccount {
+  userId                   String   @id @map("user_id")
+  initialCapital           Float    @map("initial_capital")
+  walletBalance            Float    @map("wallet_balance")
+  realizedPnl              Float    @map("realized_pnl")
+  contractRealizedPnl      Float    @default(0) @map("contract_realized_pnl")
+  spotRealizedPnl          Float    @default(0) @map("spot_realized_pnl")
+  predictionRealizedPnl    Float    @default(0) @map("prediction_realized_pnl")
+  totalFee                 Float    @default(0) @map("total_fee")
+  nextOrderId              Int      @map("next_order_id")
+  nextPositionId           Int      @map("next_position_id")
+  nextSpotHoldingId        Int      @map("next_spot_holding_id")
+  nextSpotOrderId          Int      @map("next_spot_order_id")
+  nextPredictionOrderId    Int      @map("next_prediction_order_id")
+  nextPredictionPositionId Int      @map("next_prediction_position_id")
+  nextLedgerId             Int      @map("next_ledger_id")
+  updatedAt                String   @map("updated_at")
+  @@map("sim_accounts")
+}
+
+model SimulationPosition {
+  id              String   @id
+  userId          String   @map("user_id")
+  symbol          String
+  side            String
+  leverage        Float
+  qty             Float
+  entryPrice      Float    @map("entry_price")
+  margin          Float
+  realizedPnl     Float    @default(0) @map("realized_pnl")
+  takeProfitPrice Float?   @map("take_profit_price")
+  stopLossPrice   Float?   @map("stop_loss_price")
+  status          String
+  openedAt        String   @map("opened_at")
+  updatedAt       String   @map("updated_at")
+  closedAt        String?  @map("closed_at")
+  @@index([userId])
+  @@map("sim_positions")
+}
+
+model SimulationOrder {
+  orderId          String   @id @map("order_id")
+  userId           String   @map("user_id")
+  symbol           String
+  side             String
+  action           String
+  orderType        String   @map("order_type")
+  leverage         Float
+  qty              Float
+  price            Float?
+  status           String
+  filledQty        Float    @default(0) @map("filled_qty")
+  avgFillPrice     Float?   @map("avg_fill_price")
+  fee              Float    @default(0)
+  reservedMargin   Float    @default(0) @map("reserved_margin")
+  reduceOnly       Boolean  @default(false) @map("reduce_only")
+  takeProfitPrice  Float?   @map("take_profit_price")
+  stopLossPrice    Float?   @map("stop_loss_price")
+  source           String
+  positionId       String?  @map("position_id")
+  rejectReason     String?  @map("reject_reason")
+  createdAt        String   @map("created_at")
+  updatedAt        String   @map("updated_at")
+  filledAt         String?  @map("filled_at")
+  @@index([userId])
+  @@map("sim_orders")
+}
+
+model SimulationLedger {
+  id           String  @id
+  userId       String  @map("user_id")
+  type         String
+  amount       Float
+  balanceAfter Float   @map("balance_after")
+  symbol       String?
+  orderId      String? @map("order_id")
+  positionId   String? @map("position_id")
+  remark       String?
+  createdAt    String  @map("created_at")
+  @@index([userId])
+  @@map("sim_ledger")
+}
+
+model SimulationSpotHolding {
+  id        String @id
+  userId    String @map("user_id")
+  symbol    String
+  baseCoin  String @map("base_coin")
+  qty       Float
+  avgCost   Float  @map("avg_cost")
+  openedAt  String @map("opened_at")
+  updatedAt String @map("updated_at")
+  @@index([userId])
+  @@map("sim_spot_holdings")
+}
+
+model SimulationSpotOrder {
+  orderId     String @id @map("order_id")
+  userId      String @map("user_id")
+  symbol      String
+  baseCoin    String @map("base_coin")
+  side        String
+  qty         Float
+  price       Float
+  notional    Float
+  fee         Float
+  realizedPnl Float  @map("realized_pnl")
+  status      String
+  createdAt   String @map("created_at")
+  @@index([userId])
+  @@map("sim_spot_orders")
+}
+
+model SimulationPredictionPosition {
+  id          String @id
+  userId      String @map("user_id")
+  slug        String
+  marketId    String @map("market_id")
+  question    String
+  eventTitle  String @map("event_title")
+  icon        String
+  outcome     String
+  outcomeName String @map("outcome_name")
+  tokenId     String @map("token_id")
+  qty         Float
+  entryPrice  Float  @map("entry_price")
+  status      String
+  openedAt    String @map("opened_at")
+  updatedAt   String @map("updated_at")
+  @@index([userId])
+  @@map("sim_prediction_positions")
+}
+
+model SimulationPredictionOrder {
+  orderId     String @id @map("order_id")
+  userId      String @map("user_id")
+  slug        String
+  marketId    String @map("market_id")
+  question    String
+  outcome     String
+  outcomeName String @map("outcome_name")
+  action      String
+  qty         Float
+  price       Float
+  notional    Float
+  realizedPnl Float  @map("realized_pnl")
+  status      String
+  positionId  String @map("position_id")
+  createdAt   String @map("created_at")
+  @@index([userId])
+  @@map("sim_prediction_orders")
+}
+
+model SimulationEquityPoint {
+  id     Int    @id @default(autoincrement())
+  userId String @map("user_id")
+  ts     Int
+  equity Float
+  @@index([userId])
+  @@map("sim_equity_history")
 }

@@ -1,0 +1,561 @@
+import { Injectable, Logger } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import {
+  SimAccountState,
+  SimLedgerEntry,
+  SimOrder,
+  SimPosition,
+  SimPredictionOrder,
+  SimPredictionPosition,
+  SimSpotHolding,
+  SimSpotOrder,
+} from './simulation.types';
+
+const { DatabaseSync } = require('node:sqlite');
+
+interface UserAccountRow {
+  user_id: string;
+  initial_capital: number;
+  wallet_balance: number;
+  realized_pnl: number;
+  contract_realized_pnl: number;
+  spot_realized_pnl: number;
+  prediction_realized_pnl: number;
+  total_fee: number;
+  next_order_id: number;
+  next_position_id: number;
+  next_spot_holding_id: number;
+  next_spot_order_id: number;
+  next_prediction_order_id: number;
+  next_prediction_position_id: number;
+  next_ledger_id: number;
+  updated_at: string;
+}
+
+@Injectable()
+export class SimulationRepository {
+  private readonly logger = new Logger(SimulationRepository.name);
+  private readonly db: any;
+  private readonly filePath: string;
+
+  constructor() {
+    this.filePath = path.resolve(__dirname, '../../../data/app.db');
+    const dir = path.dirname(this.filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    this.db = new DatabaseSync(this.filePath);
+    this.db.exec('PRAGMA journal_mode = WAL');
+    this.db.exec('PRAGMA busy_timeout = 5000');
+    this.migrate();
+  }
+
+  private migrate(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sim_accounts (
+        user_id TEXT PRIMARY KEY,
+        initial_capital REAL NOT NULL,
+        wallet_balance REAL NOT NULL,
+        realized_pnl REAL NOT NULL,
+        contract_realized_pnl REAL NOT NULL DEFAULT 0,
+        spot_realized_pnl REAL NOT NULL DEFAULT 0,
+        prediction_realized_pnl REAL NOT NULL DEFAULT 0,
+        total_fee REAL NOT NULL DEFAULT 0,
+        next_order_id INTEGER NOT NULL,
+        next_position_id INTEGER NOT NULL,
+        next_spot_holding_id INTEGER NOT NULL,
+        next_spot_order_id INTEGER NOT NULL,
+        next_prediction_order_id INTEGER NOT NULL,
+        next_prediction_position_id INTEGER NOT NULL,
+        next_ledger_id INTEGER NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_positions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        leverage REAL NOT NULL,
+        qty REAL NOT NULL,
+        entry_price REAL NOT NULL,
+        margin REAL NOT NULL,
+        realized_pnl REAL NOT NULL DEFAULT 0,
+        take_profit_price REAL,
+        stop_loss_price REAL,
+        status TEXT NOT NULL,
+        opened_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        closed_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_orders (
+        order_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        action TEXT NOT NULL,
+        order_type TEXT NOT NULL,
+        leverage REAL NOT NULL,
+        qty REAL NOT NULL,
+        price REAL,
+        status TEXT NOT NULL,
+        filled_qty REAL NOT NULL DEFAULT 0,
+        avg_fill_price REAL,
+        fee REAL NOT NULL DEFAULT 0,
+        reserved_margin REAL NOT NULL DEFAULT 0,
+        reduce_only INTEGER NOT NULL DEFAULT 0,
+        take_profit_price REAL,
+        stop_loss_price REAL,
+        source TEXT NOT NULL,
+        position_id TEXT,
+        reject_reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        filled_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_spot_holdings (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        base_coin TEXT NOT NULL,
+        qty REAL NOT NULL,
+        avg_cost REAL NOT NULL,
+        opened_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_spot_orders (
+        order_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        base_coin TEXT NOT NULL,
+        side TEXT NOT NULL,
+        qty REAL NOT NULL,
+        price REAL NOT NULL,
+        notional REAL NOT NULL,
+        fee REAL NOT NULL,
+        realized_pnl REAL NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_prediction_positions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        market_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        event_title TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        outcome_name TEXT NOT NULL,
+        token_id TEXT NOT NULL,
+        qty REAL NOT NULL,
+        entry_price REAL NOT NULL,
+        status TEXT NOT NULL,
+        opened_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_prediction_orders (
+        order_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        market_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        outcome_name TEXT NOT NULL,
+        action TEXT NOT NULL,
+        qty REAL NOT NULL,
+        price REAL NOT NULL,
+        notional REAL NOT NULL,
+        realized_pnl REAL NOT NULL,
+        status TEXT NOT NULL,
+        position_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_ledger (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        balance_after REAL NOT NULL,
+        symbol TEXT,
+        order_id TEXT,
+        position_id TEXT,
+        remark TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_equity_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        equity REAL NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sim_positions_user ON sim_positions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_sim_orders_user ON sim_orders(user_id);
+      CREATE INDEX IF NOT EXISTS idx_sim_ledger_user ON sim_ledger(user_id);
+      CREATE INDEX IF NOT EXISTS idx_sim_spot_user ON sim_spot_holdings(user_id);
+      CREATE INDEX IF NOT EXISTS idx_sim_prediction_user ON sim_prediction_positions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_sim_equity_user ON sim_equity_history(user_id);
+    `);
+  }
+
+  hasAccount(userId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM sim_accounts WHERE user_id = ?').get(userId));
+  }
+
+  listUserIds(): string[] {
+    const rows = this.db.prepare('SELECT user_id FROM sim_accounts').all() as { user_id: string }[];
+    return rows.map((row) => row.user_id);
+  }
+
+  load(userId: string): SimAccountState | undefined {
+    const account = this.db
+      .prepare('SELECT * FROM sim_accounts WHERE user_id = ?')
+      .get(userId) as UserAccountRow | undefined;
+    if (!account) return undefined;
+
+    const positions = this.db.prepare('SELECT * FROM sim_positions WHERE user_id = ?').all(userId) as any[];
+    const orders = this.db.prepare('SELECT * FROM sim_orders WHERE user_id = ?').all(userId) as any[];
+    const spotHoldings = this.db.prepare('SELECT * FROM sim_spot_holdings WHERE user_id = ?').all(userId) as any[];
+    const spotOrders = this.db.prepare('SELECT * FROM sim_spot_orders WHERE user_id = ?').all(userId) as any[];
+    const predictionPositions = this.db.prepare('SELECT * FROM sim_prediction_positions WHERE user_id = ?').all(userId) as any[];
+    const predictionOrders = this.db.prepare('SELECT * FROM sim_prediction_orders WHERE user_id = ?').all(userId) as any[];
+    const ledger = this.db.prepare('SELECT * FROM sim_ledger WHERE user_id = ? ORDER BY created_at ASC').all(userId) as any[];
+    const equity = this.db.prepare('SELECT ts,equity FROM sim_equity_history WHERE user_id = ? ORDER BY ts ASC').all(userId) as any[];
+
+    return {
+      version: 2,
+      initialCapital: Number(account.initial_capital),
+      walletBalance: Number(account.wallet_balance),
+      realizedPnl: Number(account.realized_pnl),
+      contractRealizedPnl: Number(account.contract_realized_pnl),
+      spotRealizedPnl: Number(account.spot_realized_pnl),
+      predictionRealizedPnl: Number(account.prediction_realized_pnl),
+      totalFee: Number(account.total_fee),
+      positions: positions.map(this.mapPosition),
+      orders: orders.map(this.mapOrder),
+      spotHoldings: spotHoldings.map(this.mapSpotHolding),
+      spotOrders: spotOrders.map(this.mapSpotOrder),
+      predictionPositions: predictionPositions.map(this.mapPredictionPosition),
+      predictionOrders: predictionOrders.map(this.mapPredictionOrder),
+      ledger: ledger.map(this.mapLedger),
+      equityHistory: equity.map((item) => ({ ts: Number(item.ts), equity: Number(item.equity) })),
+      nextOrderId: Number(account.next_order_id),
+      nextPositionId: Number(account.next_position_id),
+      nextSpotHoldingId: Number(account.next_spot_holding_id),
+      nextSpotOrderId: Number(account.next_spot_order_id),
+      nextPredictionOrderId: Number(account.next_prediction_order_id),
+      nextPredictionPositionId: Number(account.next_prediction_position_id),
+      nextLedgerId: Number(account.next_ledger_id),
+      updatedAt: account.updated_at,
+    };
+  }
+
+  save(userId: string, state: SimAccountState): void {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO sim_accounts (
+            user_id,initial_capital,wallet_balance,realized_pnl,contract_realized_pnl,
+            spot_realized_pnl,prediction_realized_pnl,total_fee,next_order_id,
+            next_position_id,next_spot_holding_id,next_spot_order_id,
+            next_prediction_order_id,next_prediction_position_id,next_ledger_id,updated_at
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            initial_capital=excluded.initial_capital,
+            wallet_balance=excluded.wallet_balance,
+            realized_pnl=excluded.realized_pnl,
+            contract_realized_pnl=excluded.contract_realized_pnl,
+            spot_realized_pnl=excluded.spot_realized_pnl,
+            prediction_realized_pnl=excluded.prediction_realized_pnl,
+            total_fee=excluded.total_fee,
+            next_order_id=excluded.next_order_id,
+            next_position_id=excluded.next_position_id,
+            next_spot_holding_id=excluded.next_spot_holding_id,
+            next_spot_order_id=excluded.next_spot_order_id,
+            next_prediction_order_id=excluded.next_prediction_order_id,
+            next_prediction_position_id=excluded.next_prediction_position_id,
+            next_ledger_id=excluded.next_ledger_id,
+            updated_at=excluded.updated_at`,
+        )
+        .run(
+          userId,
+          state.initialCapital,
+          state.walletBalance,
+          state.realizedPnl,
+          state.contractRealizedPnl,
+          state.spotRealizedPnl,
+          state.predictionRealizedPnl,
+          state.totalFee,
+          state.nextOrderId,
+          state.nextPositionId,
+          state.nextSpotHoldingId,
+          state.nextSpotOrderId,
+          state.nextPredictionOrderId,
+          state.nextPredictionPositionId,
+          state.nextLedgerId,
+          state.updatedAt,
+        );
+
+      for (const table of [
+        'sim_positions',
+        'sim_orders',
+        'sim_spot_holdings',
+        'sim_spot_orders',
+        'sim_prediction_positions',
+        'sim_prediction_orders',
+        'sim_ledger',
+        'sim_equity_history',
+      ]) {
+        this.db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+      }
+
+      const positionStmt = this.db.prepare(
+        `INSERT INTO sim_positions (id,user_id,symbol,side,leverage,qty,entry_price,margin,realized_pnl,take_profit_price,stop_loss_price,status,opened_at,updated_at,closed_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      );
+      for (const item of state.positions) {
+        positionStmt.run(
+          item.id, userId, item.symbol, item.side, item.leverage, item.qty, item.entryPrice,
+          item.margin, item.realizedPnl, item.takeProfitPrice, item.stopLossPrice, item.status,
+          item.openedAt, item.updatedAt, item.closedAt || null,
+        );
+      }
+
+      const orderStmt = this.db.prepare(
+        `INSERT INTO sim_orders (order_id,user_id,symbol,side,action,order_type,leverage,qty,price,status,filled_qty,avg_fill_price,fee,reserved_margin,reduce_only,take_profit_price,stop_loss_price,source,position_id,reject_reason,created_at,updated_at,filled_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      );
+      for (const item of state.orders) {
+        orderStmt.run(
+          item.orderId, userId, item.symbol, item.side, item.action, item.orderType,
+          item.leverage, item.qty, item.price, item.status, item.filledQty, item.avgFillPrice,
+          item.fee, item.reservedMargin, item.reduceOnly ? 1 : 0, item.takeProfitPrice,
+          item.stopLossPrice, item.source, item.positionId || null, item.rejectReason || null,
+          item.createdAt, item.updatedAt, item.filledAt || null,
+        );
+      }
+
+      const spotHoldingStmt = this.db.prepare(
+        `INSERT INTO sim_spot_holdings (id,user_id,symbol,base_coin,qty,avg_cost,opened_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?)`,
+      );
+      for (const item of state.spotHoldings) {
+        spotHoldingStmt.run(item.id, userId, item.symbol, item.baseCoin, item.qty, item.avgCost, item.openedAt, item.updatedAt);
+      }
+
+      const spotOrderStmt = this.db.prepare(
+        `INSERT INTO sim_spot_orders (order_id,user_id,symbol,base_coin,side,qty,price,notional,fee,realized_pnl,status,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      );
+      for (const item of state.spotOrders) {
+        spotOrderStmt.run(item.orderId, userId, item.symbol, item.baseCoin, item.side, item.qty, item.price, item.notional, item.fee, item.realizedPnl, item.status, item.createdAt);
+      }
+
+      const predictionPositionStmt = this.db.prepare(
+        `INSERT INTO sim_prediction_positions (id,user_id,slug,market_id,question,event_title,icon,outcome,outcome_name,token_id,qty,entry_price,status,opened_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      );
+      for (const item of state.predictionPositions) {
+        predictionPositionStmt.run(item.id, userId, item.slug, item.marketId, item.question, item.eventTitle, item.icon, item.outcome, item.outcomeName, item.tokenId, item.qty, item.entryPrice, item.status, item.openedAt, item.updatedAt);
+      }
+
+      const predictionOrderStmt = this.db.prepare(
+        `INSERT INTO sim_prediction_orders (order_id,user_id,slug,market_id,question,outcome,outcome_name,action,qty,price,notional,realized_pnl,status,position_id,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      );
+      for (const item of state.predictionOrders) {
+        predictionOrderStmt.run(item.orderId, userId, item.slug, item.marketId, item.question, item.outcome, item.outcomeName, item.action, item.qty, item.price, item.notional, item.realizedPnl, item.status, item.positionId, item.createdAt);
+      }
+
+      const ledgerStmt = this.db.prepare(
+        `INSERT INTO sim_ledger (id,user_id,type,amount,balance_after,symbol,order_id,position_id,remark,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      );
+      for (const item of state.ledger) {
+        ledgerStmt.run(item.id, userId, item.type, item.amount, item.balanceAfter, item.symbol || null, item.orderId || null, item.positionId || null, item.remark || null, item.createdAt);
+      }
+
+      const equityStmt = this.db.prepare('INSERT INTO sim_equity_history (user_id,ts,equity) VALUES (?,?,?)');
+      for (const item of state.equityHistory) {
+        equityStmt.run(userId, item.ts, item.equity);
+      }
+
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /** 从流水重算钱包余额，并返回与当前快照的差异。 */
+  verifyLedger(userId: string): { ledgerSum: number; walletBalance: number; diff: number } | null {
+    const account = this.db
+      .prepare('SELECT wallet_balance FROM sim_accounts WHERE user_id = ?')
+      .get(userId) as { wallet_balance: number } | undefined;
+    if (!account) return null;
+    const row = this.db
+      .prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM sim_ledger WHERE user_id = ?')
+      .get(userId) as { total: number };
+    const ledgerSum = Math.round(Number(row.total) * 100) / 100;
+    const walletBalance = Math.round(Number(account.wallet_balance) * 100) / 100;
+    return { ledgerSum, walletBalance, diff: Math.round((walletBalance - ledgerSum) * 100) / 100 };
+  }
+
+  /** 以流水为准重建钱包余额。用于迁移校验和显式对账。 */
+  rebuildWallet(userId: string): { ledgerSum: number; walletBalance: number } | null {
+    const result = this.verifyLedger(userId);
+    if (!result) return null;
+    this.db
+      .prepare('UPDATE sim_accounts SET wallet_balance = ?, updated_at = ? WHERE user_id = ?')
+      .run(result.ledgerSum, new Date().toISOString(), userId);
+    return { ledgerSum: result.ledgerSum, walletBalance: result.ledgerSum };
+  }
+
+  migrateFromJson(userId: string, filePath: string): SimAccountState | undefined {
+    try {
+      if (!fs.existsSync(filePath)) return undefined;
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const state = parsed?.version === 2 && parsed.account ? (parsed.account as SimAccountState) : undefined;
+      if (!state) return undefined;
+      if (!this.hasAccount(userId)) this.save(userId, state);
+      return state;
+    } catch (error) {
+      this.logger.warn(`迁移 JSON 账本失败 ${filePath}: ${(error as Error).message}`);
+      return undefined;
+    }
+  }
+
+  private mapPosition(row: any): SimPosition {
+    return {
+      id: row.id,
+      symbol: row.symbol,
+      side: row.side,
+      leverage: Number(row.leverage),
+      qty: Number(row.qty),
+      entryPrice: Number(row.entry_price),
+      margin: Number(row.margin),
+      realizedPnl: Number(row.realized_pnl),
+      takeProfitPrice: row.take_profit_price == null ? null : Number(row.take_profit_price),
+      stopLossPrice: row.stop_loss_price == null ? null : Number(row.stop_loss_price),
+      status: row.status,
+      openedAt: row.opened_at,
+      updatedAt: row.updated_at,
+      closedAt: row.closed_at || null,
+    };
+  }
+
+  private mapOrder(row: any): SimOrder {
+    return {
+      orderId: row.order_id,
+      symbol: row.symbol,
+      side: row.side,
+      action: row.action,
+      orderType: row.order_type,
+      leverage: Number(row.leverage),
+      qty: Number(row.qty),
+      price: row.price == null ? null : Number(row.price),
+      status: row.status,
+      filledQty: Number(row.filled_qty),
+      avgFillPrice: row.avg_fill_price == null ? null : Number(row.avg_fill_price),
+      fee: Number(row.fee),
+      reservedMargin: Number(row.reserved_margin),
+      reduceOnly: Boolean(row.reduce_only),
+      takeProfitPrice: row.take_profit_price == null ? null : Number(row.take_profit_price),
+      stopLossPrice: row.stop_loss_price == null ? null : Number(row.stop_loss_price),
+      source: row.source,
+      positionId: row.position_id || null,
+      rejectReason: row.reject_reason || null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      filledAt: row.filled_at || null,
+    };
+  }
+
+  private mapSpotHolding(row: any): SimSpotHolding {
+    return {
+      id: row.id,
+      symbol: row.symbol,
+      baseCoin: row.base_coin,
+      qty: Number(row.qty),
+      avgCost: Number(row.avg_cost),
+      openedAt: row.opened_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private mapSpotOrder(row: any): SimSpotOrder {
+    return {
+      orderId: row.order_id,
+      symbol: row.symbol,
+      baseCoin: row.base_coin,
+      side: row.side,
+      qty: Number(row.qty),
+      price: Number(row.price),
+      notional: Number(row.notional),
+      fee: Number(row.fee),
+      realizedPnl: Number(row.realized_pnl),
+      status: row.status,
+      createdAt: row.created_at,
+    };
+  }
+
+  private mapPredictionPosition(row: any): SimPredictionPosition {
+    return {
+      id: row.id,
+      slug: row.slug,
+      marketId: row.market_id,
+      question: row.question,
+      eventTitle: row.event_title,
+      icon: row.icon,
+      outcome: row.outcome,
+      outcomeName: row.outcome_name,
+      tokenId: row.token_id,
+      qty: Number(row.qty),
+      entryPrice: Number(row.entry_price),
+      status: row.status,
+      openedAt: row.opened_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private mapPredictionOrder(row: any): SimPredictionOrder {
+    return {
+      orderId: row.order_id,
+      slug: row.slug,
+      marketId: row.market_id,
+      question: row.question,
+      outcome: row.outcome,
+      outcomeName: row.outcome_name,
+      action: row.action,
+      qty: Number(row.qty),
+      price: Number(row.price),
+      notional: Number(row.notional),
+      realizedPnl: Number(row.realized_pnl),
+      status: row.status,
+      positionId: row.position_id,
+      createdAt: row.created_at,
+    };
+  }
+
+  private mapLedger(row: any): SimLedgerEntry {
+    return {
+      id: row.id,
+      type: row.type,
+      amount: Number(row.amount),
+      balanceAfter: Number(row.balance_after),
+      symbol: row.symbol || undefined,
+      orderId: row.order_id || undefined,
+      positionId: row.position_id || undefined,
+      remark: row.remark || undefined,
+      createdAt: row.created_at,
+    };
+  }
+}
