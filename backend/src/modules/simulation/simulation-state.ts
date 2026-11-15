@@ -894,12 +894,12 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     if (input.orderType === 'limit') {
       const price = Number(input.price);
       if (!Number.isFinite(price) || price <= 0) {
-        throw new SimulationError(SIM_ERROR.BAD_REQUEST, '限价单价格必须大于 0');
+        throw new SimulationError(SIM_ERROR.INVALID_PRICE, '限价单价格必须大于 0');
       }
       const pricePrecision = Math.max(0, Number(meta.pricePrecision) || 0);
       if (this.decimalPlaces(input.price as string | number) > pricePrecision) {
         throw new SimulationError(
-          SIM_ERROR.BAD_REQUEST,
+          SIM_ERROR.INVALID_PRICE,
           `价格精度最多 ${pricePrecision} 位小数`,
         );
       }

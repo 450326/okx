@@ -255,7 +255,7 @@ GET /api/v1/account/mode
 PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "live_trading" }
 ```
 
-`GET` 返回兼容字段 `mode`（`simulation` / `live`）、真实状态 `state`、能力位 `capabilities`、阻塞原因 `blockers` 和最近一次迁移记录。非法迁移会返回业务错误码 `4100` / `4101` / `4102`。
+`GET` 返回兼容字段 `mode`（`simulation` / `live`）、真实状态 `state`、能力位 `capabilities`、阻塞原因 `blockers` 和最近一次迁移记录。模式错误码：`4301` 模式不支持、`4302` 实盘前置未完成、`4303` 非法迁移、`4304` 缺少 API 账户。
 
 ### 能力矩阵
 
@@ -265,7 +265,7 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 |---|---|---|
 | 行情 / K 线 / 深度 | 允许 | 允许 |
 | 合约持仓 / 当前委托 | 模拟 | 读取 OKX |
-| 合约下单 / 平仓 / 撤单 | 允许 | 暂未开放（返回 `4201`） |
+| 合约下单 / 平仓 / 撤单 | 允许 | `live_readonly` 拒绝；`live_trading` 允许 |
 | 现货持仓 / 成交 | 模拟 | 默认隐藏（返回 `4201`） |
 | 预测持仓 / 成交 | 模拟 | 默认隐藏（返回 `4201`） |
 | 现货买卖 / 预测买卖 | 允许 | 禁止（返回 `4201`） |
@@ -345,7 +345,7 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 - 前端为每个订单生成 `clientOrderId`，网络异常重试时复用
 - 服务端将 `clientOrderId` 映射持久化到 `backend/data/live-orders.json`
 - 相同 `clientOrderId` + 相同参数重复提交只返回第一次结果，不重复下单
-- 相同 `clientOrderId` + 不同参数返回 `4301`
+- 相同 `clientOrderId` + 不同参数返回 `4111`
 - 下单结果未知时标记 `unknown`，不会自动重复提交
 - `GET /api/v1/orders/live` 查看本地实盘订单
 - `GET /api/v1/orders/live/:clientOrderId` 向 OKX 同步状态并返回 `mismatch` 差异标记
@@ -369,13 +369,41 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 4107 品种不存在或不可交易
 4301 当前模式不允许
 4103 数量精度/最小下单量
-4001 限价价格精度
+4109 限价价格精度/价格无效
 4108 最小名义价值
 4102 最大杠杆
 4101 保证金不足
 ```
 
 前端会按 `qtyPrecision` / `pricePrecision` 限制输入并在失焦时取整，低于 `minQty` / `minNotional` 时直接红字提示、不发请求；提供「最大可开」按钮。股票代币显示交易时段提示。
+
+### 错误码与响应约定
+
+错误码按域划分，全局唯一：
+
+| 区间 | 用途 |
+|---|---|
+| `4xxx` | 通用错误、确认类、鉴权 |
+| `41xx` | 交易、下单、实盘订单 |
+| `42xx` | 风控、能力矩阵、实盘数据权限 |
+| `43xx` | 模式与权限 |
+| `5xxx` | 上游行情/交易所 |
+
+失败响应统一为：
+
+```json
+{
+  "code": 4103,
+  "message": "数量低于最小下单量 10 DOGE",
+  "reason": "invalid_quantity",
+  "suggestedAction": "按最小下单量和数量精度调整",
+  "data": null,
+  "requestId": "req_...",
+  "ts": 1794753900702
+}
+```
+
+前端 `ApiError` 暴露 `code`、`reason`、`suggestedAction` 和 `data`，业务层可以按 `code` 分支，不需要解析文案。
 
 ### 下单确认与风险色阶
 

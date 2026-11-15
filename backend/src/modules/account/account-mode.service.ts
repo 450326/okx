@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ERROR_CODES } from '../../common/error-codes';
 import { AccountStore, StoredAccount } from './account-store';
 import {
   AccountModeStore,
@@ -14,10 +15,10 @@ import {
 } from './capability.service';
 
 export const MODE_ERROR = {
-  INVALID_TRANSITION: 4100,
-  API_REQUIRED: 4101,
-  LIVE_TRADING_NOT_READY: 4102,
-  BAD_REQUEST: 4103,
+  INVALID_TRANSITION: ERROR_CODES.INVALID_MODE_TRANSITION,
+  API_REQUIRED: ERROR_CODES.MODE_API_REQUIRED,
+  LIVE_TRADING_NOT_READY: ERROR_CODES.LIVE_NOT_READY,
+  BAD_REQUEST: ERROR_CODES.MODE_NOT_SUPPORTED,
 } as const;
 
 export interface ModeCapabilities {

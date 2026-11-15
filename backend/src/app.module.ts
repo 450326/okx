@@ -41,6 +41,7 @@ import { SimulationExceptionFilter } from './modules/simulation/simulation-excep
 import { CapabilityExceptionFilter } from './modules/account/capability-exception.filter';
 // 引入实盘下单异常过滤器
 import { LiveOrderExceptionFilter } from './modules/account/live-order-exception.filter';
+import { HttpExceptionFilter } from './common/http-exception.filter';
 
 // 应用根模块，汇总所有子模块
 @Module({
@@ -70,6 +71,7 @@ import { LiveOrderExceptionFilter } from './modules/account/live-order-exception
     { provide: APP_FILTER, useClass: SimulationExceptionFilter },
     { provide: APP_FILTER, useClass: CapabilityExceptionFilter },
     { provide: APP_FILTER, useClass: LiveOrderExceptionFilter },
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
   ],
 })
 export class AppModule {}

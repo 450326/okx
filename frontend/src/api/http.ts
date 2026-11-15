@@ -9,6 +9,19 @@ import type { ApiEnvelope, LoginResponse } from './types';
 const API_BASE_URL = 'http://localhost:3000/api/v1';
 let refreshPromise: Promise<string | null> | null = null;
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly code: number,
+    readonly reason?: string,
+    readonly suggestedAction?: string,
+    readonly data?: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
   const refreshToken = localStorage.getItem('refreshToken');
@@ -67,7 +80,15 @@ http.interceptors.response.use(
     if (payload && typeof payload.code === 'number') {
       // 业务状态码非 0 表示失败
       if (payload.code !== 0) {
-        return Promise.reject(new Error(payload.message || '请求失败'));
+        return Promise.reject(
+          new ApiError(
+            payload.message || '请求失败',
+            payload.code,
+            payload.reason,
+            payload.suggestedAction,
+            payload.data,
+          ),
+        );
       }
       // 返回业务数据本体
       return payload.data;
@@ -102,8 +123,19 @@ http.interceptors.response.use(
     }
 
     // 提取错误信息，优先使用服务端返回的消息
-    const message = error.response?.data?.message || error.message || '网络请求失败';
-    return Promise.reject(new Error(message));
+    const body = error.response?.data as
+      | { message?: string; code?: number; reason?: string; suggestedAction?: string; data?: unknown }
+      | undefined;
+    const message = body?.message || error.message || '网络请求失败';
+    return Promise.reject(
+      new ApiError(
+        message,
+        body?.code ?? error.response?.status ?? -1,
+        body?.reason,
+        body?.suggestedAction,
+        body?.data,
+      ),
+    );
   },
 );
 

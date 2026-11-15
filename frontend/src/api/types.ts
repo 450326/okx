@@ -57,6 +57,8 @@ export type Theme = 'dark' | 'light';
 export interface ApiEnvelope<T> {
   code: number;       // 业务状态码，0 表示成功
   message: string;    // 响应消息
+  reason?: string;    // 机器可读原因
+  suggestedAction?: string; // 建议操作
   data: T;            // 业务数据本体
   requestId: string;  // 请求唯一标识
   ts: number;         // 服务器时间戳

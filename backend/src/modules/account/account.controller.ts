@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Headers, Logger, Post, Put, Query } from '@nestjs/common';
 import { fail, ok } from '../../common/api-response';
+import { ERROR_CODES } from '../../common/error-codes';
 import { OkxApiService } from './okx-api.service';
 import { AccountStore } from './account-store';
 import { AccountModeService, ModeTransitionError } from './account-mode.service';
@@ -55,7 +56,7 @@ export class AccountController {
     this.capabilityService.assert('futuresPositions', authorization, overlay);
     const account = this.accountStore.getActiveOkx();
     if (!account) {
-      return fail('未找到已激活的 OKX API 账户，请先在资产页绑定并测试连接');
+      return fail('未找到已激活的 OKX API 账户，请先在资产页绑定并测试连接', ERROR_CODES.LIVE_ACCOUNT_REQUIRED);
     }
 
     this.logger.log(`获取实盘余额: ${account.label}`);
@@ -66,18 +67,18 @@ export class AccountController {
 
     if (!data) {
       this.logger.error('OKX API 请求失败，返回 null');
-      return fail('OKX API 请求失败，请检查网络或代理配置');
+      return fail('OKX API 请求失败，请检查网络或代理配置', ERROR_CODES.UPSTREAM_ERROR);
     }
 
     if (data.code !== '0') {
       const errMsg = data.msg || '未知错误';
       this.logger.error(`OKX 返回错误: code=${data.code} msg=${errMsg}`);
-      return fail(`OKX API 返回错误: ${errMsg}`);
+      return fail(`OKX API 返回错误: ${errMsg}`, ERROR_CODES.UPSTREAM_ERROR);
     }
 
     if (!data.data?.length) {
       this.logger.warn('OKX 返回数据为空（无资产）');
-      return fail('OKX 返回数据为空，请确认当前账户有资产');
+      return fail('OKX 返回数据为空，请确认当前账户有资产', ERROR_CODES.LIVE_DATA_UNAVAILABLE);
     }
 
     const bal = data.data[0];
@@ -85,7 +86,7 @@ export class AccountController {
 
     if (!usdt) {
       this.logger.warn('当前账户无 USDT 余额');
-      return fail('当前账户无 USDT 余额');
+      return fail('当前账户无 USDT 余额', ERROR_CODES.LIVE_DATA_UNAVAILABLE);
     }
 
     const eq = Number(usdt.eq) || 0;
@@ -134,7 +135,7 @@ export class AccountController {
   ) {
     this.capabilityService.assert('simulationReset', authorization, overlay);
     if (!body?.confirm) {
-      return fail('请确认重置模拟账户', 4001);
+      return fail('请确认重置模拟账户', ERROR_CODES.CONFIRM_REQUIRED);
     }
     return ok({ reset: true, ...this.sim.reset() });
   }

@@ -6,14 +6,15 @@ import { OkxInstrumentService } from './okx-instrument.service';
 import { LiveOrderRecord, LiveOrderStore } from './live-order.store';
 import { SimulationOrderInput } from '../simulation/simulation.types';
 import { RequestContextService } from '../auth/request-context.service';
+import { ERROR_CODES } from '../../common/error-codes';
 
 export const LIVE_ORDER_ERROR = {
-  ID_CONFLICT: 4301,
-  REJECTED: 4302,
-  UNKNOWN: 4303,
-  NOT_FOUND: 4304,
-  INVALID: 4305,
-  EXCHANGE_UNAVAILABLE: 4306,
+  ID_CONFLICT: ERROR_CODES.CLIENT_ORDER_ID_CONFLICT,
+  REJECTED: ERROR_CODES.LIVE_ORDER_REJECTED,
+  UNKNOWN: ERROR_CODES.LIVE_ORDER_UNKNOWN,
+  NOT_FOUND: ERROR_CODES.LIVE_ORDER_NOT_FOUND,
+  INVALID: ERROR_CODES.LIVE_ORDER_INVALID,
+  EXCHANGE_UNAVAILABLE: ERROR_CODES.EXCHANGE_UNAVAILABLE,
 } as const;
 
 export class LiveOrderError extends Error {
@@ -353,7 +354,7 @@ export class LiveTradingService {
   private requireAccount(): StoredAccount {
     const account = this.accountStore.getActiveOkx();
     if (!account) {
-      throw new LiveOrderError('未找到已激活的 OKX API 账户', 4202);
+      throw new LiveOrderError('未找到已激活的 OKX API 账户', ERROR_CODES.LIVE_ACCOUNT_REQUIRED);
     }
     return account;
   }

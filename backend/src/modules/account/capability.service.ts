@@ -3,12 +3,15 @@ import { CurrentUserService } from '../auth/current-user.service';
 import { AccountStore } from './account-store';
 import { AccountModeStore, AccountTradingState } from './account-mode.store';
 
+import { ERROR_CODES } from '../../common/error-codes';
+
 export const CAPABILITY_ERROR = {
-  DISABLED: 4201,
-  LIVE_ACCOUNT_REQUIRED: 4202,
-  LIVE_DATA_UNAVAILABLE: 4203,
-  OVERLAY_FORBIDDEN: 4204,
+  DISABLED: ERROR_CODES.CAPABILITY_DISABLED,
+  LIVE_ACCOUNT_REQUIRED: ERROR_CODES.LIVE_ACCOUNT_REQUIRED,
+  LIVE_DATA_UNAVAILABLE: ERROR_CODES.LIVE_DATA_UNAVAILABLE,
+  OVERLAY_FORBIDDEN: ERROR_CODES.OVERLAY_FORBIDDEN,
 } as const;
+
 
 export type CapabilityKey =
   | 'marketData'
