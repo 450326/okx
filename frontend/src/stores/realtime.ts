@@ -8,6 +8,7 @@ import { usePositionStore } from './positions';
 import { useModeStore } from './mode';
 import { useNotificationStore } from './notifications';
 import { getServerBaseUrl } from '../config/api';
+import { invalidateApiCache } from '../api/http';
 
 export const useRealtimeStore = defineStore('realtime', () => {
   const connected = ref(false);
@@ -22,11 +23,13 @@ export const useRealtimeStore = defineStore('realtime', () => {
   function applyAccount(payload: AssetSnapshot): void {
     const assets = useAssetStore();
     assets.snapshot = payload;
+    invalidateApiCache(['/account']);
   }
 
   function applyPositions(payload: { positions?: PositionItem[] }): void {
     const positions = usePositionStore();
     positions.positions = Array.isArray(payload?.positions) ? payload.positions : [];
+    invalidateApiCache(['/positions']);
   }
 
   function applyOrders(payload: { orders?: OrderItem[]; history?: OrderItem[] }): void {
@@ -35,6 +38,7 @@ export const useRealtimeStore = defineStore('realtime', () => {
     if (Array.isArray(payload?.history)) {
       orders.historyOrders = payload.history;
     }
+    invalidateApiCache(['/orders']);
   }
 
   function receiveNotification(notification: AppNotification): void {

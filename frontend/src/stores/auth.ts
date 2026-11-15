@@ -4,6 +4,7 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 // 导入认证 API
 import { authApi } from '../api/services';
+import { clearApiCache } from '../api/http';
 // 导入用户信息类型
 import type { LoginResponse, LoginResult, UserProfile } from '../api/types';
 
@@ -12,12 +13,14 @@ let refreshPromise: Promise<string | null> | null = null;
 function persistSession(result: LoginResponse): void {
   localStorage.setItem('accessToken', result.accessToken);
   localStorage.setItem('refreshToken', result.refreshToken);
+  clearApiCache();
 }
 
 function clearSession(): void {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('lastLoginEmail');
+  clearApiCache();
 }
 
 // 认证状态 store

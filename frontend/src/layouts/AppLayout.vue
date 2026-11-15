@@ -93,6 +93,9 @@
       <div v-if="realtimeStore.disconnected" class="realtime-banner">
         {{ $t('realtime.disconnected') }}
       </div>
+      <div v-if="staleDataCount" class="stale-data-banner">
+        {{ $t('api.staleData') }}
+      </div>
 
       <main v-if="appReady" class="main-view">
         <RouterView />
@@ -137,6 +140,7 @@ import { useModeStore } from '../stores/mode';
 import { useCurrencyStore } from '../stores/currency';
 import { useNotificationStore } from '../stores/notifications';
 import { useRealtimeStore } from '../stores/realtime';
+import { apiStatus } from '../utils/api-status';
 import { formatCurrency, formatSignedCurrency, getTrendClass } from '../utils/format';
 import { $t } from '../utils/i18n';
 
@@ -147,6 +151,7 @@ const modeStore = useModeStore();
 const currencyStore = useCurrencyStore();
 const notificationStore = useNotificationStore();
 const realtimeStore = useRealtimeStore();
+const staleDataCount = computed(() => Object.keys(apiStatus.stale).length);
 const router = useRouter();
 const route = useRoute();
 const modeConfirmOpen = ref(false);
@@ -544,6 +549,16 @@ async function handleLogout() {
   border-radius: 8px;
   background: rgba(245, 166, 35, 0.1);
   color: var(--color-warning);
+  font-size: 12px;
+}
+
+.stale-data-banner {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(64, 158, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(64, 158, 255, 0.08);
+  color: #7db8ff;
   font-size: 12px;
 }
 
