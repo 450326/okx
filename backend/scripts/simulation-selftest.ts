@@ -698,6 +698,48 @@ test('现货余额不足和卖出未持有会被拒绝', () => {
   );
 });
 
+test('逐仓可以追加保证金并改善强平价', () => {
+  const engine = newEngine();
+  const marketSnapshot = market(100, 'BTC-USDT-SWAP');
+  engine.placeOrder(
+    {
+      symbol: 'BTC-USDT-SWAP',
+      side: 'long',
+      action: 'open',
+      orderType: 'market',
+      leverage: 10,
+      qty: '1',
+      marginMode: 'isolated',
+    },
+    marketSnapshot,
+  );
+  const before = engine.listPositions({ 'BTC-USDT-SWAP': marketSnapshot })[0];
+  engine.addPositionMargin(before.id, 50);
+  const after = engine.listPositions({ 'BTC-USDT-SWAP': marketSnapshot })[0];
+  approx(after.margin, before.margin + 50, 'added margin');
+  assert.ok(after.liquidationPrice < before.liquidationPrice, 'liquidation price improves');
+});
+
+test('全仓模式记录模式且不支持逐仓追加保证金', () => {
+  const engine = newEngine();
+  const marketSnapshot = market(100, 'BTC-USDT-SWAP');
+  engine.placeOrder(
+    {
+      symbol: 'BTC-USDT-SWAP',
+      side: 'long',
+      action: 'open',
+      orderType: 'market',
+      leverage: 10,
+      qty: '1',
+      marginMode: 'cross',
+    },
+    marketSnapshot,
+  );
+  const position = engine.listPositions({ 'BTC-USDT-SWAP': marketSnapshot })[0];
+  assert.equal(position.marginMode, 'cross');
+  assert.throws(() => engine.addPositionMargin(position.id, 10));
+});
+
 test('止盈止损订单记录触发价、执行价和触发保证金率', () => {
   const engine = newEngine();
   const entryMarket = market(100, 'BTC-USDT-SWAP');

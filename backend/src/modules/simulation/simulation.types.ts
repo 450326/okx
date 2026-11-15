@@ -11,6 +11,7 @@ import { ERROR_CODES } from '../../common/error-codes';
 
 export type SimSide = 'long' | 'short';
 export type SimAction = 'open' | 'close';
+export type MarginMode = 'cross' | 'isolated';
 export type SimOrderType = 'market' | 'limit';
 export type SimOrderStatus = 'pending' | 'filled' | 'cancelled' | 'rejected';
 export type SimLiquidity = 'maker' | 'taker';
@@ -47,6 +48,7 @@ export interface SimulationOrderInput {
   orderType: SimOrderType;
   qty: string | number;
   leverage?: number;
+  marginMode?: MarginMode;
   price?: string | number | null;
   takeProfitPrice?: string | number | null;
   stopLossPrice?: string | number | null;
@@ -60,6 +62,7 @@ export interface SimPosition {
   symbol: string;
   side: SimSide;
   leverage: number;
+  marginMode: MarginMode;
   qty: number;
   entryPrice: number;
   /** 当前剩余仓位占用的逐仓保证金。 */
@@ -85,6 +88,7 @@ export interface SimOrder {
   action: SimAction;
   orderType: SimOrderType;
   leverage: number;
+  marginMode: MarginMode;
   qty: number;
   price: number | null;
   status: SimOrderStatus;
@@ -369,12 +373,14 @@ export interface PositionSnapshot {
   symbol: string;
   side: SimSide;
   leverage: number;
+  marginMode: MarginMode;
   qty: number;
   entryPrice: number;
   markPrice: number;
   lastPrice: number;
   notional: number;
   initialMargin: number;
+  margin: number;
   maintenanceMargin: number;
   liquidationPrice: number;
   isolatedMargin: number;
@@ -423,6 +429,7 @@ export interface PreviewResult {
   action: SimAction;
   orderType: SimOrderType;
   leverage: number;
+  marginMode?: MarginMode;
   qty: number;
   markPrice: number;
   price: number;

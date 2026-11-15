@@ -281,6 +281,8 @@ export interface PositionItem {
   symbol: string;             // 交易对
   side: 'long' | 'short';    // 持仓方向
   leverage: number;           // 杠杆倍数
+  marginMode?: 'cross' | 'isolated'; // 保证金模式
+  margin?: string;            // 当前保证金
   qty: string;                // 持仓数量
   entryPrice: string;         // 开仓均价
   markPrice: string;          // 标记价格
@@ -315,6 +317,7 @@ export interface OrderPreviewPayload {
   action: 'open' | 'close';    // 开平
   orderType: 'market' | 'limit'; // 订单类型
   leverage: number;             // 杠杆倍数
+  marginMode?: 'cross' | 'isolated'; // 保证金模式
   qty: string;                  // 委托数量
   price?: string | null;        // 委托价格（限价单）
   reduceOnly?: boolean;         // 仅减仓
@@ -326,6 +329,7 @@ export interface OrderPreviewPayload {
 export interface OrderPreviewResult {
   symbol?: string;                 // 交易对
   leverage?: number;               // 杠杆倍数
+  marginMode?: 'cross' | 'isolated'; // 保证金模式
   qty?: string;                    // 数量
   estimatedNotional: string;        // 预估名义价值
   estimatedMargin: string;          // 预估保证金
@@ -339,7 +343,7 @@ export interface OrderPreviewResult {
 
 // 下单请求参数（继承预览参数 + 保证金模式）
 export interface OrderPayload extends OrderPreviewPayload {
-  marginMode: 'isolated';  // 保证金模式（逐仓）
+  marginMode: 'cross' | 'isolated';  // 保证金模式
   clientOrderId?: string;  // 实盘幂等键
 }
 

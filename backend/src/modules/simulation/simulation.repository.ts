@@ -94,6 +94,7 @@ export class SimulationRepository {
         symbol TEXT NOT NULL,
         side TEXT NOT NULL,
         leverage REAL NOT NULL,
+        margin_mode TEXT NOT NULL DEFAULT 'isolated',
         qty REAL NOT NULL,
         entry_price REAL NOT NULL,
         margin REAL NOT NULL,
@@ -116,6 +117,7 @@ export class SimulationRepository {
         action TEXT NOT NULL,
         order_type TEXT NOT NULL,
         leverage REAL NOT NULL,
+        margin_mode TEXT NOT NULL DEFAULT 'isolated',
         qty REAL NOT NULL,
         price REAL,
         status TEXT NOT NULL,
@@ -272,6 +274,8 @@ export class SimulationRepository {
     `);
     this.ensureColumn('sim_positions', 'funding_fee', 'REAL NOT NULL DEFAULT 0');
     this.ensureColumn('sim_positions', 'last_funding_at', 'TEXT');
+    this.ensureColumn('sim_positions', 'margin_mode', "TEXT NOT NULL DEFAULT 'isolated'");
+    this.ensureColumn('sim_orders', 'margin_mode', "TEXT NOT NULL DEFAULT 'isolated'");
     this.ensureColumn('sim_orders', 'trigger_price', 'REAL');
     this.ensureColumn('sim_orders', 'margin_ratio_at_trigger', 'REAL');
     this.migrateMoneyUnits();
@@ -431,12 +435,12 @@ export class SimulationRepository {
       }
 
       const positionStmt = this.db.prepare(
-        `INSERT INTO sim_positions (id,user_id,symbol,side,leverage,qty,entry_price,margin,realized_pnl,funding_fee,last_funding_at,take_profit_price,stop_loss_price,status,opened_at,updated_at,closed_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO sim_positions (id,user_id,symbol,side,leverage,margin_mode,qty,entry_price,margin,realized_pnl,funding_fee,last_funding_at,take_profit_price,stop_loss_price,status,opened_at,updated_at,closed_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       );
       for (const item of state.positions) {
         positionStmt.run(
-          item.id, userId, item.symbol, item.side, item.leverage, item.qty, item.entryPrice,
+          item.id, userId, item.symbol, item.side, item.leverage, item.marginMode, item.qty, item.entryPrice,
           this.money(item.margin), this.money(item.realizedPnl), this.money(item.fundingFee || 0),
           item.lastFundingAt || null, item.takeProfitPrice, item.stopLossPrice, item.status,
           item.openedAt, item.updatedAt, item.closedAt || null,
@@ -444,13 +448,13 @@ export class SimulationRepository {
       }
 
       const orderStmt = this.db.prepare(
-        `INSERT INTO sim_orders (order_id,user_id,symbol,side,action,order_type,leverage,qty,price,status,filled_qty,avg_fill_price,fee,reserved_margin,reduce_only,take_profit_price,stop_loss_price,source,position_id,reject_reason,created_at,updated_at,filled_at,trigger_price,margin_ratio_at_trigger)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO sim_orders (order_id,user_id,symbol,side,action,order_type,leverage,margin_mode,qty,price,status,filled_qty,avg_fill_price,fee,reserved_margin,reduce_only,take_profit_price,stop_loss_price,source,position_id,reject_reason,created_at,updated_at,filled_at,trigger_price,margin_ratio_at_trigger)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       );
       for (const item of state.orders) {
         orderStmt.run(
           item.orderId, userId, item.symbol, item.side, item.action, item.orderType,
-          item.leverage, item.qty, item.price, item.status, item.filledQty, item.avgFillPrice,
+          item.leverage, item.marginMode, item.qty, item.price, item.status, item.filledQty, item.avgFillPrice,
           this.money(item.fee), this.money(item.reservedMargin), item.reduceOnly ? 1 : 0, item.takeProfitPrice,
           item.stopLossPrice, item.source, item.positionId || null, item.rejectReason || null,
           item.createdAt, item.updatedAt, item.filledAt || null,
@@ -720,6 +724,7 @@ export class SimulationRepository {
       symbol: row.symbol,
       side: row.side,
       leverage: Number(row.leverage),
+      marginMode: row.margin_mode === 'cross' ? 'cross' : 'isolated',
       qty: Number(row.qty),
       entryPrice: Number(row.entry_price),
       margin: this.readMoney(row.margin),
@@ -743,6 +748,7 @@ export class SimulationRepository {
       action: row.action,
       orderType: row.order_type,
       leverage: Number(row.leverage),
+      marginMode: row.margin_mode === 'cross' ? 'cross' : 'isolated',
       qty: Number(row.qty),
       price: row.price == null ? null : Number(row.price),
       status: row.status,

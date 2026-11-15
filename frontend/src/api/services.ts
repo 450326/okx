@@ -16,6 +16,7 @@ import type {
   OrderPreviewPayload,
   OrderPreviewResult,
   PositionListResponse,
+  PositionItem,
   TickerListResponse,
   TradeMode,
   TradingState,
@@ -255,6 +256,10 @@ export const positionApi = {
       `/positions/${id}/risk`,
       payload,
     );
+  },
+  // 逐仓追加保证金
+  addMargin(id: string, amount: string) {
+    return post<PositionItem, { amount: string }>(`/positions/${id}/margin`, { amount });
   },
 };
 

@@ -41,7 +41,7 @@
 ### 模拟交易
 
 - 初始资金 8,000 USDT
-- 逐仓、单向持仓
+- 逐仓/全仓、单向持仓，逐仓支持追加保证金
 - 杠杆 1–50x
 - 市价单、限价单
 - 开多/开空、部分平仓、全部平仓、撤单
@@ -82,7 +82,7 @@
 | 数据 | SQLite（`node:sqlite`）+ 金额最小单位；`prisma/schema.prisma` 保留同构模型 |
 | 桌面 | Electron、electron-builder、electron-updater |
 | 移动端 | Capacitor Android |
-| 测试 | `ts-node` 纯引擎自测（33 项，含预测盘交易） |
+| 测试 | `ts-node` 纯引擎自测（35 项，含预测盘交易） |
 
 ## 目录结构
 
@@ -527,7 +527,7 @@ npm run migrate:simulation
 | 项目 | 规则 |
 |---|---|
 | 初始资金 | 8,000 USDT |
-| 保证金模式 | 逐仓、单向持仓 |
+| 保证金模式 | 逐仓/全仓、单向持仓 |
 | 杠杆 | 1–50x |
 | Taker 手续费 | 0.05% × 名义价值 |
 | Maker 手续费 | 0.02% × 名义价值 |
@@ -535,8 +535,10 @@ npm run migrate:simulation
 | 市价成交 | 买一/卖一 + 0.02% 滑点 |
 | 限价单 | 冻结保证金，后台每 3 秒撮合，可撤单 |
 | 止盈止损 | 后台按标记价触发市价平仓 |
-| 强平 | `margin + uPnL <= 维持保证金` 时平仓 |
+| 强平 | 逐仓按单仓 `margin + uPnL <= 维持保证金`；全仓按账户总权益 <= 总维持保证金 |
 
+- 逐仓仓位支持追加保证金，追加后保证金增加、强平价改善
+- 全仓仓位使用账户可用余额作为共享保证金，不支持单仓追加
 - 可用余额 = 钱包余额 − 持仓保证金 − 挂单冻结
 - 权益恒等式：`equity = walletBalance + contractPnl + spotValue + predictionValue`
 - 总浮动盈亏：`totalUnrealizedPnl = contractPnl + spotUnrealizedPnl + predictionUnrealizedPnl`
@@ -549,7 +551,7 @@ npm run migrate:simulation
 里程碑验收请同时执行 [DOCS-CHECKLIST.md](DOCS-CHECKLIST.md) 中的一致性检查。
 
 ```bash
-# 模拟盘账务自测（33 项，含预测盘、现货交易和权益恒等式）
+# 模拟盘账务自测（35 项，含预测盘、现货交易和权益恒等式）
 cd backend
 npm run test:simulation
 npm run docs:check
@@ -567,20 +569,18 @@ npm run build
 ## 当前限制
 
 - 当前是**单演示账户**，没有 JWT 登录、用户隔离和多用户并发控制
-- 运行时使用 JSON 持久化，Prisma schema 尚未接入实际业务
-- 实盘 API 目前只支持查询余额/持仓/委托，**没有真实下单/撤单**
+- 运行时使用 SQLite，Prisma schema 与运行时表结构保持同构
+- 实盘 API 已接入查询、下单、撤单和订单同步，实际能力取决于账户权限
 - 股票代币只有 OKX 提供；Binance/Coinbase 当前没有
 - 预测市场支持模拟买卖，但不接入真实下单（需要钱包与 CLOB 签名）
 - Coinbase 没有批量 ticker 接口，先接入 8 个主流 USD 对，避免全量请求被限流
-- 资金费率、按品种动态杠杆、后台管理系统尚未实现
+- 按品种动态杠杆、后台管理系统尚未实现；资金费已支持 OKX 永续
 
 ## 后续路线
 
-1. 接入 JWT + 数据库，完成用户隔离
-2. 增加真实盘下单适配器、订单回报同步和密钥加密
-3. 完善限价撮合、资金费率、动态保证金和风控后台
-4. 优化移动端导航和桌面打包
-5. 增加单元测试、接口测试和 CI
+1. 增加真实盘更完整的订单回报补偿和断线恢复
+2. 完善按品种动态杠杆、管理后台和运营指标
+3. 优化移动端导航、桌面打包和 CI
 
 ## 文档
 

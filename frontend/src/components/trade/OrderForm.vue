@@ -33,6 +33,16 @@
             <option :value="50">50x</option>
           </select>
         </div>
+        <div class="field">
+          <select v-model="form.marginMode" :disabled="form.action === 'close'">
+            <option value="isolated">{{ $t('order.marginModeIsolated') }}</option>
+            <option value="cross">{{ $t('order.marginModeCross') }}</option>
+          </select>
+        </div>
+      </div>
+
+      <div v-if="form.action === 'open' && modeStore.mode === 'live'" class="status-text margin-mode-hint">
+        {{ $t('order.liveMarginModeHint') }}
       </div>
 
       <div v-if="form.orderType === 'limit'" class="field">
@@ -167,6 +177,7 @@ const form = reactive({
   side: 'long' as 'long' | 'short',
   orderType: 'market' as 'market' | 'limit',
   leverage: 10,
+  marginMode: 'isolated' as 'cross' | 'isolated',
   price: '',
   qty: '0.02',
   takeProfitPrice: '',
@@ -304,6 +315,7 @@ function buildPreviewPayload(side: 'long' | 'short'): OrderPreviewPayload {
     action: form.action,
     orderType: form.orderType,
     leverage: form.leverage,
+    marginMode: form.marginMode,
     qty: form.qty,
     price: form.orderType === 'limit' ? form.price : null,
     reduceOnly: form.action === 'close',
@@ -362,7 +374,7 @@ watch(
 
 // 表单关键字段变化后自动刷新试算；平仓在用户打开试算前不主动请求，避免“无持仓”报错刷屏
 watch(
-  () => [form.side, form.orderType, form.leverage, form.price, form.qty] as const,
+  () => [form.side, form.orderType, form.leverage, form.marginMode, form.price, form.qty] as const,
   () => {
     localMessage.value = '';
     if (form.action === 'close' && !showPreview.value) return;
@@ -398,6 +410,7 @@ function buildOrderPayload(side: 'long' | 'short'): OrderPayload {
     action: previewPayload.action,
     orderType: previewPayload.orderType,
     leverage: previewPayload.leverage,
+    marginMode: previewPayload.marginMode,
     qty: previewPayload.qty,
     price: previewPayload.price,
     takeProfitPrice: previewPayload.takeProfitPrice,
@@ -409,7 +422,7 @@ function buildOrderPayload(side: 'long' | 'short'): OrderPayload {
   }
   return {
     ...previewPayload,
-    marginMode: 'isolated',
+    marginMode: form.marginMode,
     clientOrderId: modeStore.mode === 'live' ? pendingClientOrderId.value : undefined,
   };
 }

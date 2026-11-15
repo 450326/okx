@@ -47,6 +47,24 @@ export class PositionsController {
     }
   }
 
+  @Post(':id/margin')
+  addMargin(
+    @Param('id') id: string,
+    @Body() body: { amount?: string | number },
+    @Headers('authorization') authorization?: string,
+    @Headers('x-simulation-overlay') overlay?: string,
+  ) {
+    this.capabilities.assert('futuresTrade', authorization, overlay);
+    try {
+      return ok(this.sim.addPositionMargin(id, body?.amount ?? 0));
+    } catch (error) {
+      if (error instanceof SimulationError && error.code === SIM_ERROR.POSITION_NOT_FOUND) {
+        throw new ForbiddenException('无权访问该持仓');
+      }
+      throw error;
+    }
+  }
+
   @Post(':id/close')
   async closePosition(
     @Param('id') id: string,

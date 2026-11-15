@@ -397,6 +397,14 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     return position ? this.toPosition(position) : { positionId, status: 'updated' };
   }
 
+  addPositionMargin(positionId: string, amount: string | number): Record<string, unknown> {
+    this.engine.addPositionMargin(positionId, amount);
+    this.save();
+    this.publishRealtime(this.context.userId());
+    const position = this.engine.listPositions({}).find((p) => p.id === positionId);
+    return position ? this.toPosition(position) : { positionId, status: 'updated' };
+  }
+
   reset(): Record<string, unknown> {
     const snapshot = this.engine.reset();
     this.save();
@@ -731,10 +739,13 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
           symbol: p?.symbol || '',
           side: p?.side === 'short' ? 'short' : 'long',
           leverage,
+          marginMode: 'isolated',
           qty: round(qty, 8),
           entryPrice: round(entryPrice, 8),
           margin: round((qty * entryPrice) / leverage, 8),
           realizedPnl: 0,
+          fundingFee: 0,
+          lastFundingAt: now,
           takeProfitPrice: null,
           stopLossPrice: null,
           status: 'open' as const,
@@ -1153,12 +1164,14 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       symbol: position.symbol,
       side: position.side,
       leverage: position.leverage,
+      marginMode: position.marginMode,
       qty: this.qty(position.qty),
       entryPrice: this.price(position.entryPrice),
       markPrice: this.price(position.markPrice),
       lastPrice: this.price(position.lastPrice),
       notional: this.money(position.notional),
       initialMargin: this.money(position.initialMargin),
+      margin: this.money(position.margin || 0),
       maintenanceMargin: this.money(position.maintenanceMargin),
       liquidationPrice: this.price(position.liquidationPrice),
       isolatedMargin: this.money(position.isolatedMargin),

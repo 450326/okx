@@ -4,6 +4,7 @@ import {
   DEFAULT_ENGINE_CONFIG,
   EngineConfig,
   EquityPoint,
+  MarginMode,
   MarketSnapshot,
   OrderSnapshot,
   PlaceOrderResult,
@@ -111,6 +112,7 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
             symbol: p.symbol,
             side: p.side,
             leverage,
+            marginMode: p.marginMode === 'cross' ? 'cross' : 'isolated',
             qty,
             entryPrice,
             margin: round(Number(p.margin) || (qty * entryPrice) / leverage),
@@ -131,6 +133,7 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
   const orders = Array.isArray(input.orders)
     ? input.orders.map<SimOrder>((o) => ({
         ...o,
+        marginMode: o.marginMode === 'cross' ? 'cross' : 'isolated',
         qty: round(Number(o.qty) || 0),
         price: o.price == null ? null : round(Number(o.price)),
         filledQty: round(Number(o.filledQty) || 0),
@@ -370,14 +373,25 @@ export class SimulationEngine {
           symbol: position.symbol,
           side: position.side,
           leverage: position.leverage,
+          marginMode: position.marginMode,
           qty: position.qty,
           entryPrice: position.entryPrice,
           markPrice: mark,
           lastPrice: last,
           notional: round(mark * position.qty, 8),
           initialMargin: position.margin,
+          margin: position.margin,
           maintenanceMargin: round(mark * position.qty * this.config.maintenanceMarginRate, 8),
-          liquidationPrice: this.liquidationPrice(position.side, position.entryPrice, position.leverage),
+          liquidationPrice:
+            position.marginMode === 'cross'
+              ? 0
+              : this.liquidationPrice(
+                  position.side,
+                  position.entryPrice,
+                  position.leverage,
+                  position.margin,
+                  position.qty,
+                ),
           isolatedMargin: position.margin,
           unrealizedPnl: pnl,
           realizedPnl: position.realizedPnl,
@@ -579,19 +593,30 @@ export class SimulationEngine {
         action: 'close',
         orderType: input.orderType,
         leverage: position.leverage,
+        marginMode: position.marginMode,
         qty,
         markPrice,
         price,
         notional: round(notional, 8),
         margin: 0,
         fee: round(notional * feeRate, 8),
-        liquidationPrice: this.liquidationPrice(position.side, position.entryPrice, position.leverage),
+        liquidationPrice:
+          position.marginMode === 'cross'
+            ? 0
+            : this.liquidationPrice(
+                position.side,
+                position.entryPrice,
+                position.leverage,
+                position.margin,
+                position.qty,
+              ),
         maxQty,
         availableBalance: available,
       };
     }
 
     const leverage = this.parseLeverage(input.leverage);
+    const marginMode: MarginMode = input.marginMode === 'cross' ? 'cross' : 'isolated';
     const existing = this.findPosition(symbol);
     if (existing) {
       if (existing.side !== input.side) {
@@ -599,6 +624,9 @@ export class SimulationEngine {
       }
       if (existing.leverage !== leverage) {
         throw new SimulationError(SIM_ERROR.LEVERAGE_LIMIT, `加仓杠杆需与当前持仓一致（${existing.leverage}x）`);
+      }
+      if (existing.marginMode !== marginMode) {
+        throw new SimulationError(SIM_ERROR.RISK_REJECTED, '加仓需使用当前持仓的保证金模式');
       }
     }
 
@@ -615,13 +643,17 @@ export class SimulationEngine {
       action: 'open',
       orderType: input.orderType,
       leverage,
+      marginMode,
       qty: input.qty === undefined || input.qty === '' ? 0 : this.parseQty(input.qty),
       markPrice,
       price,
       notional: round(notional, 8),
       margin: round(notional / leverage, 8),
       fee: round(notional * feeRate, 8),
-      liquidationPrice: this.liquidationPrice(input.side, price, leverage),
+      liquidationPrice:
+        marginMode === 'cross'
+          ? 0
+          : this.liquidationPrice(input.side, price, leverage),
       maxQty: this.maxOpenQty(price, leverage, feeRate),
       availableBalance: available,
     };
@@ -1019,6 +1051,28 @@ export class SimulationEngine {
     this.touch();
   }
 
+  addPositionMargin(positionId: string, amountInput: string | number): SimPosition {
+    const position = this.findPositionById(positionId);
+    if (!position) throw new SimulationError(SIM_ERROR.POSITION_NOT_FOUND, '持仓不存在');
+    if (position.marginMode === 'cross') {
+      throw new SimulationError(SIM_ERROR.RISK_REJECTED, '全仓模式使用账户可用余额作为共享保证金，无需追加');
+    }
+    const amount = round(Number(amountInput), 8);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new SimulationError(SIM_ERROR.BAD_REQUEST, '追加保证金必须大于 0');
+    }
+    if (this.availableBalance() + EPS < amount) {
+      throw new SimulationError(
+        SIM_ERROR.INSUFFICIENT_BALANCE,
+        `可用余额不足，当前可用 ${this.availableBalance().toFixed(2)} USDT`,
+      );
+    }
+    position.margin = round(position.margin + amount, 8);
+    position.updatedAt = iso();
+    this.touch();
+    return position;
+  }
+
   reset(): AccountSnapshot {
     const nextOrderId = this.state.nextOrderId;
     const nextPositionId = this.state.nextPositionId;
@@ -1103,6 +1157,62 @@ export class SimulationEngine {
 
     // 成交/撤单后再处理持仓，避免同一 tick 内对已平仓位重复操作。
     const positions = [...this.openPositions()];
+    // 全仓模式按账户整体权益和总维持保证金判断，逐仓仍按单仓判断。
+    const crossPositions = this.openPositions().filter((p) => p.marginMode === 'cross');
+    if (crossPositions.length) {
+      let equity = this.state.walletBalance;
+      let maintenance = 0;
+      for (const position of crossPositions) {
+        const market = markets[position.symbol];
+        if (!market) continue;
+        const mark = this.markPrice(position, { [market.symbol]: market });
+        equity = round(equity + this.pnl(position, mark), 8);
+        maintenance = round(
+          maintenance + mark * position.qty * this.config.maintenanceMarginRate,
+          8,
+        );
+      }
+      if (equity <= maintenance) {
+        for (const position of crossPositions) {
+          const current = this.findPositionById(position.id);
+          const market = markets[position.symbol];
+          if (!current || !market) continue;
+          const mark = this.markPrice(current, { [market.symbol]: market });
+          const order = this.newOrder({
+            symbol: current.symbol,
+            side: current.side,
+            action: 'close',
+            orderType: 'market',
+            leverage: current.leverage,
+            marginMode: 'cross',
+            qty: current.qty,
+            price: null,
+            takeProfitPrice: null,
+            stopLossPrice: null,
+            reduceOnly: true,
+            source: 'liquidation',
+          });
+          order.positionId = current.id;
+          order.triggerPrice = mark;
+          order.marginRatioAtTrigger = this.positionMarginRatio(current, mark);
+          this.state.orders.push(order);
+          const fillPrice = this.marketFillPrice(
+            current.side === 'long' ? 'sell' : 'buy',
+            market,
+            true,
+          );
+          try {
+            this.executeClose(order, fillPrice, 'taker', markets, 'liquidation');
+            events.push(`全仓强平 ${current.symbol} ${current.side} @ ${fillPrice}`);
+          } catch (error) {
+            this.rejectOrder(order, (error as Error).message);
+            events.push(`全仓强平失败 ${current.symbol}：${(error as Error).message}`);
+          }
+          changed = true;
+        }
+      }
+    }
+
     for (const position of positions) {
       const current = this.findPositionById(position.id);
       if (!current) continue;
@@ -1114,7 +1224,7 @@ export class SimulationEngine {
       const pnl = this.pnl(current, mark);
       const maintenance = mark * current.qty * this.config.maintenanceMarginRate;
 
-      if (current.margin + pnl <= maintenance) {
+      if (current.marginMode !== 'cross' && current.margin + pnl <= maintenance) {
         const order = this.newOrder({
           symbol: current.symbol,
           side: current.side,
@@ -1179,6 +1289,7 @@ export class SimulationEngine {
     marketPrice: number,
   ): PlaceOrderResult {
     const leverage = this.parseLeverage(input.leverage);
+    const marginMode: MarginMode = input.marginMode === 'cross' ? 'cross' : 'isolated';
     const existing = this.findPosition(symbol);
 
     if (existing) {
@@ -1187,6 +1298,9 @@ export class SimulationEngine {
       }
       if (existing.leverage !== leverage) {
         throw new SimulationError(SIM_ERROR.LEVERAGE_LIMIT, `加仓杠杆需与当前持仓一致（${existing.leverage}x）`);
+      }
+      if (existing.marginMode !== marginMode) {
+        throw new SimulationError(SIM_ERROR.RISK_REJECTED, '加仓需使用当前持仓的保证金模式');
       }
     }
 
@@ -1205,6 +1319,7 @@ export class SimulationEngine {
         action: 'open',
         orderType: 'market',
         leverage,
+        marginMode,
         qty,
         price: null,
         takeProfitPrice: tp,
@@ -1240,6 +1355,7 @@ export class SimulationEngine {
         action: 'open',
         orderType: 'limit',
         leverage,
+        marginMode,
         qty,
         price,
         takeProfitPrice: tp,
@@ -1409,6 +1525,9 @@ export class SimulationEngine {
       if (position.leverage !== order.leverage) {
         throw new SimulationError(SIM_ERROR.LEVERAGE_LIMIT, `加仓杠杆需与当前持仓一致（${position.leverage}x）`);
       }
+      if (position.marginMode !== order.marginMode) {
+        throw new SimulationError(SIM_ERROR.RISK_REJECTED, '加仓需使用当前持仓的保证金模式');
+      }
       const projectedEntry = (position.entryPrice * position.qty + price * order.qty) / (position.qty + order.qty);
       this.validateTpSl(
         order.side,
@@ -1434,6 +1553,7 @@ export class SimulationEngine {
         symbol: order.symbol,
         side: order.side,
         leverage: order.leverage,
+        marginMode: order.marginMode,
         qty: order.qty,
         entryPrice: price,
         margin,
@@ -1494,8 +1614,11 @@ export class SimulationEngine {
     const marginPortion = round((position.margin * qty) / position.qty, 8);
     const rawPnl =
       position.side === 'long' ? (price - position.entryPrice) * qty : (position.entryPrice - price) * qty;
-    // 逐仓仓位最大亏损不超过该仓位保证金，避免穿仓后把钱包打成大额负数。
-    const pnl = round(Math.max(rawPnl, -marginPortion), 8);
+    // 逐仓仓位最大亏损不超过该仓位保证金；全仓由账户钱包共同承担。
+    const pnl =
+      position.marginMode === 'cross'
+        ? round(rawPnl, 8)
+        : round(Math.max(rawPnl, -marginPortion), 8);
 
     const balanceAfterPnl = round(this.state.walletBalance + pnl, 8);
     this.state.walletBalance = round(balanceAfterPnl - fee, 8);
@@ -1745,8 +1868,26 @@ export class SimulationEngine {
     return round(value, 8);
   }
 
-  private liquidationPrice(side: 'long' | 'short', entryPrice: number, leverage: number): number {
+  private liquidationPrice(
+    side: 'long' | 'short',
+    entryPrice: number,
+    leverage: number,
+    isolatedMargin?: number,
+    qty?: number,
+  ): number {
     const mmr = this.config.maintenanceMarginRate;
+    if (isolatedMargin != null && qty != null && qty > EPS) {
+      const notional = entryPrice * qty;
+      const baseMargin = notional / leverage;
+      // 未追加保证金时沿用原有强平价口径，追加后按实际保证金重算。
+      if (Math.abs(isolatedMargin - baseMargin) > 1e-8) {
+        const price =
+          side === 'long'
+            ? (notional - isolatedMargin) / (qty * (1 - mmr))
+            : (notional + isolatedMargin) / (qty * (1 + mmr));
+        return round(Math.max(0, price), 8);
+      }
+    }
     const factor = side === 'long' ? 1 - 1 / leverage + mmr : 1 + 1 / leverage - mmr;
     return round(Math.max(0, entryPrice * factor), 8);
   }
@@ -1871,6 +2012,7 @@ export class SimulationEngine {
     action: 'open' | 'close';
     orderType: 'market' | 'limit';
     leverage: number;
+    marginMode?: MarginMode;
     qty: number;
     price: number | null;
     takeProfitPrice: number | null;
@@ -1886,6 +2028,7 @@ export class SimulationEngine {
       action: input.action,
       orderType: input.orderType,
       leverage: input.leverage,
+      marginMode: input.marginMode === 'cross' ? 'cross' : 'isolated',
       qty: input.qty,
       price: input.price == null ? null : round(input.price, 8),
       status: 'pending',

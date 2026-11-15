@@ -148,6 +148,7 @@ model SimulationPosition {
   symbol          String
   side            String
   leverage        Float
+  marginMode      String   @default("isolated") @map("margin_mode")
   qty             Float
   entryPrice      Float    @map("entry_price")
   margin          BigInt
@@ -172,6 +173,7 @@ model SimulationOrder {
   action           String
   orderType        String   @map("order_type")
   leverage         Float
+  marginMode       String   @default("isolated") @map("margin_mode")
   qty              Float
   price            Float?
   status           String

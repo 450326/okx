@@ -154,6 +154,7 @@
             <th>{{ $t('assets.symbol') }}</th>
             <th>{{ $t('positions.direction') }}</th>
             <th>{{ $t('positions.leverage') }}</th>
+            <th>{{ $t('positions.marginMode') }}</th>
             <th>{{ $t('positions.qty') }}</th>
             <th>{{ $t('positions.entryPrice') }}</th>
             <th>{{ $t('positions.markPrice') }}</th>
@@ -174,10 +175,15 @@
             </td>
             <td :class="item.side === 'long' ? 'up' : 'down'">{{ item.side === 'long' ? $t('positions.long') : $t('positions.short') }}</td>
             <td>{{ item.leverage }}x</td>
+            <td>
+              <span :class="['margin-mode-badge', item.marginMode === 'cross' ? 'cross' : 'isolated']">
+                {{ item.marginMode === 'cross' ? $t('order.marginModeCross') : $t('order.marginModeIsolated') }}
+              </span>
+            </td>
             <td>{{ item.qty }}</td>
             <td>{{ item.entryPrice }}</td>
             <td>{{ item.markPrice }}</td>
-            <td>{{ item.liquidationPrice }}</td>
+            <td>{{ Number(item.liquidationPrice) > 0 ? item.liquidationPrice : '--' }}</td>
             <td>
               <span :class="['risk-badge', `risk-${riskLevelFromPosition(item)}`]">
                 {{ $t(`risk.${riskLevelFromPosition(item)}`) }}
@@ -188,6 +194,14 @@
             </td>
             <td :class="getTrendClass(item.unrealizedPnl)">{{ formatSignedValue(item.unrealizedPnl) }}</td>
             <td>
+              <button
+                v-if="canFuturesTrade && item.marginMode !== 'cross'"
+                class="action-btn"
+                type="button"
+                @click="openMarginModal(item)"
+              >
+                {{ $t('positions.addMargin') }}
+              </button>
               <button v-if="canFuturesTrade" class="action-btn" :disabled="closingId === item.id" @click="handleClose(item)">
                 {{ closingId === item.id ? '...' : $t('summary.close') }}
               </button>
@@ -311,6 +325,29 @@
       </table>
       <div v-if="!liveOrderStatus.length" class="empty-state">暂无实盘订单</div>
     </section>
+
+    <div v-if="marginModal" class="margin-modal-backdrop" @click.self="closeMarginModal">
+      <div class="margin-modal card">
+        <h3 class="section-title">{{ $t('positions.addMargin') }}</h3>
+        <p class="status-text">
+          {{ marginModal.symbol }} · {{ $t('positions.currentMargin') }} {{ formatCurrency(marginModal.margin) }}
+        </p>
+        <input
+          v-model="marginAmount"
+          class="margin-input"
+          type="number"
+          min="0"
+          :placeholder="$t('positions.marginAmount')"
+        />
+        <div v-if="marginError" class="status-text error-text">{{ marginError }}</div>
+        <div class="margin-actions">
+          <button class="ghost-btn" type="button" @click="closeMarginModal">{{ $t('summary.cancel') }}</button>
+          <button class="primary-btn" type="button" :disabled="marginSubmitting" @click="submitMargin">
+            {{ marginSubmitting ? '...' : $t('positions.confirmAddMargin') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -355,6 +392,10 @@ const errorMessage = ref('');
 const predictionError = ref('');
 const liveOrderStatus = ref<LiveOrderStatusItem[]>([]);
 const riskEvents = ref<RiskEventItem[]>([]);
+const marginModal = ref<PositionItem | null>(null);
+const marginAmount = ref('');
+const marginSubmitting = ref(false);
+const marginError = ref('');
 
 const canFutures = computed(() => modeStore.can('futuresPositions'));
 const canOpenOrders = computed(() => modeStore.can('futuresOpenOrders'));
@@ -478,8 +519,42 @@ async function loadPageData() {
   await Promise.all(tasks);
 }
 
-async function handleClose(item: PositionItem) {
-  if (closingId.value) return;
+function openMarginModal(item: PositionItem): void {
+  marginModal.value = item;
+  marginAmount.value = '';
+  marginError.value = '';
+}
+
+function closeMarginModal(): void {
+  if (marginSubmitting.value) return;
+  marginModal.value = null;
+  marginAmount.value = '';
+  marginError.value = '';
+}
+
+async function submitMargin(): Promise<void> {
+  if (!marginModal.value) return;
+  const amount = Number(marginAmount.value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    marginError.value = $t('positions.marginAmountInvalid');
+    return;
+  }
+  marginSubmitting.value = true;
+  marginError.value = '';
+  try {
+    const updated = await positionApi.addMargin(marginModal.value.id, String(amount));
+    const index = positionStore.positions.findIndex((p) => p.id === updated.id);
+    if (index >= 0) positionStore.positions[index] = updated;
+    marginModal.value = null;
+    marginAmount.value = '';
+  } catch (error) {
+    marginError.value = (error as Error).message || $t('positions.marginAmountInvalid');
+  } finally {
+    marginSubmitting.value = false;
+  }
+}
+
+async function handleClose(item: PositionItem) {  if (closingId.value) return;
   closingId.value = item.id;
   errorMessage.value = '';
   try {
@@ -734,6 +809,56 @@ watch(
 .risk-event-stop_loss {
   color: var(--color-warning);
   background: rgba(245, 166, 35, 0.12);
+}
+
+.margin-mode-badge {
+  display: inline-flex;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.margin-mode-badge.isolated {
+  color: #7db8ff;
+  background: rgba(64, 158, 255, 0.12);
+}
+
+.margin-mode-badge.cross {
+  color: var(--color-warning);
+  background: rgba(245, 166, 35, 0.12);
+}
+
+.margin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.margin-modal {
+  width: min(100%, 380px);
+  padding: 20px;
+}
+
+.margin-input {
+  width: 100%;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--text-primary);
+}
+
+.margin-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 </style>
