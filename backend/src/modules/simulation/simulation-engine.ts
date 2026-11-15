@@ -1,3 +1,4 @@
+import { addMoney, roundUnits } from '../../common/money';
 import {
   AccountSnapshot,
   DEFAULT_ENGINE_CONFIG,
@@ -43,7 +44,7 @@ const EQUITY_INTERVAL_MS = 60_000;
 
 export function round(value: number, digits = 8): number {
   if (!Number.isFinite(value)) return 0;
-  return Number(value.toFixed(digits));
+  return roundUnits(value, digits);
 }
 
 function floor(value: number, digits = 8): number {
@@ -1931,6 +1932,11 @@ export class SimulationEngine {
   }
 
   private touch(): void {
+    // 钱包余额由流水汇总，禁止浮点误差在多次交易后进入下一笔计算。
+    this.state.walletBalance = round(
+      addMoney(...this.state.ledger.map((entry) => entry.amount)),
+      8,
+    );
     this.state.updatedAt = iso();
   }
 }

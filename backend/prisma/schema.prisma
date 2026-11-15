@@ -9,7 +9,8 @@ datasource db {
 
 // 运行时模拟账本由 simulation.repository.ts 使用 node:sqlite 直接读写，
 // 这里保留同构的模型定义，便于后续切换到 Prisma/迁移工具。
-// 金额当前以 8 位小数写入 SQLite REAL；精度统一方案见 ISSUE-15。
+// 金额字段在 SQLite 中使用 1e-8 最小单位的整数（BigInt），
+// 运行时由 simulation.repository.ts 通过 common/money.ts 转换。
 
 model User {
   id           String             @id
@@ -123,13 +124,13 @@ model ExchangeAccount {
 
 model SimulationAccount {
   userId                   String   @id @map("user_id")
-  initialCapital           Float    @map("initial_capital")
-  walletBalance            Float    @map("wallet_balance")
-  realizedPnl              Float    @map("realized_pnl")
-  contractRealizedPnl      Float    @default(0) @map("contract_realized_pnl")
-  spotRealizedPnl          Float    @default(0) @map("spot_realized_pnl")
-  predictionRealizedPnl    Float    @default(0) @map("prediction_realized_pnl")
-  totalFee                 Float    @default(0) @map("total_fee")
+  initialCapital           BigInt   @map("initial_capital")
+  walletBalance            BigInt   @map("wallet_balance")
+  realizedPnl              BigInt   @map("realized_pnl")
+  contractRealizedPnl      BigInt   @default(0) @map("contract_realized_pnl")
+  spotRealizedPnl          BigInt   @default(0) @map("spot_realized_pnl")
+  predictionRealizedPnl    BigInt   @default(0) @map("prediction_realized_pnl")
+  totalFee                 BigInt   @default(0) @map("total_fee")
   nextOrderId              Int      @map("next_order_id")
   nextPositionId           Int      @map("next_position_id")
   nextSpotHoldingId        Int      @map("next_spot_holding_id")
@@ -149,8 +150,8 @@ model SimulationPosition {
   leverage        Float
   qty             Float
   entryPrice      Float    @map("entry_price")
-  margin          Float
-  realizedPnl     Float    @default(0) @map("realized_pnl")
+  margin          BigInt
+  realizedPnl     BigInt   @default(0) @map("realized_pnl")
   takeProfitPrice Float?   @map("take_profit_price")
   stopLossPrice   Float?   @map("stop_loss_price")
   status          String
@@ -174,8 +175,8 @@ model SimulationOrder {
   status           String
   filledQty        Float    @default(0) @map("filled_qty")
   avgFillPrice     Float?   @map("avg_fill_price")
-  fee              Float    @default(0)
-  reservedMargin   Float    @default(0) @map("reserved_margin")
+  fee              BigInt   @default(0)
+  reservedMargin   BigInt   @default(0) @map("reserved_margin")
   reduceOnly       Boolean  @default(false) @map("reduce_only")
   takeProfitPrice  Float?   @map("take_profit_price")
   stopLossPrice    Float?   @map("stop_loss_price")
@@ -193,8 +194,8 @@ model SimulationLedger {
   id           String  @id
   userId       String  @map("user_id")
   type         String
-  amount       Float
-  balanceAfter Float   @map("balance_after")
+  amount       BigInt
+  balanceAfter BigInt  @map("balance_after")
   symbol       String?
   orderId      String? @map("order_id")
   positionId   String? @map("position_id")
@@ -225,9 +226,9 @@ model SimulationSpotOrder {
   side        String
   qty         Float
   price       Float
-  notional    Float
-  fee         Float
-  realizedPnl Float  @map("realized_pnl")
+  notional    BigInt
+  fee         BigInt
+  realizedPnl BigInt  @map("realized_pnl")
   status      String
   createdAt   String @map("created_at")
   @@index([userId])
@@ -265,8 +266,8 @@ model SimulationPredictionOrder {
   action      String
   qty         Float
   price       Float
-  notional    Float
-  realizedPnl Float  @map("realized_pnl")
+  notional    BigInt
+  realizedPnl BigInt  @map("realized_pnl")
   status      String
   positionId  String @map("position_id")
   createdAt   String @map("created_at")
@@ -278,7 +279,13 @@ model SimulationEquityPoint {
   id     Int    @id @default(autoincrement())
   userId String @map("user_id")
   ts     Int
-  equity Float
+  equity BigInt
   @@index([userId])
   @@map("sim_equity_history")
+}
+
+model SimulationMeta {
+  key   String @id
+  value String
+  @@map("sim_meta")
 }

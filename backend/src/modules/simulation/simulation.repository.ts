@@ -11,6 +11,7 @@ import {
   SimSpotHolding,
   SimSpotOrder,
 } from './simulation.types';
+import { fromUnits, toUnits } from '../../common/money';
 
 const { DatabaseSync } = require('node:sqlite');
 
@@ -196,6 +197,11 @@ export class SimulationRepository {
         equity REAL NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS sim_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_sim_positions_user ON sim_positions(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_orders_user ON sim_orders(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_ledger_user ON sim_ledger(user_id);
@@ -203,6 +209,42 @@ export class SimulationRepository {
       CREATE INDEX IF NOT EXISTS idx_sim_prediction_user ON sim_prediction_positions(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_equity_user ON sim_equity_history(user_id);
     `);
+
+    this.migrateMoneyUnits();
+  }
+
+  /** 旧库金额是十进制浮点，升级到 1e-8 最小单位后只转换一次。 */
+  private migrateMoneyUnits(): void {
+    const meta = this.db.prepare("SELECT value FROM sim_meta WHERE key = 'money_units'").get() as
+      | { value: string }
+      | undefined;
+    if (meta?.value === '1') return;
+
+    const columns: Array<[string, string[]]> = [
+      ['sim_accounts', ['initial_capital', 'wallet_balance', 'realized_pnl', 'contract_realized_pnl', 'spot_realized_pnl', 'prediction_realized_pnl', 'total_fee']],
+      ['sim_positions', ['margin', 'realized_pnl']],
+      ['sim_orders', ['fee', 'reserved_margin']],
+      ['sim_spot_orders', ['notional', 'fee', 'realized_pnl']],
+      ['sim_prediction_orders', ['notional', 'realized_pnl']],
+      ['sim_ledger', ['amount', 'balance_after']],
+      ['sim_equity_history', ['equity']],
+    ];
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const [table, fields] of columns) {
+        for (const field of fields) {
+          this.db.exec(`UPDATE ${table} SET ${field} = ROUND(${field} * 100000000) WHERE ${field} IS NOT NULL`);
+        }
+      }
+      this.db
+        .prepare("INSERT INTO sim_meta (key,value) VALUES ('money_units','1') ON CONFLICT(key) DO UPDATE SET value='1'")
+        .run();
+      this.db.exec('COMMIT');
+      this.logger.log('模拟账本金额已迁移到 1e-8 最小单位');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   hasAccount(userId: string): boolean {
@@ -231,21 +273,21 @@ export class SimulationRepository {
 
     return {
       version: 2,
-      initialCapital: Number(account.initial_capital),
-      walletBalance: Number(account.wallet_balance),
-      realizedPnl: Number(account.realized_pnl),
-      contractRealizedPnl: Number(account.contract_realized_pnl),
-      spotRealizedPnl: Number(account.spot_realized_pnl),
-      predictionRealizedPnl: Number(account.prediction_realized_pnl),
-      totalFee: Number(account.total_fee),
-      positions: positions.map(this.mapPosition),
-      orders: orders.map(this.mapOrder),
-      spotHoldings: spotHoldings.map(this.mapSpotHolding),
-      spotOrders: spotOrders.map(this.mapSpotOrder),
-      predictionPositions: predictionPositions.map(this.mapPredictionPosition),
-      predictionOrders: predictionOrders.map(this.mapPredictionOrder),
-      ledger: ledger.map(this.mapLedger),
-      equityHistory: equity.map((item) => ({ ts: Number(item.ts), equity: Number(item.equity) })),
+      initialCapital: this.readMoney(account.initial_capital),
+      walletBalance: this.readMoney(account.wallet_balance),
+      realizedPnl: this.readMoney(account.realized_pnl),
+      contractRealizedPnl: this.readMoney(account.contract_realized_pnl),
+      spotRealizedPnl: this.readMoney(account.spot_realized_pnl),
+      predictionRealizedPnl: this.readMoney(account.prediction_realized_pnl),
+      totalFee: this.readMoney(account.total_fee),
+      positions: positions.map((row) => this.mapPosition(row)),
+      orders: orders.map((row) => this.mapOrder(row)),
+      spotHoldings: spotHoldings.map((row) => this.mapSpotHolding(row)),
+      spotOrders: spotOrders.map((row) => this.mapSpotOrder(row)),
+      predictionPositions: predictionPositions.map((row) => this.mapPredictionPosition(row)),
+      predictionOrders: predictionOrders.map((row) => this.mapPredictionOrder(row)),
+      ledger: ledger.map((row) => this.mapLedger(row)),
+      equityHistory: equity.map((item) => ({ ts: Number(item.ts), equity: this.readMoney(item.equity) })),
       nextOrderId: Number(account.next_order_id),
       nextPositionId: Number(account.next_position_id),
       nextSpotHoldingId: Number(account.next_spot_holding_id),
@@ -287,13 +329,13 @@ export class SimulationRepository {
         )
         .run(
           userId,
-          state.initialCapital,
-          state.walletBalance,
-          state.realizedPnl,
-          state.contractRealizedPnl,
-          state.spotRealizedPnl,
-          state.predictionRealizedPnl,
-          state.totalFee,
+          this.money(state.initialCapital),
+          this.money(state.walletBalance),
+          this.money(state.realizedPnl),
+          this.money(state.contractRealizedPnl),
+          this.money(state.spotRealizedPnl),
+          this.money(state.predictionRealizedPnl),
+          this.money(state.totalFee),
           state.nextOrderId,
           state.nextPositionId,
           state.nextSpotHoldingId,
@@ -324,7 +366,7 @@ export class SimulationRepository {
       for (const item of state.positions) {
         positionStmt.run(
           item.id, userId, item.symbol, item.side, item.leverage, item.qty, item.entryPrice,
-          item.margin, item.realizedPnl, item.takeProfitPrice, item.stopLossPrice, item.status,
+          this.money(item.margin), this.money(item.realizedPnl), item.takeProfitPrice, item.stopLossPrice, item.status,
           item.openedAt, item.updatedAt, item.closedAt || null,
         );
       }
@@ -337,7 +379,7 @@ export class SimulationRepository {
         orderStmt.run(
           item.orderId, userId, item.symbol, item.side, item.action, item.orderType,
           item.leverage, item.qty, item.price, item.status, item.filledQty, item.avgFillPrice,
-          item.fee, item.reservedMargin, item.reduceOnly ? 1 : 0, item.takeProfitPrice,
+          this.money(item.fee), this.money(item.reservedMargin), item.reduceOnly ? 1 : 0, item.takeProfitPrice,
           item.stopLossPrice, item.source, item.positionId || null, item.rejectReason || null,
           item.createdAt, item.updatedAt, item.filledAt || null,
         );
@@ -356,7 +398,7 @@ export class SimulationRepository {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       );
       for (const item of state.spotOrders) {
-        spotOrderStmt.run(item.orderId, userId, item.symbol, item.baseCoin, item.side, item.qty, item.price, item.notional, item.fee, item.realizedPnl, item.status, item.createdAt);
+        spotOrderStmt.run(item.orderId, userId, item.symbol, item.baseCoin, item.side, item.qty, item.price, this.money(item.notional), this.money(item.fee), this.money(item.realizedPnl), item.status, item.createdAt);
       }
 
       const predictionPositionStmt = this.db.prepare(
@@ -372,7 +414,7 @@ export class SimulationRepository {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       );
       for (const item of state.predictionOrders) {
-        predictionOrderStmt.run(item.orderId, userId, item.slug, item.marketId, item.question, item.outcome, item.outcomeName, item.action, item.qty, item.price, item.notional, item.realizedPnl, item.status, item.positionId, item.createdAt);
+        predictionOrderStmt.run(item.orderId, userId, item.slug, item.marketId, item.question, item.outcome, item.outcomeName, item.action, item.qty, item.price, this.money(item.notional), this.money(item.realizedPnl), item.status, item.positionId, item.createdAt);
       }
 
       const ledgerStmt = this.db.prepare(
@@ -380,12 +422,12 @@ export class SimulationRepository {
          VALUES (?,?,?,?,?,?,?,?,?,?)`,
       );
       for (const item of state.ledger) {
-        ledgerStmt.run(item.id, userId, item.type, item.amount, item.balanceAfter, item.symbol || null, item.orderId || null, item.positionId || null, item.remark || null, item.createdAt);
+        ledgerStmt.run(item.id, userId, item.type, this.money(item.amount), this.money(item.balanceAfter), item.symbol || null, item.orderId || null, item.positionId || null, item.remark || null, item.createdAt);
       }
 
       const equityStmt = this.db.prepare('INSERT INTO sim_equity_history (user_id,ts,equity) VALUES (?,?,?)');
       for (const item of state.equityHistory) {
-        equityStmt.run(userId, item.ts, item.equity);
+        equityStmt.run(userId, item.ts, this.money(item.equity));
       }
 
       this.db.exec('COMMIT');
@@ -404,9 +446,13 @@ export class SimulationRepository {
     const row = this.db
       .prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM sim_ledger WHERE user_id = ?')
       .get(userId) as { total: number };
-    const ledgerSum = Math.round(Number(row.total) * 100) / 100;
-    const walletBalance = Math.round(Number(account.wallet_balance) * 100) / 100;
-    return { ledgerSum, walletBalance, diff: Math.round((walletBalance - ledgerSum) * 100) / 100 };
+    const ledgerSum = this.readMoney(row.total);
+    const walletBalance = this.readMoney(account.wallet_balance);
+    return {
+      ledgerSum,
+      walletBalance,
+      diff: Number((walletBalance - ledgerSum).toFixed(8)),
+    };
   }
 
   /** 以流水为准重建钱包余额。用于迁移校验和显式对账。 */
@@ -415,7 +461,7 @@ export class SimulationRepository {
     if (!result) return null;
     this.db
       .prepare('UPDATE sim_accounts SET wallet_balance = ?, updated_at = ? WHERE user_id = ?')
-      .run(result.ledgerSum, new Date().toISOString(), userId);
+      .run(this.money(result.ledgerSum), new Date().toISOString(), userId);
     return { ledgerSum: result.ledgerSum, walletBalance: result.ledgerSum };
   }
 
@@ -441,8 +487,8 @@ export class SimulationRepository {
       leverage: Number(row.leverage),
       qty: Number(row.qty),
       entryPrice: Number(row.entry_price),
-      margin: Number(row.margin),
-      realizedPnl: Number(row.realized_pnl),
+      margin: this.readMoney(row.margin),
+      realizedPnl: this.readMoney(row.realized_pnl),
       takeProfitPrice: row.take_profit_price == null ? null : Number(row.take_profit_price),
       stopLossPrice: row.stop_loss_price == null ? null : Number(row.stop_loss_price),
       status: row.status,
@@ -465,8 +511,8 @@ export class SimulationRepository {
       status: row.status,
       filledQty: Number(row.filled_qty),
       avgFillPrice: row.avg_fill_price == null ? null : Number(row.avg_fill_price),
-      fee: Number(row.fee),
-      reservedMargin: Number(row.reserved_margin),
+      fee: this.readMoney(row.fee),
+      reservedMargin: this.readMoney(row.reserved_margin),
       reduceOnly: Boolean(row.reduce_only),
       takeProfitPrice: row.take_profit_price == null ? null : Number(row.take_profit_price),
       stopLossPrice: row.stop_loss_price == null ? null : Number(row.stop_loss_price),
@@ -499,9 +545,9 @@ export class SimulationRepository {
       side: row.side,
       qty: Number(row.qty),
       price: Number(row.price),
-      notional: Number(row.notional),
-      fee: Number(row.fee),
-      realizedPnl: Number(row.realized_pnl),
+      notional: this.readMoney(row.notional),
+      fee: this.readMoney(row.fee),
+      realizedPnl: this.readMoney(row.realized_pnl),
       status: row.status,
       createdAt: row.created_at,
     };
@@ -537,8 +583,8 @@ export class SimulationRepository {
       action: row.action,
       qty: Number(row.qty),
       price: Number(row.price),
-      notional: Number(row.notional),
-      realizedPnl: Number(row.realized_pnl),
+      notional: this.readMoney(row.notional),
+      realizedPnl: this.readMoney(row.realized_pnl),
       status: row.status,
       positionId: row.position_id,
       createdAt: row.created_at,
@@ -549,13 +595,21 @@ export class SimulationRepository {
     return {
       id: row.id,
       type: row.type,
-      amount: Number(row.amount),
-      balanceAfter: Number(row.balance_after),
+      amount: this.readMoney(row.amount),
+      balanceAfter: this.readMoney(row.balance_after),
       symbol: row.symbol || undefined,
       orderId: row.order_id || undefined,
       positionId: row.position_id || undefined,
       remark: row.remark || undefined,
       createdAt: row.created_at,
     };
+  }
+
+  private money(value: number): number {
+    return Number(toUnits(value));
+  }
+
+  private readMoney(value: number): number {
+    return fromUnits(BigInt(Math.round(Number(value))));
   }
 }

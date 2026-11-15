@@ -414,6 +414,16 @@ npm run migrate:simulation
 
 账本以流水为准：`GET /api/v1/account/ledger-reconcile` 返回 `ledgerSum`、`walletBalance` 和 `diff`，用于重算校验；`POST /api/v1/account/ledger-rebuild` 可按流水重建钱包余额。
 
+### 金额精度
+
+- 账务金额统一使用 `1e-8` 最小单位
+- 内部计算和 API 仍使用 number，持久化通过 BigInt 最小单位转换
+- 钱包余额由流水金额的 BigInt 汇总反写，浮点尾差不会进入下一笔交易
+- SQLite `sim_*` 表的金额列存整数最小单位，`sim_meta.money_units=1` 标记已完成迁移
+- 旧库启动时自动执行一次十进制金额到最小单位的转换
+- Prisma `Simulation*` 金额字段使用 `BigInt`
+- 自动化测试增加连续 200 笔现货交易后的流水重算断言
+
 ### 品种元数据与下单校验
 
 `/market/symbols` 现在返回完整品种元数据：

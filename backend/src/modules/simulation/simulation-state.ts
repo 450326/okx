@@ -6,6 +6,7 @@ import { RequestContextService } from '../auth/request-context.service';
 import { NotificationService } from '../notifications/notification.service';
 import { AccountEventService } from '../account-events/account-event.service';
 import { SimulationRepository } from './simulation.repository';
+import { addMoney } from '../../common/money';
 import { createInitialState, round, SimulationEngine } from './simulation-engine';
 import {
   AccountSnapshot,
@@ -128,6 +129,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       }));
       state.nextLedgerId = Math.max(state.nextLedgerId, base + state.ledger.length);
     }
+    this.normalizeMoneyState(engine.getState());
     this.engines.set(key, engine);
     this.engineFiles.set(key, filePath);
     if (!stored) {
@@ -842,6 +844,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     const engine = this.engines.get(userId);
     if (!engine) return;
     try {
+      this.normalizeMoneyState(engine.getState());
       this.repository.save(userId, engine.getState());
     } catch (error) {
       this.logger.error(`保存模拟盘数据失败[${userId}]: ${(error as Error).message}`);
@@ -959,8 +962,64 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private publishRealtime(
-    userId: string,
+  /**
+   * 账务统一到 1e-8 最小单位；钱包余额以流水汇总为准，避免浮点尾差进入快照。
+   */
+  private normalizeMoneyState(state: SimAccountState): void {
+    state.initialCapital = round(state.initialCapital, 8);
+    state.realizedPnl = round(state.realizedPnl, 8);
+    state.contractRealizedPnl = round(state.contractRealizedPnl, 8);
+    state.spotRealizedPnl = round(state.spotRealizedPnl, 8);
+    state.predictionRealizedPnl = round(state.predictionRealizedPnl, 8);
+    state.totalFee = round(state.totalFee, 8);
+    state.ledger.forEach((entry) => {
+      entry.amount = round(entry.amount, 8);
+      entry.balanceAfter = round(entry.balanceAfter, 8);
+    });
+    state.walletBalance = round(
+      addMoney(...state.ledger.map((entry) => entry.amount)),
+      8,
+    );
+    state.positions.forEach((position) => {
+      position.qty = round(position.qty, 8);
+      position.entryPrice = round(position.entryPrice, 8);
+      position.margin = round(position.margin, 8);
+      position.realizedPnl = round(position.realizedPnl, 8);
+    });
+    state.orders.forEach((order) => {
+      order.qty = round(order.qty, 8);
+      order.price = order.price == null ? null : round(order.price, 8);
+      order.avgFillPrice = order.avgFillPrice == null ? null : round(order.avgFillPrice, 8);
+      order.fee = round(order.fee, 8);
+      order.reservedMargin = round(order.reservedMargin, 8);
+    });
+    state.spotHoldings.forEach((holding) => {
+      holding.qty = round(holding.qty, 8);
+      holding.avgCost = round(holding.avgCost, 8);
+    });
+    state.spotOrders.forEach((order) => {
+      order.qty = round(order.qty, 8);
+      order.price = round(order.price, 8);
+      order.notional = round(order.notional, 8);
+      order.fee = round(order.fee, 8);
+      order.realizedPnl = round(order.realizedPnl, 8);
+    });
+    state.predictionPositions.forEach((position) => {
+      position.qty = round(position.qty, 8);
+      position.entryPrice = round(position.entryPrice, 8);
+    });
+    state.predictionOrders.forEach((order) => {
+      order.qty = round(order.qty, 8);
+      order.price = round(order.price, 8);
+      order.notional = round(order.notional, 8);
+      order.realizedPnl = round(order.realizedPnl, 8);
+    });
+    state.equityHistory.forEach((point) => {
+      point.equity = round(point.equity, 8);
+    });
+  }
+
+  private publishRealtime(    userId: string,
     markets: Record<string, MarketSnapshot> = {},
   ): void {
     try {

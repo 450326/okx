@@ -5,6 +5,7 @@
  * 说明：只测纯引擎，不联网、不启动 Nest、不读写 backend/data。
  */
 import * as assert from 'node:assert/strict';
+import { addMoney } from '../src/common/money';
 import { SimulationEngine } from '../src/modules/simulation/simulation-engine';
 import {
   MarketSnapshot,
@@ -693,6 +694,21 @@ test('现货余额不足和卖出未持有会被拒绝', () => {
     SIM_ERROR.POSITION_NOT_FOUND,
     '可用数量不足',
   );
+});
+
+test('连续大批量现货交易后账本重算无尾差', () => {
+  const engine = newEngine();
+  const spotMarket = market(65000, 'BTC-USDT');
+  for (let i = 0; i < 100; i += 1) {
+    engine.placeSpotOrder({ symbol: 'BTC-USDT', side: 'buy', qty: '0.001' }, spotMarket);
+    engine.placeSpotOrder({ symbol: 'BTC-USDT', side: 'sell', qty: '0.001' }, spotMarket);
+  }
+  const snapshot = engine.snapshot({ 'BTC-USDT': spotMarket });
+  const ledgerSum = addMoney(
+    ...engine.getLedger(1000).map((entry) => entry.amount),
+  );
+  approx(snapshot.walletBalance, ledgerSum, 'ledger rebuild', 1e-8);
+  assertAccountIdentity(snapshot);
 });
 
 test('权益恒等式与已实现盈亏分项始终成立', () => {
