@@ -164,10 +164,16 @@ export interface MarketSymbol {
   baseCoin?: string;       // 基础币种
   quoteCoin?: string;      // 计价币种
   maxLeverage: number;     // 最大杠杆
-  minQty: string;          // 最小交易数量
+  minQty: string;          // 最小交易数量（基础币）
+  minNotional?: string;    // 最小名义价值
   pricePrecision: number;  // 价格精度
   qtyPrecision: number;    // 数量精度
   assetClass?: 'crypto' | 'stock'; // 加密货币 / 股票代币
+  leverageTiers?: Array<{ maxLeverage: number; maintenanceMarginRate?: number }>;
+  maintenanceMarginRate?: number;
+  tradable?: boolean;
+  tradableModes?: Array<'simulation' | 'live'>;
+  status?: string;
 }
 
 // 市场交易对列表响应

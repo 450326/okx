@@ -36,17 +36,25 @@
       </div>
 
       <div v-if="form.orderType === 'limit'" class="field">
-        <input v-model="form.price" :placeholder="$t('order.price')" />
+        <input v-model="form.price" :placeholder="$t('order.price')" @blur="normalizePrice" />
+        <div v-if="priceError" class="input-error">{{ priceError }}</div>
       </div>
 
       <div class="field">
         <div class="qty-input-row">
-          <input v-model="form.qty" placeholder="数量" />
+          <input v-model="form.qty" placeholder="数量" @blur="normalizeQty" />
           <div class="qty-presets">
-            <button v-for="preset in qtyPresets" :key="preset" class="preset-btn" @click="applyQtyPreset(preset)">{{ preset }}%</button>
+            <button class="preset-btn max-preset" type="button" @click="applyMaxQty">{{ $t('order.maxQty') }}</button>
+            <button v-for="preset in qtyPresets" :key="preset" class="preset-btn" type="button" @click="applyQtyPreset(preset)">{{ preset }}%</button>
           </div>
         </div>
+        <div v-if="qtyError" class="input-error">{{ qtyError }}</div>
       </div>
+
+      <div v-if="instrumentMeta?.assetClass === 'stock'" class="stock-token-hint">
+        {{ $t('order.stockTokenHint') }}
+      </div>
+      <div v-if="leverageError" class="input-error">{{ leverageError }}</div>
 
       <div v-if="modeStore.mode === 'simulation'" class="field-row">
         <div class="field">
@@ -123,6 +131,7 @@ import { $t } from '../../utils/i18n';
 // 导入交易模式和订单状态管理
 import { useModeStore } from '../../stores/mode';
 import { useOrderStore } from '../../stores/orders';
+import { useMarketStore } from '../../stores/market';
 // 导入订单相关类型定义
 import type { OrderPayload, OrderPreviewPayload, OrderPreviewResult } from '../../api/types';
 import { formatOrderId } from '../../utils/format';
@@ -148,6 +157,7 @@ const emit = defineEmits<{
 const modeStore = useModeStore();
 // 获取订单 store 实例
 const orderStore = useOrderStore();
+const marketStore = useMarketStore();
 // 快捷数量百分比预设值
 const qtyPresets = [25, 50, 75, 100];
 
@@ -182,6 +192,97 @@ const longActionText = computed(() => form.action === 'open' ? $t('order.openLon
 // 做空按钮文本：开空/平空
 const shortActionText = computed(() => form.action === 'open' ? $t('order.openShort') : $t('order.closeShort'));
 const isLiveTrading = computed(() => modeStore.state === 'live_trading');
+const instrumentMeta = computed(() =>
+  [...marketStore.symbols, ...marketStore.stockSymbols].find((item) => item.symbol === props.symbol),
+);
+const qtyPrecision = computed(() => Math.max(0, Number(instrumentMeta.value?.qtyPrecision) || 0));
+const pricePrecision = computed(() => Math.max(0, Number(instrumentMeta.value?.pricePrecision) || 0));
+const minQty = computed(() => Math.max(0, Number(instrumentMeta.value?.minQty) || 0));
+
+function decimalPlaces(value: string | number): number {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return 0;
+  if (text.includes('e')) {
+    const [mantissa, exponent] = text.split('e');
+    return Math.max(0, (mantissa.split('.')[1] || '').length - Number(exponent));
+  }
+  return (text.split('.')[1] || '').length;
+}
+
+const qtyError = computed(() => {
+  if (!form.qty || Number(form.qty) <= 0 || !instrumentMeta.value) return '';
+  if (decimalPlaces(form.qty) > qtyPrecision.value) {
+    return $t('order.qtyPrecision').replace('{precision}', String(qtyPrecision.value));
+  }
+  if (minQty.value > 0 && Number(form.qty) < minQty.value) {
+    return $t('order.qtyTooSmall').replace('{min}', String(minQty.value));
+  }
+  return notionalError.value;
+});
+
+const referencePrice = computed(() => {
+  if (form.orderType === 'limit') return Number(form.price);
+  return Number(props.klinePrice || marketStore.tickerMap[props.symbol]?.lastPrice || 0);
+});
+
+const notionalError = computed(() => {
+  const meta = instrumentMeta.value;
+  const qty = Number(form.qty);
+  const price = referencePrice.value;
+  if (!meta || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) return '';
+  const minNotional = Math.max(Number(meta.minNotional) || 0, minQty.value * price);
+  if (minNotional > 0 && qty * price < minNotional) {
+    return $t('order.minNotionalError')
+      .replace('{notional}', (qty * price).toFixed(2))
+      .replace('{min}', minNotional.toFixed(2));
+  }
+  return '';
+});
+
+const priceError = computed(() => {
+  if (form.orderType !== 'limit' || !form.price || !instrumentMeta.value) return '';
+  if (decimalPlaces(form.price) > pricePrecision.value) {
+    return $t('order.pricePrecision').replace('{precision}', String(pricePrecision.value));
+  }
+  return '';
+});
+
+const leverageError = computed(() => {
+  const maxLeverage = Number(instrumentMeta.value?.maxLeverage || 0);
+  if (maxLeverage > 0 && form.leverage > maxLeverage) {
+    return $t('order.leverageLimit').replace('{max}', String(maxLeverage));
+  }
+  return '';
+});
+
+function trimDecimal(value: string, precision: number): string {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  const fixed = number.toFixed(precision);
+  return fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed;
+}
+
+function normalizeQty() {
+  if (form.qty) form.qty = trimDecimal(floorDecimal(form.qty, qtyPrecision.value), qtyPrecision.value);
+}
+
+function floorDecimal(value: string, precision: number): string {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  const factor = 10 ** precision;
+  return (Math.floor(number * factor) / factor).toFixed(precision);
+}
+
+function normalizePrice() {
+  if (form.price) form.price = trimDecimal(form.price, pricePrecision.value);
+}
+
+async function applyMaxQty() {
+  if (!orderStore.preview?.maxQty) await refreshPreview();
+  const max = Number(orderStore.preview?.maxQty);
+  if (!Number.isFinite(max) || max <= 0) return;
+  form.qty = trimDecimal(String(max), qtyPrecision.value);
+}
 
 // 自动化试算的防抖计时器
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
@@ -189,6 +290,7 @@ let previewTimer: ReturnType<typeof setTimeout> | null = null;
 // 校验当前表单是否具备试算条件
 function canPreview(): boolean {
   if (!form.qty || Number(form.qty) <= 0) return false;
+  if (qtyError.value || priceError.value || leverageError.value) return false;
   if (form.orderType === 'limit' && (!form.price || Number(form.price) <= 0)) return false;
   return true;
 }
@@ -380,7 +482,7 @@ async function handleSubmit(side: 'long' | 'short') {
   localMessage.value = '';
   form.side = side;
   if (!canPreview()) {
-    localMessage.value = $t('order.qtyRequired');
+    localMessage.value = qtyError.value || priceError.value || leverageError.value || $t('order.qtyRequired');
     return;
   }
 
@@ -474,6 +576,27 @@ onMounted(() => {
 .static-chip {
   cursor: default;
   opacity: 0.7;
+}
+
+.max-preset {
+  color: var(--color-warning);
+  border-color: rgba(245, 166, 35, 0.35);
+}
+
+.input-error {
+  margin-top: 4px;
+  color: #ff6b6b;
+  font-size: 11px;
+}
+
+.stock-token-hint {
+  margin: 6px 0;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: rgba(64, 158, 255, 0.08);
+  color: #7db8ff;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .side-toggle {

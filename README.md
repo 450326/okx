@@ -352,6 +352,31 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 
 实盘暂不支持同时设置止盈止损，也不支持实盘现货；`live_readonly` 下所有写操作由前后端双重拒绝。
 
+### 品种元数据与下单校验
+
+`/market/symbols` 现在返回完整品种元数据：
+
+- `minQty`：按基础币换算后的最小下单量
+- `minNotional`：最小名义价值
+- `pricePrecision` / `qtyPrecision`
+- `maxLeverage` / `leverageTiers`
+- `maintenanceMarginRate`
+- `tradable` / `tradableModes` / `status`
+
+下单与试算的后端校验顺序：
+
+```text
+4107 品种不存在或不可交易
+4301 当前模式不允许
+4103 数量精度/最小下单量
+4001 限价价格精度
+4108 最小名义价值
+4102 最大杠杆
+4101 保证金不足
+```
+
+前端会按 `qtyPrecision` / `pricePrecision` 限制输入并在失焦时取整，低于 `minQty` / `minNotional` 时直接红字提示、不发请求；提供「最大可开」按钮。股票代币显示交易时段提示。
+
 ### 下单确认与风险色阶
 
 以下任一条件触发二次确认：

@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import * as https from 'https';
 import { DexService } from './dex.service';
+import { InstrumentMeta } from './market.types';
 
 const OKX_BASE = 'https://www.okx.com/api/v5';
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
@@ -164,17 +165,7 @@ interface CoinbaseTrade {
   time: string;
 }
 
-type KnownSymbol = {
-  symbol: string;
-  baseCoin: string;
-  quoteCoin: string;
-  maxLeverage: number;
-  minQty: string;
-  pricePrecision: number;
-  qtyPrecision: number;
-  /** OKX 用 instCategory=3 标识股票代币，需要与加密货币分开展示。 */
-  assetClass?: 'crypto' | 'stock';
-};
+type KnownSymbol = InstrumentMeta;
 
 const SYMBOLS_BY_EXCHANGE: Record<string, KnownSymbol[]> = {
   okx: [],
@@ -459,6 +450,11 @@ export class MarketService {
     return SYMBOLS_BY_EXCHANGE[exchange] || SYMBOLS_BY_EXCHANGE['okx'];
   }
 
+  async getInstrumentMeta(symbol: string, exchange: string = 'okx'): Promise<InstrumentMeta | null> {
+    const list = await this.getSymbols(exchange);
+    return list.find((item) => item.symbol === symbol) || null;
+  }
+
   private async getOkxSymbols(): Promise<KnownSymbol[]> {
     const now = Date.now();
     if (this.okxSymbolsCache && now - this.okxSymbolsCache.at < 60_000) {
@@ -483,16 +479,28 @@ export class MarketService {
           const base = inst.uly?.replace('-USDT', '') || inst.instId.split('-')[0];
           const tickSz = inst.tickSz || '0.01';
           const lotSz = inst.lotSz || '0.001';
+          const ctVal = Number(inst.ctVal) || 1;
+          const baseStep = Number(lotSz) * ctVal;
+          const baseStepText = Number(baseStep.toFixed(10)).toString();
+          const qtyPrecision = decimalsOf(baseStepText);
+          const minQty = (Number(inst.minSz || lotSz) * ctVal).toFixed(qtyPrecision);
+          const maxLeverage = Number(inst.lever) || 10;
+          const tradable = inst.state === 'live';
           return {
             symbol: inst.instId,
             baseCoin: base,
             quoteCoin: 'USDT',
-            maxLeverage: Number(inst.lever) || 10,
-            minQty: inst.minSz || lotSz,
+            maxLeverage,
+            minQty,
+            minNotional: '1',
             pricePrecision: tickSz.includes('.') ? tickSz.split('.')[1].length : 0,
-            qtyPrecision: lotSz.includes('.') ? lotSz.split('.')[1].length : 0,
-            // OKX 用 instCategory=3 标识股票代币。
+            qtyPrecision,
             assetClass: inst.instCategory === '3' ? ('stock' as const) : ('crypto' as const),
+            leverageTiers: [{ maxLeverage, maintenanceMarginRate: 0.005 }],
+            maintenanceMarginRate: 0.005,
+            tradable,
+            tradableModes: ['simulation', 'live'] as Array<'simulation' | 'live'>,
+            status: inst.state || 'live',
           };
         })
         .filter((s) => s.symbol.endsWith('-USDT-SWAP'));

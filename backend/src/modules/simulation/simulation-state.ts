@@ -276,15 +276,17 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
   // ---------------------------------------------------------------- 交易动作
 
   async previewOrder(input: SimulationOrderInput): Promise<Record<string, unknown>> {
-    this.assertSimulationMode(input.mode);
+    const meta = await this.getInstrumentMetaOrThrow(input.symbol);
     const market = await this.requireMarket(input.symbol);
+    await this.validateInstrumentOrder(input, market, meta);
     const preview = this.engine.preview(input, market);
     return this.toPreview(preview);
   }
 
   async placeOrder(input: SimulationOrderInput): Promise<Record<string, unknown>> {
-    this.assertSimulationMode(input.mode);
+    const meta = await this.getInstrumentMetaOrThrow(input.symbol);
     const market = await this.requireMarket(input.symbol);
+    await this.validateInstrumentOrder(input, market, meta);
     const userId = this.context.userId();
 
     try {
@@ -832,9 +834,112 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
   // ---------------------------------------------------------------- 格式化
 
+  private async getInstrumentMetaOrThrow(symbol: string) {
+    const exchange = this.inferExchange(symbol);
+    const meta = await this.marketService.getInstrumentMeta(symbol, exchange);
+    if (!meta) {
+      throw new SimulationError(SIM_ERROR.INSTRUMENT_NOT_TRADABLE, `交易对不存在：${symbol}`);
+    }
+    return meta;
+  }
+
+  private async validateInstrumentOrder(
+    input: SimulationOrderInput,
+    market: MarketSnapshot,
+    meta: Awaited<ReturnType<MarketService['getInstrumentMeta']>>,
+  ): Promise<void> {
+    if (!meta) {
+      throw new SimulationError(SIM_ERROR.INSTRUMENT_NOT_TRADABLE, `交易对不存在：${input.symbol}`);
+    }
+    if (meta.tradable === false || (meta.status && meta.status !== 'live')) {
+      throw new SimulationError(
+        SIM_ERROR.INSTRUMENT_NOT_TRADABLE,
+        `${input.symbol} 当前不可交易（状态：${meta.status || 'offline'}）`,
+      );
+    }
+    if (input.mode && input.mode !== 'simulation') {
+      throw new SimulationError(SIM_ERROR.MODE_NOT_ALLOWED, '当前模式不允许模拟盘下单');
+    }
+    if (
+      input.mode &&
+      Array.isArray(meta.tradableModes) &&
+      !meta.tradableModes.includes(input.mode as 'simulation' | 'live')
+    ) {
+      throw new SimulationError(
+        SIM_ERROR.MODE_NOT_ALLOWED,
+        `${input.symbol} 不支持 ${input.mode} 模式`,
+      );
+    }
+
+    const qty = Number(input.qty);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new SimulationError(SIM_ERROR.INVALID_QTY, '下单数量必须大于 0');
+    }
+    const qtyPrecision = Math.max(0, Number(meta.qtyPrecision) || 0);
+    if (this.decimalPlaces(input.qty) > qtyPrecision) {
+      throw new SimulationError(
+        SIM_ERROR.INVALID_QTY,
+        `数量精度最多 ${qtyPrecision} 位小数`,
+      );
+    }
+    const minQty = Math.max(0, Number(meta.minQty) || 0);
+    if (minQty > 0 && qty + 1e-12 < minQty) {
+      throw new SimulationError(
+        SIM_ERROR.INVALID_QTY,
+        `数量低于最小下单量 ${minQty} ${meta.baseCoin || ''}`.trim(),
+      );
+    }
+
+    let referencePrice = Number(market.lastPrice || market.markPrice);
+    if (input.orderType === 'limit') {
+      const price = Number(input.price);
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new SimulationError(SIM_ERROR.BAD_REQUEST, '限价单价格必须大于 0');
+      }
+      const pricePrecision = Math.max(0, Number(meta.pricePrecision) || 0);
+      if (this.decimalPlaces(input.price as string | number) > pricePrecision) {
+        throw new SimulationError(
+          SIM_ERROR.BAD_REQUEST,
+          `价格精度最多 ${pricePrecision} 位小数`,
+        );
+      }
+      referencePrice = price;
+    }
+
+    const notional = qty * referencePrice;
+    const configuredMinNotional = Math.max(0, Number(meta.minNotional) || 0);
+    const dynamicMinNotional = minQty * referencePrice;
+    const minNotional = Math.max(configuredMinNotional, dynamicMinNotional);
+    if (minNotional > 0 && notional + 1e-8 < minNotional) {
+      throw new SimulationError(
+        SIM_ERROR.MIN_NOTIONAL,
+        `名义价值 ${notional.toFixed(2)} USDT 低于最小名义价值 ${minNotional.toFixed(2)} USDT`,
+      );
+    }
+
+    const leverage = Number(input.leverage ?? 1);
+    if (Number.isFinite(leverage) && leverage > Number(meta.maxLeverage || 1)) {
+      throw new SimulationError(
+        SIM_ERROR.LEVERAGE_LIMIT,
+        `${input.symbol} 最大杠杆 ${meta.maxLeverage}x`,
+      );
+    }
+  }
+
+  private decimalPlaces(value: string | number): number {
+    const text = String(value ?? '').trim();
+    if (!text || text.includes('e') || text.includes('E')) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return 0;
+      return (String(numeric).split('.')[1] || '').length;
+    }
+    const decimals = text.split('.')[1];
+    return decimals ? decimals.length : 0;
+  }
+
   private assertSimulationMode(mode?: string): void {
     if (mode && mode !== 'simulation') {
-      throw new SimulationError(SIM_ERROR.BAD_REQUEST, '模拟盘接口不支持实盘模式');
+      throw new SimulationError(SIM_ERROR.MODE_NOT_ALLOWED, '当前模式不允许模拟盘下单');
     }
   }
 
