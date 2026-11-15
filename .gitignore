@@ -10,6 +10,9 @@ build
 
 # 本地数据（包含 API 密钥等敏感信息）
 backend/data/
+backend/data/*.before-*
+backend/data/*.migrated-*
+backend/.simulation-selftest.json
 backend/prisma/dev.db
 
 # Capacitor / Android

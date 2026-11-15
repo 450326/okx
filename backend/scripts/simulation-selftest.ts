@@ -5,6 +5,8 @@
  * 说明：只测纯引擎，不联网、不启动 Nest、不读写 backend/data。
  */
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { addMoney } from '../src/common/money';
 import { SimulationEngine } from '../src/modules/simulation/simulation-engine';
 import {
@@ -785,3 +787,9 @@ test('权益恒等式与已实现盈亏分项始终成立', () => {
 });
 
 console.log(`\n全部通过：${passed} 项`);
+
+// 供文档一致性检查读取，避免 README 中的自测项数手工漂移。
+fs.writeFileSync(
+  path.resolve(__dirname, '../.simulation-selftest.json'),
+  JSON.stringify({ passed, at: new Date().toISOString() }, null, 2),
+);

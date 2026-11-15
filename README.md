@@ -79,10 +79,10 @@
 |---|---|
 | 前端 | Vue 3、Vite、Pinia、Vue Router、lightweight-charts、Socket.IO |
 | 后端 | NestJS 11、TypeScript、Axios、ws、Socket.IO |
-| 数据 | 开发期 JSON 持久化；`prisma/schema.prisma` 预留给后续 SQLite/Prisma 迁移 |
+| 数据 | SQLite（`node:sqlite`）+ 金额最小单位；`prisma/schema.prisma` 保留同构模型 |
 | 桌面 | Electron、electron-builder、electron-updater |
 | 移动端 | Capacitor Android |
-| 测试 | `ts-node` 纯引擎自测（26 项，含预测盘交易） |
+| 测试 | `ts-node` 纯引擎自测（33 项，含预测盘交易） |
 
 ## 目录结构
 
@@ -546,10 +546,13 @@ npm run migrate:simulation
 
 ## 测试与构建
 
+里程碑验收请同时执行 [DOCS-CHECKLIST.md](DOCS-CHECKLIST.md) 中的一致性检查。
+
 ```bash
-# 模拟盘账务自测（30 项，含预测盘、现货交易和权益恒等式）
+# 模拟盘账务自测（33 项，含预测盘、现货交易和权益恒等式）
 cd backend
 npm run test:simulation
+npm run docs:check
 
 # 后端类型检查 + 构建
 npx tsc --noEmit
