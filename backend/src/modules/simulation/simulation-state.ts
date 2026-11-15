@@ -406,6 +406,54 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
 
   // ---------------------------------------------------------------- 行情与后台撮合
 
+  /**
+   * 资金费按 UTC 8 小时边界结算；从持仓上次结算时间开始补算停机期间漏掉的周期。
+   */
+  private async settleFunding(
+    userId: string,
+    engine: SimulationEngine,
+    markets: Record<string, MarketSnapshot>,
+  ): Promise<boolean> {
+    const fundingInterval = 8 * 60 * 60 * 1000;
+    const now = Date.now();
+    let changed = false;
+
+    for (const position of engine.listPositions(markets)) {
+      const rate = await this.marketService.getFundingRate(position.symbol);
+      if (!rate) continue;
+      this.repository.saveFundingRate(rate);
+
+      const lastMs = Date.parse(position.lastFundingAt || position.createdAt);
+      let next = Number.isFinite(lastMs)
+        ? Math.floor(lastMs / fundingInterval) * fundingInterval + fundingInterval
+        : now;
+      let count = 0;
+      while (next <= now && count < 1000) {
+        if (this.repository.hasFundingSettlement(userId, position.id, next)) {
+          engine.markFundingSettled(position.id, next);
+          next += fundingInterval;
+          count += 1;
+          continue;
+        }
+        const result = engine.applyFundingFee(position.id, rate.fundingRate, next, position.markPrice);
+        if (!result) break;
+        this.repository.recordFundingSettlement({
+          userId,
+          positionId: position.id,
+          symbol: position.symbol,
+          fundingTime: next,
+          fundingRate: result.rate,
+          notional: result.notional,
+          amount: result.amount,
+        });
+        changed = true;
+        next += fundingInterval;
+        count += 1;
+      }
+    }
+    return changed;
+  }
+
   private async tick(): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
@@ -423,6 +471,8 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
         const beforePositions = new Map(
           engine.listPositions({}).map((position) => [position.id, position]),
         );
+        // 先结算跨过的资金费周期，再做撮合；停机期间漏掉的周期会在这里补算。
+        const fundingChanged = await this.settleFunding(userId, engine, markets);
         const result = engine.processMarkets(markets);
 
         // 强平/止盈/止损订单只在触发瞬间产生一次，按新增订单识别并留档。
@@ -486,7 +536,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
           });
         }
 
-        if (result.changed) {
+        if (result.changed || fundingChanged) {
           this.saveUser(userId);
           for (const event of result.events) this.logger.log(`[${userId}] ${event}`);
         }
@@ -756,6 +806,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       position.qty = scaleQty(position.qty);
       position.margin = scaleMoney(position.margin);
       position.realizedPnl = scaleMoney(position.realizedPnl);
+      position.fundingFee = scaleMoney(position.fundingFee || 0);
     }
 
     for (const order of account.orders) {
@@ -985,6 +1036,7 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       position.entryPrice = round(position.entryPrice, 8);
       position.margin = round(position.margin, 8);
       position.realizedPnl = round(position.realizedPnl, 8);
+      position.fundingFee = round(position.fundingFee || 0, 8);
     });
     state.orders.forEach((order) => {
       order.qty = round(order.qty, 8);
@@ -1082,6 +1134,8 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
       isolatedMargin: this.money(position.isolatedMargin),
       unrealizedPnl: this.money(position.unrealizedPnl),
       realizedPnl: this.money(position.realizedPnl),
+      fundingFee: this.money(position.fundingFee || 0),
+      lastFundingAt: position.lastFundingAt || null,
       // 接口返回小数，前端展示时再 ×100；不要在这里返回百分数。
       roe: position.roe.toFixed(6),
       takeProfitPrice: position.takeProfitPrice == null ? undefined : this.price(position.takeProfitPrice),

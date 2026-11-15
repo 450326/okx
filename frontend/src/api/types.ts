@@ -271,6 +271,7 @@ export interface PositionItem {
   liquidationPrice: string;   // 强平价格
   unrealizedPnl: string;      // 未实现盈亏
   realizedPnl?: string;       // 该仓位已实现盈亏
+  fundingFee?: string;        // 累计资金费
   roe: string;                // 收益率（小数，0.15 表示 15%）
   takeProfitPrice?: string;   // 止盈价格
   stopLossPrice?: string;     // 止损价格

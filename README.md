@@ -414,6 +414,17 @@ npm run migrate:simulation
 
 账本以流水为准：`GET /api/v1/account/ledger-reconcile` 返回 `ledgerSum`、`walletBalance` 和 `diff`，用于重算校验；`POST /api/v1/account/ledger-rebuild` 可按流水重建钱包余额。
 
+### 资金费
+
+- 按 UTC 每 8 小时结算一次，费率来自 OKX `/public/funding-rate`
+- 费率快照保存在 `sim_funding_rates`
+- 结算记录保存在 `sim_funding_settlements`，按 `(user, position, funding_time)` 幂等
+- 正费率：多单支付、空单收取；负费率方向相反
+- 计算基数：持仓数量 × 结算时标记价格
+- 生成 `funding_fee` 流水，持仓页显示累计资金费
+- 结算在撮合前执行；进程停机后下一次 tick 会按 8 小时边界补算遗漏周期
+- 持仓记录 `last_funding_at` 持久化，避免重复结算
+
 ### 金额精度
 
 - 账务金额统一使用 `1e-8` 最小单位

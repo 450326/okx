@@ -115,6 +115,8 @@ function normalizeState(input: SimAccountState, config: EngineConfig): SimAccoun
             entryPrice,
             margin: round(Number(p.margin) || (qty * entryPrice) / leverage),
             realizedPnl: round(Number(p.realizedPnl) || 0),
+            fundingFee: round(Number(p.fundingFee) || 0),
+            lastFundingAt: p.lastFundingAt || now,
             takeProfitPrice: p.takeProfitPrice == null ? null : round(Number(p.takeProfitPrice)),
             stopLossPrice: p.stopLossPrice == null ? null : round(Number(p.stopLossPrice)),
             status: 'open',
@@ -379,6 +381,8 @@ export class SimulationEngine {
           isolatedMargin: position.margin,
           unrealizedPnl: pnl,
           realizedPnl: position.realizedPnl,
+          fundingFee: position.fundingFee || 0,
+          lastFundingAt: position.lastFundingAt || null,
           roe: position.margin > EPS ? round(pnl / position.margin, 10) : 0,
           takeProfitPrice: position.takeProfitPrice,
           stopLossPrice: position.stopLossPrice,
@@ -972,6 +976,49 @@ export class SimulationEngine {
     return position;
   }
 
+  /**
+   * 结算一笔资金费。正费率多单支付、空单收取；负费率方向相反。
+   * 金额按持仓名义价值计算，并写入 funding_fee 流水。
+   */
+  applyFundingFee(
+    positionId: string,
+    fundingRate: number,
+    fundingTimeMs: number,
+    markPrice: number,
+  ): { amount: number; notional: number; rate: number } | null {
+    const position = this.findPositionById(positionId);
+    if (!position || position.status !== 'open') return null;
+    const mark = round(markPrice, 8);
+    const notional = round(position.qty * mark, 8);
+    const rate = Number(fundingRate) || 0;
+    const direction = position.side === 'long' ? -1 : 1;
+    const amount = round(notional * rate * direction, 8);
+    if (amount === 0) {
+      position.lastFundingAt = new Date(fundingTimeMs).toISOString();
+      this.touch();
+      return { amount, notional, rate };
+    }
+    this.state.walletBalance = round(this.state.walletBalance + amount, 8);
+    position.fundingFee = round((position.fundingFee || 0) + amount, 8);
+    position.lastFundingAt = new Date(fundingTimeMs).toISOString();
+    position.updatedAt = iso();
+    this.addLedger('funding_fee', amount, this.state.walletBalance, {
+      symbol: position.symbol,
+      positionId: position.id,
+      remark: `资金费 ${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(4)}%`,
+    });
+    this.touch();
+    return { amount, notional, rate };
+  }
+
+  markFundingSettled(positionId: string, fundingTimeMs: number): void {
+    const position = this.findPositionById(positionId);
+    if (!position) return;
+    position.lastFundingAt = new Date(fundingTimeMs).toISOString();
+    position.updatedAt = iso();
+    this.touch();
+  }
+
   reset(): AccountSnapshot {
     const nextOrderId = this.state.nextOrderId;
     const nextPositionId = this.state.nextPositionId;
@@ -1389,6 +1436,8 @@ export class SimulationEngine {
         entryPrice: price,
         margin,
         realizedPnl: 0,
+        fundingFee: 0,
+        lastFundingAt: iso(),
         takeProfitPrice: order.takeProfitPrice,
         stopLossPrice: order.stopLossPrice,
         status: 'open',

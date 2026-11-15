@@ -152,6 +152,8 @@ model SimulationPosition {
   entryPrice      Float    @map("entry_price")
   margin          BigInt
   realizedPnl     BigInt   @default(0) @map("realized_pnl")
+  fundingFee      BigInt   @default(0) @map("funding_fee")
+  lastFundingAt   String?  @map("last_funding_at")
   takeProfitPrice Float?   @map("take_profit_price")
   stopLossPrice   Float?   @map("stop_loss_price")
   status          String
@@ -288,4 +290,28 @@ model SimulationMeta {
   key   String @id
   value String
   @@map("sim_meta")
+}
+
+model SimulationFundingRate {
+  symbol          String @id
+  fundingRate     Float  @map("funding_rate")
+  fundingTime     Int    @map("funding_time")
+  nextFundingTime Int    @map("next_funding_time")
+  source          String
+  fetchedAt       String @map("fetched_at")
+  @@map("sim_funding_rates")
+}
+
+model SimulationFundingSettlement {
+  id          Int    @id @default(autoincrement())
+  userId      String @map("user_id")
+  positionId  String @map("position_id")
+  symbol      String
+  fundingTime Int    @map("funding_time")
+  fundingRate Float  @map("funding_rate")
+  notional    BigInt
+  amount      BigInt
+  createdAt   String @map("created_at")
+  @@unique([userId, positionId, fundingTime])
+  @@map("sim_funding_settlements")
 }

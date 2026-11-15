@@ -5,6 +5,14 @@ import * as https from 'https';
 import { DexService } from './dex.service';
 import { InstrumentMeta } from './market.types';
 
+export interface FundingRateSnapshot {
+  symbol: string;
+  fundingRate: number;
+  fundingTime: number;
+  nextFundingTime: number;
+  source: 'okx';
+}
+
 const OKX_BASE = 'https://www.okx.com/api/v5';
 const BINANCE_BASE = 'https://fapi.binance.com/fapi/v1';
 const BINANCE_SPOT_BASE = 'https://api.binance.com/api/v3';
@@ -195,6 +203,7 @@ export class MarketService {
   private binanceSpotSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
   private okxSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
   private okxSpotSymbolsCache: { at: number; list: KnownSymbol[] } | null = null;
+  private readonly fundingRateCache = new Map<string, { at: number; value: FundingRateSnapshot | null }>();
   private readonly coinbaseAgent = new https.Agent({ keepAlive: true, maxSockets: 2 });
   private readonly binanceAgent = new https.Agent({ keepAlive: true, maxSockets: 4 });
 
@@ -453,6 +462,33 @@ export class MarketService {
   async getInstrumentMeta(symbol: string, exchange: string = 'okx'): Promise<InstrumentMeta | null> {
     const list = await this.getSymbols(exchange);
     return list.find((item) => item.symbol === symbol) || null;
+  }
+
+  async getFundingRate(symbol: string): Promise<FundingRateSnapshot | null> {
+    if (!symbol.endsWith('-USDT-SWAP')) return null;
+    const cached = this.fundingRateCache.get(symbol);
+    if (cached && Date.now() - cached.at < 60_000) return cached.value;
+    try {
+      const res = await axios.get<{ code: string; data: any[] }>(
+        `${OKX_BASE}/public/funding-rate`,
+        { params: { instId: symbol }, timeout: 10000 },
+      );
+      const item = res.data?.code === '0' ? res.data.data?.[0] : null;
+      const value: FundingRateSnapshot | null = item
+        ? {
+            symbol,
+            fundingRate: Number(item.fundingRate) || 0,
+            fundingTime: Number(item.fundingTime) || 0,
+            nextFundingTime: Number(item.nextFundingTime) || 0,
+            source: 'okx',
+          }
+        : null;
+      this.fundingRateCache.set(symbol, { at: Date.now(), value });
+      return value;
+    } catch {
+      this.fundingRateCache.set(symbol, { at: Date.now(), value: null });
+      return null;
+    }
   }
 
   private async getOkxSymbols(): Promise<KnownSymbol[]> {

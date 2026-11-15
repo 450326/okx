@@ -46,6 +46,7 @@ const LEDGER_TYPE_KEYS: Record<string, string> = {
   prediction_sell: 'ledgerType.predictionSell',
   spot_buy: 'ledgerType.spotBuy',
   spot_sell: 'ledgerType.spotSell',
+  funding_fee: 'ledgerType.fundingFee',
   reset: 'ledgerType.reset',
 };
 

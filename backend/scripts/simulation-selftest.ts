@@ -696,6 +696,36 @@ test('现货余额不足和卖出未持有会被拒绝', () => {
   );
 });
 
+test('资金费按名义价值结算：正费率多单支付、空单收取', () => {
+  const engine = newEngine();
+  const marketSnapshot = market(100, 'BTC-USDT-SWAP');
+  engine.placeOrder(
+    {
+      symbol: 'BTC-USDT-SWAP',
+      side: 'long',
+      action: 'open',
+      orderType: 'market',
+      leverage: 10,
+      qty: '1',
+    },
+    marketSnapshot,
+  );
+  const position = engine.listPositions({ 'BTC-USDT-SWAP': marketSnapshot })[0];
+  const before = engine.snapshot({ 'BTC-USDT-SWAP': marketSnapshot }).walletBalance;
+  const fundingTime = Date.now();
+  const result = engine.applyFundingFee(position.id, 0.0001, fundingTime, 100);
+  assert.ok(result);
+  approx(result!.notional, 100, 'funding notional');
+  approx(result!.amount, -0.01, 'long funding payment');
+  const after = engine.snapshot({ 'BTC-USDT-SWAP': marketSnapshot });
+  approx(after.walletBalance, before - 0.01, 'funding wallet change');
+  const afterPosition = engine.listPositions({ 'BTC-USDT-SWAP': marketSnapshot })[0];
+  approx(afterPosition.fundingFee || 0, -0.01, 'position funding fee');
+  const entry = engine.getLedger(50).find((item) => item.type === 'funding_fee');
+  assert.ok(entry, 'funding ledger entry');
+  assertAccountIdentity(after);
+});
+
 test('连续大批量现货交易后账本重算无尾差', () => {
   const engine = newEngine();
   const spotMarket = market(65000, 'BTC-USDT');

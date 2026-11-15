@@ -81,6 +81,8 @@ export class SimulationRepository {
         entry_price REAL NOT NULL,
         margin REAL NOT NULL,
         realized_pnl REAL NOT NULL DEFAULT 0,
+        funding_fee REAL NOT NULL DEFAULT 0,
+        last_funding_at TEXT,
         take_profit_price REAL,
         stop_loss_price REAL,
         status TEXT NOT NULL,
@@ -202,6 +204,28 @@ export class SimulationRepository {
         value TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS sim_funding_rates (
+        symbol TEXT PRIMARY KEY,
+        funding_rate REAL NOT NULL,
+        funding_time INTEGER NOT NULL,
+        next_funding_time INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        fetched_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sim_funding_settlements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        position_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        funding_time INTEGER NOT NULL,
+        funding_rate REAL NOT NULL,
+        notional REAL NOT NULL,
+        amount REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(user_id, position_id, funding_time)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_sim_positions_user ON sim_positions(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_orders_user ON sim_orders(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_ledger_user ON sim_ledger(user_id);
@@ -210,7 +234,16 @@ export class SimulationRepository {
       CREATE INDEX IF NOT EXISTS idx_sim_equity_user ON sim_equity_history(user_id);
     `);
 
+    this.ensureColumn('sim_positions', 'funding_fee', 'REAL NOT NULL DEFAULT 0');
+    this.ensureColumn('sim_positions', 'last_funding_at', 'TEXT');
     this.migrateMoneyUnits();
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!columns.some((item) => item.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 
   /** 旧库金额是十进制浮点，升级到 1e-8 最小单位后只转换一次。 */
@@ -360,13 +393,14 @@ export class SimulationRepository {
       }
 
       const positionStmt = this.db.prepare(
-        `INSERT INTO sim_positions (id,user_id,symbol,side,leverage,qty,entry_price,margin,realized_pnl,take_profit_price,stop_loss_price,status,opened_at,updated_at,closed_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO sim_positions (id,user_id,symbol,side,leverage,qty,entry_price,margin,realized_pnl,funding_fee,last_funding_at,take_profit_price,stop_loss_price,status,opened_at,updated_at,closed_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       );
       for (const item of state.positions) {
         positionStmt.run(
           item.id, userId, item.symbol, item.side, item.leverage, item.qty, item.entryPrice,
-          this.money(item.margin), this.money(item.realizedPnl), item.takeProfitPrice, item.stopLossPrice, item.status,
+          this.money(item.margin), this.money(item.realizedPnl), this.money(item.fundingFee || 0),
+          item.lastFundingAt || null, item.takeProfitPrice, item.stopLossPrice, item.status,
           item.openedAt, item.updatedAt, item.closedAt || null,
         );
       }
@@ -479,6 +513,72 @@ export class SimulationRepository {
     }
   }
 
+  saveFundingRate(snapshot: {
+    symbol: string;
+    fundingRate: number;
+    fundingTime: number;
+    nextFundingTime: number;
+    source: string;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO sim_funding_rates (symbol,funding_rate,funding_time,next_funding_time,source,fetched_at)
+         VALUES (?,?,?,?,?,?)
+         ON CONFLICT(symbol) DO UPDATE SET
+           funding_rate=excluded.funding_rate,
+           funding_time=excluded.funding_time,
+           next_funding_time=excluded.next_funding_time,
+           source=excluded.source,
+           fetched_at=excluded.fetched_at`,
+      )
+      .run(
+        snapshot.symbol,
+        snapshot.fundingRate,
+        snapshot.fundingTime,
+        snapshot.nextFundingTime,
+        snapshot.source,
+        new Date().toISOString(),
+      );
+  }
+
+  hasFundingSettlement(userId: string, positionId: string, fundingTime: number): boolean {
+    return Boolean(
+      this.db
+        .prepare(
+          'SELECT 1 FROM sim_funding_settlements WHERE user_id = ? AND position_id = ? AND funding_time = ?',
+        )
+        .get(userId, positionId, fundingTime),
+    );
+  }
+
+  recordFundingSettlement(input: {
+    userId: string;
+    positionId: string;
+    symbol: string;
+    fundingTime: number;
+    fundingRate: number;
+    notional: number;
+    amount: number;
+  }): boolean {
+    const result = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO sim_funding_settlements
+          (user_id,position_id,symbol,funding_time,funding_rate,notional,amount,created_at)
+         VALUES (?,?,?,?,?,?,?,?)`,
+      )
+      .run(
+        input.userId,
+        input.positionId,
+        input.symbol,
+        input.fundingTime,
+        input.fundingRate,
+        this.money(input.notional),
+        this.money(input.amount),
+        new Date().toISOString(),
+      );
+    return Number(result.changes) > 0;
+  }
+
   private mapPosition(row: any): SimPosition {
     return {
       id: row.id,
@@ -489,6 +589,8 @@ export class SimulationRepository {
       entryPrice: Number(row.entry_price),
       margin: this.readMoney(row.margin),
       realizedPnl: this.readMoney(row.realized_pnl),
+      fundingFee: this.readMoney(row.funding_fee || 0),
+      lastFundingAt: row.last_funding_at || null,
       takeProfitPrice: row.take_profit_price == null ? null : Number(row.take_profit_price),
       stopLossPrice: row.stop_loss_price == null ? null : Number(row.stop_loss_price),
       status: row.status,

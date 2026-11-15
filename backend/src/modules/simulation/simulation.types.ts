@@ -25,6 +25,7 @@ export type SimLedgerType =
   | 'prediction_sell'
   | 'spot_buy'
   | 'spot_sell'
+  | 'funding_fee'
   | 'reset';
 
 /** 一次行情快照，由 SimulationState 从 OKX 行情服务获取后传给引擎。 */
@@ -65,6 +66,10 @@ export interface SimPosition {
   margin: number;
   /** 该仓位累计已实现盈亏（已扣手续费，仅用于展示）。 */
   realizedPnl: number;
+  /** 该仓位累计资金费（正数为收取，负数为支付）。 */
+  fundingFee?: number;
+  /** 最近一次已结算资金费时间。 */
+  lastFundingAt?: string | null;
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
   status: 'open' | 'closed' | 'liquidated';
@@ -373,6 +378,10 @@ export interface PositionSnapshot {
   isolatedMargin: number;
   unrealizedPnl: number;
   realizedPnl: number;
+  /** 累计资金费（正数为收取，负数为支付）。 */
+  fundingFee?: number;
+  /** 最近一次已结算资金费时间。 */
+  lastFundingAt?: string | null;
   /** 收益率，返回小数（0.153846 表示 15.38%）。 */
   roe: number;
   takeProfitPrice: number | null;

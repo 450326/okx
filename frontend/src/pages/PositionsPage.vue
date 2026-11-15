@@ -159,6 +159,7 @@
             <th>{{ $t('positions.markPrice') }}</th>
             <th>{{ $t('positions.liquidationPrice') }}</th>
             <th>{{ $t('positions.risk') }}</th>
+            <th>{{ $t('positions.fundingFee') }}</th>
             <th>{{ $t('positions.pnl') }}</th>
             <th></th>
           </tr>
@@ -181,6 +182,9 @@
               <span :class="['risk-badge', `risk-${riskLevelFromPosition(item)}`]">
                 {{ $t(`risk.${riskLevelFromPosition(item)}`) }}
               </span>
+            </td>
+            <td :class="getTrendClass(item.fundingFee)">
+              {{ item.fundingFee ? formatSignedValue(item.fundingFee, 4) : '--' }}
             </td>
             <td :class="getTrendClass(item.unrealizedPnl)">{{ formatSignedValue(item.unrealizedPnl) }}</td>
             <td>
