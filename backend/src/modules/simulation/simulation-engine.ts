@@ -1129,6 +1129,8 @@ export class SimulationEngine {
           source: 'liquidation',
         });
         order.positionId = current.id;
+        order.triggerPrice = mark;
+        order.marginRatioAtTrigger = this.positionMarginRatio(current, mark);
         this.state.orders.push(order);
         const fillPrice = this.marketFillPrice(current.side === 'long' ? 'sell' : 'buy', market, true);
         try {
@@ -1144,14 +1146,14 @@ export class SimulationEngine {
 
       try {
         if (current.takeProfitPrice != null && this.tpTriggered(current, mark)) {
-          this.closeByTrigger(current, market, markets, 'tp');
+          this.closeByTrigger(current, market, markets, 'tp', mark);
           events.push(`止盈触发 ${current.symbol} ${current.side} @ ${mark}`);
           changed = true;
           continue;
         }
 
         if (current.stopLossPrice != null && this.slTriggered(current, mark)) {
-          this.closeByTrigger(current, market, markets, 'sl');
+          this.closeByTrigger(current, market, markets, 'sl', mark);
           events.push(`止损触发 ${current.symbol} ${current.side} @ ${mark}`);
           changed = true;
         }
@@ -1552,6 +1554,7 @@ export class SimulationEngine {
     market: MarketSnapshot,
     markets: Record<string, MarketSnapshot>,
     source: 'tp' | 'sl',
+    triggerPrice?: number,
   ): void {
     const order = this.newOrder({
       symbol: position.symbol,
@@ -1567,6 +1570,9 @@ export class SimulationEngine {
       source,
     });
     order.positionId = position.id;
+    const trigger = triggerPrice ?? this.markPrice(position, { [market.symbol]: market });
+    order.triggerPrice = trigger;
+    order.marginRatioAtTrigger = this.positionMarginRatio(position, trigger);
     this.state.orders.push(order);
     const fillPrice = this.marketFillPrice(position.side === 'long' ? 'sell' : 'buy', market, true);
     try {
@@ -1578,6 +1584,12 @@ export class SimulationEngine {
   }
 
   // ---------------------------------------------------------------- 内部：查询/工具
+
+  private positionMarginRatio(position: SimPosition, markPrice: number): number {
+    if (position.margin <= EPS) return 0;
+    const pnl = this.pnl(position, markPrice);
+    return round((position.margin + pnl) / position.margin, 8);
+  }
 
   private openPositions(): SimPosition[] {
     return this.state.positions.filter((p) => p.status === 'open' && p.qty > EPS);

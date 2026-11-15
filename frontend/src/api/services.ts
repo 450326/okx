@@ -26,6 +26,7 @@ import type {
   LiveOrderStatusResponse,
   NotificationListResponse,
   RecentTradeListResponse,
+  RiskEventListResponse,
   LoginResponse,
   LoginResult,
   PredictionHistoryInterval,
@@ -333,5 +334,12 @@ export const exchangeApi = {
   // 删除交易所账户
   deleteAccount(id: string) {
     return del<{ id: string; deleted: boolean }>(`/exchange-accounts/${id}`);
+  },
+};
+
+// 风控审计相关 API
+export const riskApi = {
+  events(limit = 20) {
+    return get<RiskEventListResponse>('/risk/events', { limit });
   },
 };

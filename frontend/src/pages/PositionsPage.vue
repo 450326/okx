@@ -203,6 +203,41 @@
       <p class="status-text">{{ modeStore.reasonOf('futuresPositions') }}</p>
     </section>
 
+    <section class="card risk-history-card">
+      <h2 class="section-title">{{ $t('positions.riskHistory') }}</h2>
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ $t('positions.time') }}</th>
+              <th>{{ $t('assets.symbol') }}</th>
+              <th>{{ $t('positions.riskType') }}</th>
+              <th>{{ $t('positions.triggerPrice') }}</th>
+              <th>{{ $t('positions.executionPrice') }}</th>
+              <th>{{ $t('positions.marginRatio') }}</th>
+              <th>{{ $t('positions.pnl') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="event in riskEvents" :key="event.id">
+              <td>{{ formatRiskTime(event.createdAt) }}</td>
+              <td>{{ event.symbol }}</td>
+              <td>
+                <span :class="['risk-event-type', `risk-event-${event.triggerType}`]">
+                  {{ $t(`riskEvent.${event.triggerType}`) }}
+                </span>
+              </td>
+              <td>{{ formatPrice(event.triggerPrice) }}</td>
+              <td>{{ formatPrice(event.executionPrice) }}</td>
+              <td>{{ (event.marginRatio * 100).toFixed(2) }}%</td>
+              <td :class="getTrendClass(event.realizedPnl)">{{ formatSignedCurrency(event.realizedPnl) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-if="!riskEvents.length" class="empty-state">{{ $t('positions.noRiskEvents') }}</div>
+    </section>
+
     <section v-if="canOpenOrders" class="card">
       <h2 class="section-title">{{ $t('positions.openOrders') }}</h2>
       <table class="table">
@@ -290,8 +325,8 @@ import { usePredictionStore } from '../stores/prediction';
 import { useSpotStore } from '../stores/spot';
 import { useAssetStore } from '../stores/assets';
 import CoinIcon from '../components/common/CoinIcon.vue';
-import { positionApi, orderApi } from '../api/services';
-import type { LiveOrderStatusItem, OrderItem, PositionItem, PredictionPositionRecord } from '../api/types';
+import { positionApi, orderApi, riskApi } from '../api/services';
+import type { LiveOrderStatusItem, OrderItem, PositionItem, PredictionPositionRecord, RiskEventItem } from '../api/types';
 import {
   formatCurrency,
   formatOrderId,
@@ -319,6 +354,7 @@ const cancellingId = ref('');
 const errorMessage = ref('');
 const predictionError = ref('');
 const liveOrderStatus = ref<LiveOrderStatusItem[]>([]);
+const riskEvents = ref<RiskEventItem[]>([]);
 
 const canFutures = computed(() => modeStore.can('futuresPositions'));
 const canOpenOrders = computed(() => modeStore.can('futuresOpenOrders'));
@@ -364,6 +400,12 @@ function formatQty(value?: string | number): string {
   return (Number(value) || 0).toLocaleString('en-US', { maximumFractionDigits: 8 });
 }
 
+function formatRiskTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
 function formatSpotPrice(value?: string | number): string {
   const numeric = Number(value) || 0;
   const digits = numeric >= 1000 ? 2 : numeric >= 1 ? 4 : numeric >= 0.01 ? 6 : 8;
@@ -392,6 +434,13 @@ async function loadPageData() {
   predictionStore.positions = [];
 
   const tasks: Promise<unknown>[] = [assetStore.fetchAssets(modeStore.mode)];
+  tasks.push(
+    riskApi.events(20).then((result) => {
+      riskEvents.value = result.list || [];
+    }).catch(() => {
+      riskEvents.value = [];
+    }),
+  );
 
   if (canFutures.value) {
     tasks.push(positionStore.fetchPositions(modeStore.mode));
@@ -662,6 +711,29 @@ watch(
 .risk-unknown {
   color: var(--text-secondary);
   background: var(--bg-soft);
+}
+
+.risk-event-type {
+  display: inline-flex;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.risk-event-liquidation {
+  color: #ff6b6b;
+  background: rgba(255, 70, 70, 0.14);
+}
+
+.risk-event-take_profit {
+  color: var(--color-up);
+  background: rgba(0, 200, 120, 0.12);
+}
+
+.risk-event-stop_loss {
+  color: var(--color-warning);
+  background: rgba(245, 166, 35, 0.12);
 }
 
 </style>

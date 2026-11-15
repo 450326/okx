@@ -13,6 +13,23 @@ import {
 } from './simulation.types';
 import { fromUnits, toUnits } from '../../common/money';
 
+export interface RiskEventRecord {
+  id: string;
+  userId: string;
+  positionId: string;
+  orderId: string;
+  symbol: string;
+  side: string;
+  triggerType: 'liquidation' | 'take_profit' | 'stop_loss';
+  triggerPrice: number;
+  executionPrice: number;
+  marginRatio: number;
+  qty: number;
+  realizedPnl: number;
+  ledgerId: string | null;
+  createdAt: string;
+}
+
 const { DatabaseSync } = require('node:sqlite');
 
 interface UserAccountRow {
@@ -114,7 +131,9 @@ export class SimulationRepository {
         reject_reason TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        filled_at TEXT
+        filled_at TEXT,
+        trigger_price REAL,
+        margin_ratio_at_trigger REAL
       );
 
       CREATE TABLE IF NOT EXISTS sim_spot_holdings (
@@ -226,16 +245,35 @@ export class SimulationRepository {
         UNIQUE(user_id, position_id, funding_time)
       );
 
+      CREATE TABLE IF NOT EXISTS risk_events (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        position_id TEXT NOT NULL,
+        order_id TEXT NOT NULL UNIQUE,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        trigger_type TEXT NOT NULL,
+        trigger_price REAL NOT NULL,
+        execution_price REAL NOT NULL,
+        margin_ratio REAL NOT NULL,
+        qty REAL NOT NULL,
+        realized_pnl REAL NOT NULL,
+        ledger_id TEXT,
+        created_at TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_sim_positions_user ON sim_positions(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_orders_user ON sim_orders(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_ledger_user ON sim_ledger(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_spot_user ON sim_spot_holdings(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_prediction_user ON sim_prediction_positions(user_id);
       CREATE INDEX IF NOT EXISTS idx_sim_equity_user ON sim_equity_history(user_id);
+      CREATE INDEX IF NOT EXISTS idx_risk_events_user ON risk_events(user_id, created_at);
     `);
-
     this.ensureColumn('sim_positions', 'funding_fee', 'REAL NOT NULL DEFAULT 0');
     this.ensureColumn('sim_positions', 'last_funding_at', 'TEXT');
+    this.ensureColumn('sim_orders', 'trigger_price', 'REAL');
+    this.ensureColumn('sim_orders', 'margin_ratio_at_trigger', 'REAL');
     this.migrateMoneyUnits();
   }
 
@@ -406,8 +444,8 @@ export class SimulationRepository {
       }
 
       const orderStmt = this.db.prepare(
-        `INSERT INTO sim_orders (order_id,user_id,symbol,side,action,order_type,leverage,qty,price,status,filled_qty,avg_fill_price,fee,reserved_margin,reduce_only,take_profit_price,stop_loss_price,source,position_id,reject_reason,created_at,updated_at,filled_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO sim_orders (order_id,user_id,symbol,side,action,order_type,leverage,qty,price,status,filled_qty,avg_fill_price,fee,reserved_margin,reduce_only,take_profit_price,stop_loss_price,source,position_id,reject_reason,created_at,updated_at,filled_at,trigger_price,margin_ratio_at_trigger)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       );
       for (const item of state.orders) {
         orderStmt.run(
@@ -416,6 +454,7 @@ export class SimulationRepository {
           this.money(item.fee), this.money(item.reservedMargin), item.reduceOnly ? 1 : 0, item.takeProfitPrice,
           item.stopLossPrice, item.source, item.positionId || null, item.rejectReason || null,
           item.createdAt, item.updatedAt, item.filledAt || null,
+          item.triggerPrice ?? null, item.marginRatioAtTrigger ?? null,
         );
       }
 
@@ -579,6 +618,102 @@ export class SimulationRepository {
     return Number(result.changes) > 0;
   }
 
+  recordRiskEvent(input: {
+    id: string;
+    userId: string;
+    positionId: string;
+    orderId: string;
+    symbol: string;
+    side: string;
+    triggerType: 'liquidation' | 'take_profit' | 'stop_loss';
+    triggerPrice: number;
+    executionPrice: number;
+    marginRatio: number;
+    qty: number;
+    realizedPnl: number;
+    ledgerId?: string | null;
+    createdAt: string;
+  }): boolean {
+    const result = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO risk_events
+          (id,user_id,position_id,order_id,symbol,side,trigger_type,trigger_price,execution_price,margin_ratio,qty,realized_pnl,ledger_id,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .run(
+        input.id,
+        input.userId,
+        input.positionId,
+        input.orderId,
+        input.symbol,
+        input.side,
+        input.triggerType,
+        input.triggerPrice,
+        input.executionPrice,
+        input.marginRatio,
+        input.qty,
+        this.money(input.realizedPnl),
+        input.ledgerId || null,
+        input.createdAt,
+      );
+    return Number(result.changes) > 0;
+  }
+
+  listRiskEvents(userId: string, limit = 50): RiskEventRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM risk_events WHERE user_id = ? ORDER BY created_at DESC LIMIT ?')
+      .all(userId, Math.max(1, Math.min(200, limit))) as any[];
+    return rows.map((row) => this.mapRiskEvent(row));
+  }
+
+  listAllRiskEvents(limit = 200): RiskEventRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM risk_events ORDER BY created_at DESC LIMIT ?')
+      .all(Math.max(1, Math.min(500, limit))) as any[];
+    return rows.map((row) => this.mapRiskEvent(row));
+  }
+
+  riskStats(): {
+    total: number;
+    liquidation: number;
+    takeProfit: number;
+    stopLoss: number;
+    liquidationRate: number;
+  } {
+    const rows = this.db
+      .prepare('SELECT trigger_type AS type, COUNT(*) AS count FROM risk_events GROUP BY trigger_type')
+      .all() as Array<{ type: string; count: number }>;
+    const count = (type: string) => Number(rows.find((row) => row.type === type)?.count || 0);
+    const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+    const liquidation = count('liquidation');
+    return {
+      total,
+      liquidation,
+      takeProfit: count('take_profit'),
+      stopLoss: count('stop_loss'),
+      liquidationRate: total ? Number(((liquidation / total) * 100).toFixed(2)) : 0,
+    };
+  }
+
+  private mapRiskEvent(row: any): RiskEventRecord {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      positionId: row.position_id,
+      orderId: row.order_id,
+      symbol: row.symbol,
+      side: row.side,
+      triggerType: row.trigger_type,
+      triggerPrice: Number(row.trigger_price),
+      executionPrice: Number(row.execution_price),
+      marginRatio: Number(row.margin_ratio),
+      qty: Number(row.qty),
+      realizedPnl: this.readMoney(row.realized_pnl),
+      ledgerId: row.ledger_id || null,
+      createdAt: row.created_at,
+    };
+  }
+
   private mapPosition(row: any): SimPosition {
     return {
       id: row.id,
@@ -619,6 +754,9 @@ export class SimulationRepository {
       takeProfitPrice: row.take_profit_price == null ? null : Number(row.take_profit_price),
       stopLossPrice: row.stop_loss_price == null ? null : Number(row.stop_loss_price),
       source: row.source,
+      triggerPrice: row.trigger_price == null ? null : Number(row.trigger_price),
+      marginRatioAtTrigger:
+        row.margin_ratio_at_trigger == null ? null : Number(row.margin_ratio_at_trigger),
       positionId: row.position_id || null,
       rejectReason: row.reject_reason || null,
       createdAt: row.created_at,

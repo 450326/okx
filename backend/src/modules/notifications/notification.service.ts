@@ -31,6 +31,8 @@ interface TriggeredOrder {
   avgFillPrice: number | null;
   source: 'liquidation' | 'tp' | 'sl';
   positionId?: string | null;
+  triggerPrice?: number;
+  marginRatioAtTrigger?: number;
 }
 
 @Injectable()
@@ -113,18 +115,24 @@ export class NotificationService {
     };
     const item = meta[order.source];
     const fill = order.avgFillPrice == null ? '市价' : String(order.avgFillPrice);
+    const trigger =
+      order.triggerPrice == null
+        ? ''
+        : `触发价 ${order.triggerPrice}，保证金率 ${((order.marginRatioAtTrigger || 0) * 100).toFixed(2)}%。`;
     this.create(userId, {
       type: item.type,
       severity: item.severity,
       title: item.title,
-      message: `${order.symbol} ${order.side === 'long' ? '多单' : '空单'} ${order.qty} 已平仓，成交价 ${fill}。${
+      message: `${order.symbol} ${order.side === 'long' ? '多单' : '空单'} ${order.qty} 已平仓，${trigger}成交价 ${fill}。${
         positionRealizedPnl != null ? `该仓位累计已实现盈亏 ${positionRealizedPnl.toFixed(2)} USDT。` : ''
       }`,
       symbol: order.symbol,
       positionId: order.positionId || undefined,
       data: {
         orderId: order.orderId,
+        triggerPrice: order.triggerPrice ?? null,
         fillPrice: order.avgFillPrice,
+        marginRatio: order.marginRatioAtTrigger ?? null,
         qty: order.qty,
         source: order.source,
         realizedPnl: positionRealizedPnl ?? null,

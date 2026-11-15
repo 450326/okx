@@ -492,6 +492,34 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
           const position = engine
             .getState()
             .positions.find((item) => item.id === order.positionId);
+          const pnlLedger = engine
+            .getState()
+            .ledger.find(
+              (entry) =>
+                entry.orderId === order.orderId &&
+                (entry.type === 'realized_pnl' || entry.type === 'liquidation'),
+            );
+          this.repository.recordRiskEvent({
+            id: `risk_${order.orderId}`,
+            userId,
+            positionId: order.positionId || '',
+            orderId: order.orderId,
+            symbol: order.symbol,
+            side: order.side,
+            triggerType:
+              order.source === 'liquidation'
+                ? 'liquidation'
+                : order.source === 'tp'
+                  ? 'take_profit'
+                  : 'stop_loss',
+            triggerPrice: order.triggerPrice ?? order.avgFillPrice ?? 0,
+            executionPrice: order.avgFillPrice ?? 0,
+            marginRatio: order.marginRatioAtTrigger ?? 0,
+            qty: order.filledQty || order.qty,
+            realizedPnl: pnlLedger?.amount ?? 0,
+            ledgerId: pnlLedger?.id || null,
+            createdAt: order.filledAt || order.updatedAt,
+          });
           this.notifications.notifyTriggeredOrder(
             userId,
             {
@@ -502,6 +530,8 @@ export class SimulationState implements OnModuleInit, OnModuleDestroy {
               avgFillPrice: order.avgFillPrice,
               source: order.source as 'liquidation' | 'tp' | 'sl',
               positionId: order.positionId,
+              triggerPrice: order.triggerPrice ?? undefined,
+              marginRatioAtTrigger: order.marginRatioAtTrigger ?? undefined,
             },
             position?.realizedPnl,
           );

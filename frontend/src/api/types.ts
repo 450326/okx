@@ -160,6 +160,26 @@ export interface LedgerListResponse {
   list: LedgerItem[]; // 流水列表
 }
 
+export interface RiskEventItem {
+  id: string;
+  positionId: string;
+  orderId: string;
+  symbol: string;
+  side: 'long' | 'short';
+  triggerType: 'liquidation' | 'take_profit' | 'stop_loss';
+  triggerPrice: number;
+  executionPrice: number;
+  marginRatio: number;
+  qty: number;
+  realizedPnl: number;
+  ledgerId?: string | null;
+  createdAt: string;
+}
+
+export interface RiskEventListResponse {
+  list: RiskEventItem[];
+}
+
 // 市场交易对信息
 export interface MarketSymbol {
   symbol: string;          // 交易对名称

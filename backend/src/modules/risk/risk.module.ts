@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { RiskController } from './risk.controller';
 
-@Module({})
+@Module({
+  controllers: [RiskController],
+})
 export class RiskModule {}

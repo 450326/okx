@@ -696,6 +696,29 @@ test('现货余额不足和卖出未持有会被拒绝', () => {
   );
 });
 
+test('止盈止损订单记录触发价、执行价和触发保证金率', () => {
+  const engine = newEngine();
+  const entryMarket = market(100, 'BTC-USDT-SWAP');
+  engine.placeOrder(
+    {
+      symbol: 'BTC-USDT-SWAP',
+      side: 'long',
+      action: 'open',
+      orderType: 'market',
+      leverage: 10,
+      qty: '1',
+      takeProfitPrice: '101',
+    },
+    entryMarket,
+  );
+  engine.processMarkets({ 'BTC-USDT-SWAP': market(102, 'BTC-USDT-SWAP') });
+  const order = engine.getState().orders.find((item) => item.source === 'tp');
+  assert.ok(order, 'tp order exists');
+  approx(order!.triggerPrice || 0, 102, 'trigger price');
+  assert.ok((order!.avgFillPrice || 0) > 0, 'execution price');
+  assert.ok((order!.marginRatioAtTrigger || 0) > 0, 'margin ratio at trigger');
+});
+
 test('资金费按名义价值结算：正费率多单支付、空单收取', () => {
   const engine = newEngine();
   const marketSnapshot = market(100, 'BTC-USDT-SWAP');

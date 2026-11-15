@@ -97,6 +97,8 @@ export interface SimOrder {
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
   source: SimOrderSource;
+  triggerPrice?: number | null;
+  marginRatioAtTrigger?: number | null;
   positionId?: string | null;
   rejectReason?: string | null;
   createdAt: string;

@@ -183,6 +183,8 @@ model SimulationOrder {
   takeProfitPrice  Float?   @map("take_profit_price")
   stopLossPrice    Float?   @map("stop_loss_price")
   source           String
+  triggerPrice     Float?   @map("trigger_price")
+  marginRatioAtTrigger Float? @map("margin_ratio_at_trigger")
   positionId       String?  @map("position_id")
   rejectReason     String?  @map("reject_reason")
   createdAt        String   @map("created_at")
@@ -314,4 +316,23 @@ model SimulationFundingSettlement {
   createdAt   String @map("created_at")
   @@unique([userId, positionId, fundingTime])
   @@map("sim_funding_settlements")
+}
+
+model RiskEvent {
+  id              String  @id
+  userId          String  @map("user_id")
+  positionId      String  @map("position_id")
+  orderId         String  @unique @map("order_id")
+  symbol          String
+  side            String
+  triggerType     String  @map("trigger_type")
+  triggerPrice    Float   @map("trigger_price")
+  executionPrice  Float   @map("execution_price")
+  marginRatio     Float   @map("margin_ratio")
+  qty             Float
+  realizedPnl     BigInt  @map("realized_pnl")
+  ledgerId        String? @map("ledger_id")
+  createdAt       String  @map("created_at")
+  @@index([userId, createdAt])
+  @@map("risk_events")
 }
