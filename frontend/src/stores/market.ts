@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import { io, type Socket } from 'socket.io-client';
 import { marketApi } from '../api/services';
 import type { DepthLevel, KlineItem, MarketSymbol, RecentTradeItem, TickerItem } from '../api/types';
+import { getServerBaseUrl } from '../config/api';
 
 function normalizeDepth(levels: [string, string][], reverse = false): DepthLevel[] {
   const source = reverse ? [...levels].reverse() : levels;
@@ -116,7 +117,7 @@ export const useMarketStore = defineStore('market', () => {
       return;
     }
 
-    socket = io('http://localhost:3000/market', {
+    socket = io(`${getServerBaseUrl()}/market`, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: Infinity,

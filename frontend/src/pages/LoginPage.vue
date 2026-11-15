@@ -85,6 +85,8 @@
           {{ $t('login.forgotPassword') }}
         </button>
 
+        <RouterLink class="server-link" to="/server-settings">{{ $t('serverSettings.title') }}</RouterLink>
+
         <div v-if="forgotOpen" class="forgot-panel">
           <input v-model="forgotEmail" class="forgot-input" type="email" :placeholder="$t('login.email')" />
           <button class="ghost-btn" type="button" :disabled="forgotBusy" @click="requestPasswordReset">
@@ -151,7 +153,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter, useRoute, RouterLink } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { authApi } from '../api/services';
 import { $t } from '../utils/i18n';
@@ -539,6 +541,15 @@ async function handleFaceLogin() {
   color: var(--text-secondary);
   font-size: 11px;
   cursor: pointer;
+  text-decoration: underline;
+}
+
+.server-link {
+  display: block;
+  margin: 8px auto 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-align: center;
   text-decoration: underline;
 }
 

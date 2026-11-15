@@ -22,6 +22,7 @@ import PositionsPage from '../pages/PositionsPage.vue';
 import AssetsPage from '../pages/AssetsPage.vue';
 // 引入设置页面组件
 import SettingsPage from '../pages/SettingsPage.vue';
+import ServerSettingsPage from '../pages/ServerSettingsPage.vue';
 // 引入历史委托页面组件
 import OrdersHistoryPage from '../pages/OrdersHistoryPage.vue';
 // 引入认证状态 Store
@@ -37,6 +38,11 @@ const router = createRouter({
       path: '/login',      // 登录页路由
       name: 'login',        // 路由名称
       component: LoginPage, // 登录页组件
+    },
+    {
+      path: '/server-settings',
+      name: 'server-settings',
+      component: ServerSettingsPage,
     },
     {
       path: '/',            // 根路径，使用应用布局
@@ -75,7 +81,7 @@ router.beforeEach(async (to, _from, next) => {
       try {
         await authStore.login('demo@test.com', 'demo');
       } catch {
-        next();
+        next('/login');
         return;
       }
     }

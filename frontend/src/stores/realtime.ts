@@ -7,6 +7,7 @@ import { useOrderStore } from './orders';
 import { usePositionStore } from './positions';
 import { useModeStore } from './mode';
 import { useNotificationStore } from './notifications';
+import { getServerBaseUrl } from '../config/api';
 
 export const useRealtimeStore = defineStore('realtime', () => {
   const connected = ref(false);
@@ -86,7 +87,7 @@ export const useRealtimeStore = defineStore('realtime', () => {
   function start(): void {
     if (started.value) return;
     started.value = true;
-    socket = io('http://localhost:3000/account', {
+    socket = io(`${getServerBaseUrl()}/account`, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: Infinity,

@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import { io, type Socket } from 'socket.io-client';
 import { notificationApi } from '../api/services';
 import type { AppNotification } from '../api/types';
+import { getServerBaseUrl } from '../config/api';
 
 export const useNotificationStore = defineStore('notifications', () => {
   const notifications = ref<AppNotification[]>([]);
@@ -71,7 +72,7 @@ export const useNotificationStore = defineStore('notifications', () => {
   function startPolling() {
     if (pollTimer) return;
     void fetchNotifications(false);
-    socket = io('http://localhost:3000/notifications', {
+    socket = io(`${getServerBaseUrl()}/notifications`, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: Infinity,

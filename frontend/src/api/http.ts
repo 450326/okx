@@ -4,9 +4,10 @@ import axios from 'axios';
 import type { AxiosError } from 'axios';
 // 引入 API 响应信封类型
 import type { ApiEnvelope, LoginResponse } from './types';
+import { getApiBaseUrl } from '../config/api';
 
-// API 基础地址
-const API_BASE_URL = 'http://localhost:3000/api/v1';
+// API 基础地址：构建时 VITE_API_BASE_URL，运行时可由服务地址设置页覆盖。
+const API_BASE_URL = getApiBaseUrl();
 let refreshPromise: Promise<string | null> | null = null;
 
 export class ApiError extends Error {
@@ -29,7 +30,7 @@ async function refreshAccessToken(): Promise<string | null> {
   refreshPromise = (async () => {
     try {
       const response = await axios.post<ApiEnvelope<LoginResponse>>(
-        `${API_BASE_URL}/auth/refresh`,
+        `${getApiBaseUrl()}/auth/refresh`,
         { refreshToken },
         { timeout: 10000 },
       );
@@ -53,6 +54,12 @@ async function refreshAccessToken(): Promise<string | null> {
 export const http = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
+});
+
+// 设置页保存后无需刷新也能让后续 Axios 请求使用新地址。
+window.addEventListener('api-base-url-changed', (event) => {
+  const detail = (event as CustomEvent<string>).detail;
+  if (detail) http.defaults.baseURL = detail;
 });
 
 // 请求拦截器：自动附加 JWT 令牌
@@ -120,6 +127,18 @@ http.interceptors.response.use(
         config.headers.Authorization = `Bearer ${token}`;
         return http(config);
       });
+    }
+
+    // 没有 HTTP 响应通常表示地址不可达、DNS/端口错误或设备离线。
+    if (!error.response) {
+      return Promise.reject(
+        new ApiError(
+          '无法连接服务器，请检查网络或服务地址',
+          -1,
+          'server_unreachable',
+          '打开「服务地址设置」并测试服务器连通性',
+        ),
+      );
     }
 
     // 提取错误信息，优先使用服务端返回的消息

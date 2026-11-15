@@ -124,6 +124,18 @@
 
       <!-- 交易市场 -->
       <section class="settings-card card">
+        <h3 class="settings-section-title">{{ $t('serverSettings.title') }}</h3>
+        <div class="settings-row">
+          <span class="settings-label">{{ $t('serverSettings.address') }}</span>
+          <span class="settings-value">{{ getApiBaseUrl() }}</span>
+        </div>
+        <RouterLink class="ghost-btn server-settings-link" to="/server-settings">
+          {{ $t('serverSettings.open') }}
+        </RouterLink>
+      </section>
+
+      <!-- 交易市场 -->
+      <section class="settings-card card">
         <h3 class="settings-section-title">{{ $t('settings.exchange') }}</h3>
         <div class="settings-row">
           <span class="settings-label">{{ $t('settings.currentExchange') }}</span>
@@ -199,6 +211,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { RouterLink } from 'vue-router';
 import LocaleSwitcher from '../components/common/LocaleSwitcher.vue';
 import CurrencySwitcher from '../components/common/CurrencySwitcher.vue';
 import ConfirmModal from '../components/common/ConfirmModal.vue';
@@ -210,6 +223,7 @@ import { useThemeStore } from '../stores/theme';
 import { useExchangeStore } from '../stores/exchange';
 import { useAssetStore } from '../stores/assets';
 import { $t } from '../utils/i18n';
+import { getApiBaseUrl } from '../config/api';
 
 const authStore = useAuthStore();
 const marketStore = useMarketStore();
