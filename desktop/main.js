@@ -3,6 +3,7 @@ const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
 const net = require('net');
+const fs = require('fs');
 
 let mainWindow = null;
 let backendProcess = null;
@@ -39,18 +40,46 @@ function waitForPort(port, timeoutMs = 20000) {
   });
 }
 
+function getBackendNode() {
+  const runtimeName = process.platform === 'win32' ? 'node.exe' : 'node';
+  const packagedNode = path.join(process.resourcesPath, 'node', runtimeName);
+  const localNode = path.join(__dirname, 'runtime', runtimeName);
+  if (app.isPackaged) {
+    if (!fs.existsSync(packagedNode)) {
+      throw new Error(
+        `安装包缺少内置 Node 运行时：${packagedNode}。请重新构建安装包，不能依赖用户系统 Node。`,
+      );
+    }
+    return packagedNode;
+  }
+  if (fs.existsSync(localNode)) return localNode;
+  const configured = process.env.OKX_NODE_BINARY;
+  if (configured && fs.existsSync(configured)) return configured;
+  return 'node';
+}
+
 function startBackend() {
   return new Promise((resolve, reject) => {
     const backendDir = path.join(getResourceBase(), 'backend');
     const serverScript = path.join(backendDir, 'dist', 'main.js');
+    let nodeBinary;
+    try {
+      nodeBinary = getBackendNode();
+    } catch (error) {
+      reject(error);
+      return;
+    }
     const env = {
       ...process.env,
       PORT: '3000',
       NODE_ENV: 'production',
     };
 
-    backendProcess = spawn('node', [serverScript], {
-      env, cwd: backendDir, stdio: ['pipe', 'pipe', 'pipe'],
+    backendProcess = spawn(nodeBinary, [serverScript], {
+      env,
+      cwd: backendDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
 
     const output = [];

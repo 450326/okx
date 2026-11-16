@@ -28,6 +28,7 @@ frontend/electron/
 # Desktop build artifacts
 desktop/node_modules/
 desktop/release/
+desktop/runtime/
 desktop/.electron-cache/
 .electron-cache/
 

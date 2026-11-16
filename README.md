@@ -156,6 +156,44 @@ frontend/node_modules
 
 如果缺少依赖，`start-dev.bat` 会直接提示并退出，而不会下载任何内容。
 
+### 桌面安装包（无需用户安装 Node）
+
+安装包会内置 Node 运行时，最终用户机器不需要安装 Node。
+
+构建机要求：
+
+```text
+Node >= 22.5（后端使用 node:sqlite）
+```
+
+构建步骤：
+
+```bat
+desktop\build-installer.bat
+```
+
+`electron-builder` 前会执行：
+
+```text
+desktop/scripts/prepare-runtime.js
+```
+
+该脚本把当前构建机的 Node 可执行文件复制到：
+
+```text
+desktop/runtime/node.exe
+```
+
+安装后位于：
+
+```text
+resources/node/node.exe
+```
+
+Electron 主进程优先启动这个内置运行时，而不是 `spawn('node')`；如果安装包缺少它，会直接显示明确错误，不会依赖用户 PATH。
+
+`desktop/runtime/` 是构建产物，已加入 `.gitignore`。
+
 ### 手动启动（需要系统 Node/npm）
 
 ```bash

@@ -82,6 +82,7 @@ echo [OK] Electron 依赖安装完成
 echo.
 
 echo [7/7] 构建 Windows 安装程序...
+call npm run prepare-runtime || exit /b 1
 call npx electron-builder --win
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] 安装程序构建失败!

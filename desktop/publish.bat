@@ -75,10 +75,12 @@ echo.
 echo [5/5] 构建安装程序并发布到 GitHub...
 if "%GH_TOKEN%"=="" (
     echo [WARN] GH_TOKEN 未设置，仅本地构建，不上传
-    call npx electron-builder --win --x64
+    call npm run prepare-runtime || exit /b 1
+call npx electron-builder --win --x64
 ) else (
     echo [INFO] 正在发布到 GitHub Releases...
-    call npx electron-builder --win --x64 -p always
+    call npm run prepare-runtime || exit /b 1
+call npx electron-builder --win --x64 -p always
 )
 
 if %ERRORLEVEL% NEQ 0 (
