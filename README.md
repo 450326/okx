@@ -2,7 +2,7 @@
 
 一个面向学习与演示的期货交易工作台：接入 **OKX / Binance / Coinbase** 实际行情，支持 K 线、盘口、成交、模拟开平仓、限价撮合、止盈止损、强平、资金流水和权益曲线，并把 **股票代币** 与加密货币分开展示。
 
-> ⚠️ 本项目当前定位为模拟交易/行情演示，**不构成投资建议**。真实盘下单尚未接入，请勿用于真实资金交易。
+> ⚠️ 本项目定位为模拟交易/行情演示，**不构成投资建议**。实盘交易需自行承担风险，请先在 OKX 模拟环境验证。
 
 ![首页](docs/screenshots/home.png)
 
@@ -382,6 +382,10 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 
 `live_trading` 状态下支持 OKX USDT 永续市价/限价开平仓：
 
+- 开仓前调用 OKX `POST /api/v5/account/set-leverage` 同步所选杠杆和保证金模式
+- 下单 `tdMode` 使用所选 `cross` / `isolated`，不再硬编码逐仓
+- 平仓使用 OKX 持仓返回的 `mgnMode`，避免与账户实际模式不一致
+- 杠杆设置失败时直接拒绝下单，不按错误的本地保证金估算继续提交
 - 前端为每个订单生成 `clientOrderId`，网络异常重试时复用
 - 服务端将 `clientOrderId` 映射持久化到 `backend/data/live-orders.json`
 - 相同 `clientOrderId` + 相同参数重复提交只返回第一次结果，不重复下单

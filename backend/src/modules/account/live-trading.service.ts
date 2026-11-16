@@ -62,12 +62,15 @@ export class LiveTradingService {
     const side = input.side === 'short' ? 'short' : 'long';
     const action = input.action === 'close' ? 'close' : 'open';
     const orderType = input.orderType === 'limit' ? 'limit' : 'market';
-    const leverage = Math.max(1, Math.round(Number(input.leverage) || 10));
-    if (leverage > instrument.maxLeverage) {
+    const marginMode: 'cross' | 'isolated' =
+      input.marginMode === 'cross' ? 'cross' : 'isolated';
+    const leverage = Math.max(1, Math.round(Number(input.leverage) || 10));    if (leverage > instrument.maxLeverage) {
       throw new LiveOrderError(`杠杆超过 ${symbol} 最大限制 ${instrument.maxLeverage}x`, LIVE_ORDER_ERROR.INVALID);
     }
 
     const position = action === 'close' ? await this.findPosition(symbol, side) : null;
+    const effectiveMarginMode =
+      action === 'close' && position?.marginMode ? position.marginMode : marginMode;
     const qty =
       input.qty === undefined || input.qty === ''
         ? position?.qty || 0
@@ -120,6 +123,7 @@ export class LiveTradingService {
       action,
       orderType,
       leverage,
+      marginMode: effectiveMarginMode,
       qty: String(qty),
       markPrice: String(last),
       price: String(price),
@@ -160,6 +164,9 @@ export class LiveTradingService {
     const side = input.side === 'short' ? 'short' : 'long';
     const action = input.action === 'close' ? 'close' : 'open';
     const orderType = input.orderType === 'limit' ? 'limit' : 'market';
+    const marginMode: 'cross' | 'isolated' =
+      preview.marginMode === 'cross' ? 'cross' : 'isolated';
+    const leverage = Number(preview.leverage) || 10;
     const orderSide =
       action === 'open'
         ? side === 'long'
@@ -168,6 +175,24 @@ export class LiveTradingService {
         : side === 'long'
           ? 'sell'
           : 'buy';
+
+    // OKX 实盘杠杆是账户/品种级配置；下单前必须同步，避免本地按选择杠杆
+    // 估算保证金、交易所却按旧杠杆占用。
+    if (action === 'open') {
+      const leverageResult = await this.okxApi.setLeverage(account, {
+        instId: symbol,
+        lever: String(leverage),
+        mgnMode: marginMode,
+        posSide: side,
+      });
+      if (!leverageResult || leverageResult.code !== '0') {
+        throw new LiveOrderError(
+          leverageResult?.msg || 'OKX 设置杠杆失败，请检查账户保证金模式和持仓',
+          LIVE_ORDER_ERROR.REJECTED,
+          clientOrderId,
+        );
+      }
+    }
 
     const now = new Date().toISOString();
     const record: LiveOrderRecord = {
@@ -178,6 +203,7 @@ export class LiveTradingService {
       side,
       action,
       orderType,
+      marginMode,
       qty: String(qty),
       price: orderType === 'limit' ? String(preview.price) : null,
       leverage: Number(preview.leverage),
@@ -192,7 +218,7 @@ export class LiveTradingService {
 
     const payload: Parameters<OkxApiService['placeOrder']>[1] = {
       instId: symbol,
-      tdMode: 'isolated',
+      tdMode: marginMode,
       side: orderSide,
       posSide: side,
       ordType: orderType,
@@ -342,6 +368,7 @@ export class LiveTradingService {
       side: record.side,
       action: record.action,
       orderType: record.orderType,
+      marginMode: record.marginMode || 'isolated',
       qty: record.qty,
       price: record.price,
       leverage: record.leverage,
@@ -409,6 +436,7 @@ export class LiveTradingService {
       qty: this.instruments.contractsToQty(Math.abs(num(item.pos)), instrument),
       side: String(item.posSide || (num(item.pos) > 0 ? 'long' : 'short')) as 'long' | 'short',
       entryPrice: num(item.avgPx),
+      marginMode: item.mgnMode === 'cross' ? ('cross' as const) : ('isolated' as const),
     };
   }
 
@@ -430,6 +458,7 @@ export class LiveTradingService {
           action: input.action,
           orderType: input.orderType,
           leverage: input.leverage,
+          marginMode: input.marginMode ?? 'isolated',
           qty: input.qty,
           price: input.price ?? null,
           reduceOnly: input.reduceOnly ?? input.action === 'close',

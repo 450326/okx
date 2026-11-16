@@ -60,6 +60,28 @@ export class OkxApiService {
     return this.request(account, 'GET', '/api/v5/account/config');
   }
 
+  async setLeverage(
+    account: OkxAccount,
+    body: {
+      instId: string;
+      lever: string;
+      mgnMode: 'cross' | 'isolated';
+      posSide?: 'long' | 'short';
+    },
+  ) {
+    return this.request(account, 'POST', '/api/v5/account/set-leverage', body);
+  }
+
+  async getLeverage(
+    account: OkxAccount,
+    params: { instId: string; mgnMode: 'cross' | 'isolated' },
+  ) {
+    const query = new URLSearchParams();
+    query.set('instId', params.instId);
+    query.set('mgnMode', params.mgnMode);
+    return this.request(account, 'GET', `/api/v5/account/leverage-info?${query.toString()}`);
+  }
+
   async placeOrder(
     account: OkxAccount,
     body: {

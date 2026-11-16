@@ -10,6 +10,7 @@ export interface LiveOrderRecord {
   side: 'long' | 'short';
   action: 'open' | 'close';
   orderType: 'market' | 'limit';
+  marginMode?: 'cross' | 'isolated';
   qty: string;
   price: string | null;
   leverage: number;
