@@ -394,13 +394,13 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 
 邮件默认使用控制台日志占位，生产环境需接入 SMTP/SES。开发环境注册/找回密码响应会带 `devVerificationToken` / `devResetToken`，生产环境不返回。设置 `AUTH_REQUIRE_EMAIL_VERIFICATION=true` 可强制邮箱验证后才能登录。
 
-内置账号：
+账号初始化：
 
-```text
-演示账号：demo@test.com / demo
-超级账号：super@test.com / super
-游客：登录页「游客登录」
-```
+- 服务端默认不创建任何内置账号，登录页也不会自动登录；未登录访问任意页面会跳转 `/login`，登录后回到原页面。登录页提供注册入口（`/auth/register`），也可以使用游客登录。
+- 本地演示需要 `demo` 账号时显式开启：`OKX_SEED_DEMO_ACCOUNTS=true`，可选 `OKX_DEMO_EMAIL` / `OKX_DEMO_PASSWORD`（默认 `demo@test.com` / `demo`），仅建议本地使用。
+- 超级账号通过 `OKX_SUPER_EMAIL` / `OKX_SUPER_PASSWORD`（至少 12 位）创建或提升，仓库里不保存任何超管密码。
+- 升级旧数据库：以 `NODE_ENV=production` 启动时，仍在使用公开默认密码的内置 `demo@test.com` / `super@test.com` 会被禁用登录、取消超级权限并撤销 refresh token。
+- 游客账号通过登录页「游客登录」创建，7 天有效期，与正式账号隔离。
 
 超级账号在实盘模式下可在设置中开启「超级权限 · 实盘模拟数据」，以只读方式查看模拟预测和现货持仓；普通账号即使伪造请求头，服务端也会拒绝。
 

@@ -64,38 +64,38 @@ const router = createRouter({
   ],
 });
 
-// 全局路由前置守卫：自动登录 / 认证检查
-router.beforeEach(async (to, _from, next) => {
-  // 登录页始终可访问，方便从 demo 切换到超级权限账号
-  if (to.name === 'login') {
-    next();
-    return;
+// 全局路由前置守卫：未登录时跳转登录页，不再自动使用演示账号
+router.beforeEach(async (to) => {
+  // 登录页与服务器设置页始终可访问
+  if (to.name === 'login') return true;
+  if (to.name === 'server-settings') return true;
+
+  // 不需要认证的路由直接放行
+  if (!to.meta?.requiresAuth) return true;
+
+  const authStore = useAuthStore();
+  const token = localStorage.getItem('accessToken');
+
+  // 没有令牌：带上回跳地址去登录页，由用户自己选择账号或游客登录
+  if (!token) {
+    return { name: 'login', query: { redirect: to.fullPath } };
   }
-  // 检查需要认证的路由
-  if (to.meta?.requiresAuth) {
-    // 从 localStorage 获取访问令牌
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-      // 无令牌时使用演示账号自动登录
-      const authStore = useAuthStore();
-      try {
-        await authStore.login('demo@test.com', 'demo');
-      } catch {
-        next('/login');
-        return;
-      }
-    }
-    // 如果尚未认证则拉取用户信息
-    if (!useAuthStore().isAuthenticated) {
-      try {
-        await useAuthStore().fetchMe();
-      } catch {
-        // 开发阶段忽略登录失败
-      }
+
+  // 有令牌但内存里还没有用户信息（例如刷新页面），补拉一次
+  if (!authStore.isAuthenticated) {
+    try {
+      await authStore.fetchMe();
+    } catch {
+      // 令牌失效时清掉本地会话，避免带着坏 token 反复请求
+      await authStore.logout();
     }
   }
-  // 继续导航
-  next();
+
+  if (!authStore.isAuthenticated) {
+    return { name: 'login', query: { redirect: to.fullPath } };
+  }
+
+  return true;
 });
 
 // 导出路由实例

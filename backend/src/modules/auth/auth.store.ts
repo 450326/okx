@@ -68,6 +68,7 @@ export class AuthStore {
     this.db.exec('PRAGMA foreign_keys = ON');
     this.migrate();
     this.seed();
+    this.retireLegacyDefaultAccounts();
   }
 
   private migrate(): void {
@@ -115,9 +116,6 @@ export class AuthStore {
     this.ensureColumn('users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
     this.ensureColumn('users', 'guest_expires_at', 'TEXT');
     this.ensureColumn('users', 'last_login_at', 'TEXT');
-    this.db
-      .prepare('UPDATE users SET email_verified = 1 WHERE email IN (?, ?)')
-      .run('demo@test.com', 'super@test.com');
 
     const legacyGuests = this.db
       .prepare("SELECT id, created_at FROM users WHERE is_guest = 1 AND guest_expires_at IS NULL")
@@ -135,22 +133,83 @@ export class AuthStore {
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
+  /**
+   * 服务端不再内置任何共享账号。
+   *
+   * - 演示账号：只有显式设置 OKX_SEED_DEMO_ACCOUNTS=true 才创建（本地演示/自测用）。
+   * - 超级账号：只有同时设置 OKX_SUPER_EMAIL / OKX_SUPER_PASSWORD 才创建或提升，
+   *   仓库里不再出现任何写死的超管密码。
+   */
   private seed(): void {
-    const now = new Date().toISOString();
-    const seedUsers = [
-      { id: 'u_demo', email: 'demo@test.com', nickname: 'Demo User', password: 'demo', isSuper: 0 },
-      { id: 'u_super', email: 'super@test.com', nickname: 'Super Admin', password: 'super', isSuper: 1 },
+    this.seedDemoAccount();
+    this.seedSuperAccount();
+  }
+
+  private seedDemoAccount(): void {
+    if (process.env.OKX_SEED_DEMO_ACCOUNTS !== 'true') return;
+    if (process.env.NODE_ENV === 'production') {
+      this.logger.warn('生产环境忽略 OKX_SEED_DEMO_ACCOUNTS，请改用 OKX_SUPER_EMAIL / OKX_SUPER_PASSWORD 创建管理员账号');
+      return;
+    }
+    const email = (process.env.OKX_DEMO_EMAIL || 'demo@test.com').trim().toLowerCase();
+    const password = process.env.OKX_DEMO_PASSWORD || 'demo';
+    if (this.findByEmail(email)) return;
+    this.createUser({ email, nickname: 'Demo User', password, emailVerified: true });
+    this.logger.warn(`已按 OKX_SEED_DEMO_ACCOUNTS 创建演示账号 ${email}（仅限本地使用）`);
+  }
+
+  private seedSuperAccount(): void {
+    const email = (process.env.OKX_SUPER_EMAIL || '').trim().toLowerCase();
+    const password = process.env.OKX_SUPER_PASSWORD || '';
+    if (!email) return;
+    if (password.length < 12) {
+      this.logger.warn('OKX_SUPER_PASSWORD 长度不足 12 位，已跳过超级账号初始化');
+      return;
+    }
+
+    const existing = this.findByEmail(email);
+    if (existing) {
+      if (!existing.isSuper) {
+        this.db
+          .prepare('UPDATE users SET is_super = 1, email_verified = 1 WHERE id = ?')
+          .run(existing.id);
+        this.logger.warn(`已将 ${email} 提升为超级账号（来自 OKX_SUPER_EMAIL）`);
+      }
+      return;
+    }
+
+    this.createUser({
+      email,
+      nickname: 'Super Admin',
+      password,
+      isSuper: true,
+      emailVerified: true,
+    });
+    this.logger.warn(`已按 OKX_SUPER_EMAIL 创建超级账号 ${email}`);
+  }
+
+  /**
+   * 旧版本会内置 demo/demo 与 super/super。生产环境（NODE_ENV=production）启动时，
+   * 若这些账号仍在使用公开的默认密码，直接禁用登录并撤销超级权限，避免默认后门。
+   */
+  private retireLegacyDefaultAccounts(): void {
+    if (process.env.NODE_ENV !== 'production') return;
+    const legacyAccounts = [
+      { email: 'demo@test.com', password: 'demo', label: '演示账号' },
+      { email: 'super@test.com', password: 'super', label: '超级账号' },
     ];
-    for (const user of seedUsers) {
-      const existing = this.findById(user.id);
-      if (existing) continue;
+    for (const item of legacyAccounts) {
+      const row = this.db
+        .prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE')
+        .get(item.email) as StoredUserRow | undefined;
+      if (!row || !row.password_hash || !verifyPassword(item.password, row.password_hash)) continue;
       this.db
         .prepare(
-          `INSERT INTO users (id,email,nickname,password_hash,is_guest,is_super,email_verified,created_at)
-           VALUES (?,?,?,?,?,?,1,?)`,
+          'UPDATE users SET password_hash = NULL, is_super = 0, token_version = token_version + 1 WHERE id = ?',
         )
-        .run(user.id, user.email, user.nickname, hashPassword(user.password), 0, user.isSuper, now);
-      this.logger.log(`已创建种子账号 ${user.email}`);
+        .run(row.id);
+      this.db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(row.id);
+      this.logger.warn(`已禁用仍使用默认密码的${item.label} ${item.email}，请改用显式创建的管理员账号`);
     }
   }
 

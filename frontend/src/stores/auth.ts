@@ -85,10 +85,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function loginWithBiometric() {
-    return login('demo@test.com', 'demo');
-  }
-
   // 单飞刷新：多个 401 同时发生时只发一次 refresh 请求
   async function ensureFreshAccessToken(): Promise<string | null> {
     if (refreshPromise) return refreshPromise;
@@ -148,7 +144,6 @@ export const useAuthStore = defineStore('auth', () => {
     authLabel,
     login,
     loginAsGuest,
-    loginWithBiometric,
     verifyTwoFactor,
     ensureFreshAccessToken,
     logout,

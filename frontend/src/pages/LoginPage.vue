@@ -18,7 +18,21 @@
           <p class="login-subtitle">{{ $t('login.subtitle') }}</p>
         </div>
 
-        <form class="login-form" @submit.prevent="handleLogin">
+        <form class="login-form" @submit.prevent="handleSubmit">
+          <div v-if="mode === 'register'" class="field">
+            <label for="nickname">{{ $t('login.nickname') }}</label>
+            <div class="input-wrap">
+              <input
+                id="nickname"
+                v-model="form.nickname"
+                type="text"
+                placeholder="Satoshi"
+                autocomplete="nickname"
+                :disabled="submitting"
+              />
+            </div>
+          </div>
+
           <div class="field">
             <label for="email">{{ $t('login.email') }}</label>
             <div class="input-wrap">
@@ -71,15 +85,17 @@
 
           <button v-if="!twoFactorRequired" type="submit" class="login-btn" :disabled="!canSubmit || submitting">
             <span v-if="submitting" class="btn-loader"></span>
-            <span v-else>{{ $t('login.loginBtn') }}</span>
+            <span v-else>{{ mode === 'register' ? $t('login.registerBtn') : $t('login.loginBtn') }}</span>
           </button>
           <button v-else type="button" class="login-btn" :disabled="twoFactorCode.length !== 6 || submitting" @click="handleVerifyTwoFactor">
             <span v-if="submitting" class="btn-loader"></span>
             <span v-else>{{ $t('login.verifyTwoFactor') }}</span>
           </button>
-        </form>
 
-        <p class="login-hint">{{ $t('login.accountHint') }}</p>
+          <button v-if="!twoFactorRequired" type="button" class="mode-switch" @click="toggleMode">
+            {{ mode === 'register' ? $t('login.loginPrompt') : $t('login.registerPrompt') }}
+          </button>
+        </form>
 
         <button class="forgot-link" type="button" @click="forgotOpen = !forgotOpen">
           {{ $t('login.forgotPassword') }}
@@ -110,32 +126,6 @@
           {{ $t('login.guestLogin') }}
         </button>
 
-        <div class="login-divider">
-          <span>{{ $t('login.or') }}</span>
-        </div>
-
-        <button
-          class="faceid-btn"
-          :disabled="faceLoading || !biometricSupported"
-          @click="handleFaceLogin"
-        >
-          <svg v-if="faceLoading" class="face-spinner" width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
-          </svg>
-          <template v-else>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M2 8V6a2 2 0 012-2h4"/>
-              <path d="M16 4h4a2 2 0 012 2v2"/>
-              <path d="M22 16v2a2 2 0 01-2 2h-4"/>
-              <path d="M8 20H6a2 2 0 01-2-2v-2"/>
-              <circle cx="12" cy="15" r="1"/>
-              <circle cx="9" cy="11" r="1"/>
-              <circle cx="15" cy="11" r="1"/>
-            </svg>
-            <span>{{ biometricSupported ? $t('login.faceId') : $t('login.faceUnsupported') }}</span>
-          </template>
-        </button>
-
         <div v-if="errorMsg" class="login-error">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           {{ errorMsg }}
@@ -162,10 +152,10 @@ const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
 
-const form = ref({ email: '', password: '' });
+const form = ref({ email: '', password: '', nickname: '' });
+const mode = ref<'login' | 'register'>('login');
 const showPassword = ref(false);
 const submitting = ref(false);
-const faceLoading = ref(false);
 const errorMsg = ref('');
 const twoFactorRequired = ref(false);
 const twoFactorCode = ref('');
@@ -176,10 +166,36 @@ const forgotToken = ref('');
 const forgotPassword = ref('');
 const forgotMessage = ref('');
 const forgotBusy = ref(false);
-const biometricSupported = ref(false);
 
 const isDark = computed(() => document.documentElement.getAttribute('data-theme') !== 'light');
-const canSubmit = computed(() => form.value.email.trim() && form.value.password.trim());
+const canSubmit = computed(() => {
+  const email = form.value.email.trim();
+  const password = form.value.password;
+  return Boolean(email && password && (mode.value === 'login' || password.length >= 6));
+});
+
+// 没有内置账号，新用户在前端直接注册（后端 /auth/register）
+function toggleMode() {
+  mode.value = mode.value === 'login' ? 'register' : 'login';
+  errorMsg.value = '';
+  twoFactorRequired.value = false;
+}
+
+function handleSubmit() {
+  if (!canSubmit.value) return;
+  if (mode.value === 'register') {
+    void handleRegister();
+    return;
+  }
+  void handleLogin();
+}
+
+// 登录成功后回到被拦截的页面；只接受站内路径，避免开放重定向
+function redirectAfterLogin() {
+  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '';
+  const target = redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/';
+  router.replace(target);
+}
 
 onMounted(async () => {
   const verifyToken = typeof route.query.verifyToken === 'string' ? route.query.verifyToken : '';
@@ -190,9 +206,6 @@ onMounted(async () => {
     } catch (err) {
       errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
     }
-  }
-  if (typeof PublicKeyCredential !== 'undefined' && typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
-    biometricSupported.value = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
   }
 });
 
@@ -209,7 +222,23 @@ async function handleLogin() {
       twoFactorCode.value = '';
       return;
     }
-    router.replace('/');
+    redirectAfterLogin();
+  } catch (err) {
+    errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
+  } finally {
+    submitting.value = false;
+  }
+}
+
+// 注册成功后直接尝试登录；若后端要求邮箱验证，登录失败信息会展示在表单下方
+async function handleRegister() {
+  submitting.value = true;
+  errorMsg.value = '';
+  try {
+    const email = form.value.email.trim();
+    await authApi.register(email, form.value.password, form.value.nickname.trim() || undefined);
+    await authStore.login(email, form.value.password);
+    redirectAfterLogin();
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
   } finally {
@@ -223,7 +252,7 @@ async function handleVerifyTwoFactor() {
   errorMsg.value = '';
   try {
     await authStore.verifyTwoFactor(twoFactorChallenge.value, twoFactorCode.value);
-    router.replace('/');
+    redirectAfterLogin();
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
   } finally {
@@ -271,41 +300,11 @@ async function handleGuestLogin() {
   errorMsg.value = '';
   try {
     await authStore.loginAsGuest();
-    router.replace('/');
+    redirectAfterLogin();
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : $t('login.errorGeneric');
   } finally {
     submitting.value = false;
-  }
-}
-
-async function handleFaceLogin() {
-  if (!biometricSupported.value) return;
-  faceLoading.value = true;
-  errorMsg.value = '';
-
-  try {
-    const credential = await navigator.credentials.get({
-      publicKey: {
-        challenge: new Uint8Array(32),
-        rpId: window.location.hostname,
-        userVerification: 'required',
-        timeout: 60000,
-      },
-    } as CredentialRequestOptions);
-
-    if (credential) {
-      await authStore.loginWithBiometric();
-      router.replace('/');
-    }
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'NotAllowedError') {
-      errorMsg.value = $t('login.errorCanceled');
-    } else {
-      errorMsg.value = $t('login.errorFailed');
-    }
-  } finally {
-    faceLoading.value = false;
   }
 }
 </script>
@@ -494,6 +493,22 @@ async function handleFaceLogin() {
   cursor: not-allowed;
 }
 
+.mode-switch {
+  margin-top: 12px;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mode-switch:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
 .btn-loader {
   width: 22px;
   height: 22px;
@@ -571,56 +586,6 @@ async function handleFaceLogin() {
   background: var(--bg-elevated);
   color: var(--text-primary);
   font-size: 12px;
-}
-
-.login-divider {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin: 22px 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.login-divider::before,
-.login-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border-color);
-}
-
-.faceid-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 13px;
-  border: 1.5px solid var(--border-color);
-  border-radius: 14px;
-  background: var(--bg-soft);
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.faceid-btn:hover:not(:disabled) {
-  border-color: var(--text-secondary);
-  background: var(--bg-card);
-}
-
-.faceid-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.face-spinner {
-  animation: spin 0.7s linear infinite;
-  color: var(--text-secondary);
 }
 
 .login-error {
