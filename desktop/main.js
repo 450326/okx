@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const net = require('net');
 const fs = require('fs');
+const crypto = require('crypto');
 
 let mainWindow = null;
 let backendProcess = null;
@@ -58,6 +59,39 @@ function getBackendNode() {
   return 'node';
 }
 
+/**
+ * 安装包不再携带 backend/.env。
+ *
+ * 后端在 NODE_ENV=production 下必须拿到 ACCOUNT_ENCRYPTION_KEY，因此这里为每台机器
+ * 生成独立密钥并保存在用户数据目录：升级时保留，不同用户/机器之间互不相同。
+ * 如需集中管理，可用同名环境变量覆盖。
+ */
+function loadOrCreateSecrets() {
+  const dir = app.getPath('userData');
+  const file = path.join(dir, 'runtime-secrets.json');
+  try {
+    const saved = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (
+      typeof saved.accountEncryptionKey === 'string' &&
+      /^[0-9a-fA-F]{64}$/.test(saved.accountEncryptionKey) &&
+      typeof saved.authJwtSecret === 'string' &&
+      saved.authJwtSecret.length >= 32
+    ) {
+      return saved;
+    }
+  } catch {
+    // 首次启动或文件损坏时重新生成
+  }
+
+  const secrets = {
+    accountEncryptionKey: crypto.randomBytes(32).toString('hex'),
+    authJwtSecret: crypto.randomBytes(48).toString('hex'),
+  };
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(secrets, null, 2), { encoding: 'utf-8', mode: 0o600 });
+  return secrets;
+}
+
 function startBackend() {
   return new Promise((resolve, reject) => {
     const backendDir = path.join(getResourceBase(), 'backend');
@@ -69,10 +103,13 @@ function startBackend() {
       reject(error);
       return;
     }
+    const secrets = loadOrCreateSecrets();
     const env = {
       ...process.env,
       PORT: '3000',
       NODE_ENV: 'production',
+      ACCOUNT_ENCRYPTION_KEY: process.env.ACCOUNT_ENCRYPTION_KEY || secrets.accountEncryptionKey,
+      AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET || secrets.authJwtSecret,
     };
 
     backendProcess = spawn(nodeBinary, [serverScript], {

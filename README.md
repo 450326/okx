@@ -194,6 +194,20 @@ Electron 主进程优先启动这个内置运行时，而不是 `spawn('node')`�
 
 `desktop/runtime/` 是构建产物，已加入 `.gitignore`。
 
+#### 安装包与密钥（.env 不会被分发）
+
+安装包**不包含** `backend/.env`：`extraResources` 只打包 `dist/`、`prisma/`、`node_modules/` 和 `package.json`，`prepare-runtime.js` 还会在构建前检查配置，一旦有人把 `.env` 加回 filter 就直接失败。
+
+桌面端首次启动时为每台机器生成独立密钥，保存在用户数据目录：
+
+```text
+<userData>/runtime-secrets.json
+```
+
+后端进程会收到由它注入的 `ACCOUNT_ENCRYPTION_KEY`（64 位 hex）和 `AUTH_JWT_SECRET`；也可以用同名环境变量覆盖，便于统一管理。升级安装包时该文件保留，因此已加密的交易所 API Key 不会失效。
+
+不要在 `backend/.env` 里保存生产密钥后再打包：该文件只用于本地开发。如果旧版本安装包曾经携带固定密钥，请视为已泄露并轮换对应的交易所 API Key。
+
 ### 手动启动（需要系统 Node/npm）
 
 ```bash
