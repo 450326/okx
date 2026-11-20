@@ -110,7 +110,9 @@
             <span class="hero-divider"></span>
             <span>{{ $t('trade.bid') }} {{ currentTicker?.bidPrice || '--' }}</span>
             <span class="hero-divider"></span>
-            <span>{{ $t('trade.volume24h') }} {{ currentTicker?.volume24h || '--' }}</span>
+            <span>{{ $t('trade.volume24h') }} {{ currentTicker?.volume24h ? formatCompactNumber(currentTicker.volume24h) : '--' }}</span>
+            <span class="hero-divider"></span>
+            <span>{{ $t('trade.turnover24h') }} {{ currentTicker?.turnover24h ? formatCompactVolume(currentTicker.turnover24h) : '--' }}</span>
           </div>
           <div class="range-strip compact-range">
             <div class="range-track">
@@ -133,13 +135,13 @@
             <CoinIcon :symbol="item.symbol" :size="34" :asset-class="item.assetClass" />
             <div>
               <div class="market-symbol">{{ splitSymbol(item.symbol).base }} <span>/ {{ splitSymbol(item.symbol).quote }}</span></div>
-              <div class="market-sub">{{ formatVolumeCompact(item.volume24h) }}</div>
+              <div class="market-sub">{{ formatCompactNumber(item.volume24h) }}</div>
             </div>
           </div>
 
           <div class="market-price">
             <div>{{ item.lastPrice }}</div>
-            <div class="market-turnover">{{ formatTurnover(item.volume24h, item.lastPrice) }}</div>
+            <div class="market-turnover">{{ $t('trade.turnover') }} {{ formatCompactVolume(item.turnover24h) }}</div>
           </div>
 
           <div :class="['market-change', getTrendClass(item.priceChangePercent24h)]">
@@ -328,7 +330,7 @@ import { toExchangeSymbol } from '../utils/symbol';
 import { positionApi } from '../api/services';
 import type { TickerItem } from '../api/types';
 // 数值格式化与涨跌颜色工具函数
-import { formatPercent, formatSignedValue, formatSignedCurrency, formatCurrency, formatCompactVolume, getTrendClass, formatOrderId, formatOrderStatus } from '../utils/format';
+import { formatPercent, formatSignedValue, formatSignedCurrency, formatCurrency, formatCompactVolume, formatCompactNumber, getTrendClass, formatOrderId, formatOrderStatus } from '../utils/format';
 
 // 各 Store 实例
 const assetStore = useAssetStore();
@@ -432,36 +434,6 @@ const yieldPercent = computed(() => {
 function splitSymbol(symbol: string) {
   const [base = symbol, quote = 'USDT'] = symbol.split('-');
   return { base, quote };
-}
-
-// 格式化成交量（紧凑显示）
-function formatVolumeCompact(value?: string) {
-  const amount = Number(value || 0);
-
-  if (amount >= 1000000) {
-    return `₮${(amount / 1000000).toFixed(2)} 百万`;
-  }
-
-  if (amount >= 1000) {
-    return `₮${(amount / 1000).toFixed(2)} 千`;
-  }
-
-  return `₮${amount.toFixed(2)}`;
-}
-
-// 格式化成交易额（24H 成交量 × 最新价）
-function formatTurnover(volume?: string, price?: string) {
-  const amount = Number(volume || 0) * Number(price || 0);
-
-  if (amount >= 1000000) {
-    return `₮${(amount / 1000000).toFixed(2)}M`;
-  }
-
-  if (amount >= 1000) {
-    return `₮${(amount / 1000).toFixed(2)}K`;
-  }
-
-  return `₮${amount.toFixed(0)}`;
 }
 
 const router = useRouter();

@@ -103,7 +103,10 @@ interface OkxTicker {
   open24h: string;
   high24h: string;
   low24h: string;
+  /** 24h 成交量：合约张数（SWAP/FUTURES）或基础币数量（SPOT）。 */
   vol24h: string;
+  /** 24h 成交量：衍生品为基础币数量，现货为计价币（USDT）成交额。 */
+  volCcy24h?: string;
 }
 
 interface OkxTrade {
@@ -379,6 +382,8 @@ export class MarketService {
         const last = Number(ticker.last) || 0;
         const open = Number(ticker.open24h) || 0;
         const change = open > 0 ? ((last - open) / open) * 100 : 0;
+        // 现货 volCcy24h 本身就是计价币（USDT）成交额；缺字段时用基础币成交量 × 最新价兜底。
+        const turnover = Number(ticker.volCcy24h) || Number(ticker.vol24h) * last;
         return {
           symbol: ticker.instId,
           lastPrice: ticker.last,
@@ -389,6 +394,7 @@ export class MarketService {
           high24h: ticker.high24h,
           low24h: ticker.low24h,
           volume24h: ticker.vol24h,
+          turnover24h: turnover.toFixed(2),
           priceChangePercent24h: change.toFixed(2),
           assetClass: 'crypto' as const,
         };
@@ -422,6 +428,8 @@ export class MarketService {
             high24h: ticker.highPrice,
             low24h: ticker.lowPrice,
             volume24h: ticker.volume,
+            // 币安直接返回计价币成交额
+            turnover24h: String(Number(ticker.quoteVolume) || 0),
             priceChangePercent24h: ticker.priceChangePercent,
             assetClass: 'crypto' as const,
           };
@@ -658,6 +666,8 @@ export class MarketService {
         high24h: String(Number(stats.high) || last),
         low24h: String(Number(stats.low) || last),
         volume24h: String(Number(stats.volume) || 0),
+        // Coinbase 只给基础币成交量，按最新价折算成 USDT 成交额
+        turnover24h: (Number(stats.volume) * last || 0).toFixed(2),
         priceChangePercent24h: changePct,
         assetClass: 'crypto',
       };
@@ -706,6 +716,8 @@ export class MarketService {
       const open = t.open24h || last;
       const change = Number(last) - Number(open);
       const changePct = Number(open) ? ((change / Number(open)) * 100).toFixed(2) : '0.00';
+      // 合约的 volCcy24h 是基础币数量，乘最新价才是 USDT 成交额；vol24h 是张数，不能直接乘价格。
+      const turnover = Number(t.volCcy24h) * Number(last);
 
       return {
         symbol: t.instId,
@@ -717,6 +729,7 @@ export class MarketService {
         high24h: t.high24h,
         low24h: t.low24h,
         volume24h: t.vol24h,
+        turnover24h: Number.isFinite(turnover) ? turnover.toFixed(2) : '0',
         priceChangePercent24h: changePct,
         assetClass: stockSet.has(t.instId) ? 'stock' : 'crypto',
       };
@@ -796,6 +809,8 @@ export class MarketService {
       high24h: t.highPrice,
       low24h: t.lowPrice,
       volume24h: t.volume,
+      // 币安合约 /ticker/24hr 的 quoteVolume 即 USDT 成交额
+      turnover24h: String(Number(t.quoteVolume) || 0),
       priceChangePercent24h: t.priceChangePercent,
       assetClass: 'crypto',
     }));

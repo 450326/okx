@@ -67,7 +67,11 @@
         </div>
         <div class="ticker-stat">
           <span>{{ $t('trade.volume24h') }}</span>
-          <strong>{{ formatCompactVolume(ticker.volume24h) }}</strong>
+          <strong>{{ formatCompactNumber(ticker.volume24h) }}</strong>
+        </div>
+        <div class="ticker-stat">
+          <span>{{ $t('trade.turnover24h') }}</span>
+          <strong>{{ formatCompactVolume(ticker.turnover24h) }}</strong>
         </div>
       </div>
     </section>
@@ -206,6 +210,7 @@ import { useAssetStore } from '../stores/assets';
 import { useModeStore } from '../stores/mode';
 import type { SpotHoldingRecord } from '../api/types';
 import {
+  formatCompactNumber,
   formatCompactVolume,
   formatCurrency,
   formatPercent,

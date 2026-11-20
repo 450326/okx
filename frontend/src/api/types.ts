@@ -214,6 +214,7 @@ export interface TickerItem {
   high24h: string;              // 24 小时最高价
   low24h: string;               // 24 小时最低价
   volume24h: string;            // 24 小时成交量
+  turnover24h?: string;         // 24 小时成交额（计价币，通常为 USDT）
   priceChangePercent24h: string; // 24 小时涨跌幅
   assetClass?: 'crypto' | 'stock'; // 加密货币 / 股票代币
 }

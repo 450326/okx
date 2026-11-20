@@ -15,7 +15,7 @@
 - Coinbase：USD 现货，当前 8 个主流交易对
 - K 线：`1m / 5m / 15m / 30m / 1h / 4h / 1d`
 - K 线支持鼠标拖拽平移、滚轮缩放；实时刷新不会抢回用户拖拽后的位置
-- 盘口深度、最近成交、24H 涨跌/成交量
+- 盘口深度、最近成交、24H 涨跌/成交量/成交额
 - OKX/Binance 实时 WebSocket；Coinbase 使用 REST 轮询
 - 交易页顶部可切换 OKX / Binance / Coinbase，路由和 K 线同步切换
 

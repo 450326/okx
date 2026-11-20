@@ -103,7 +103,7 @@
             <CoinIcon :symbol="item.symbol" :size="26" :asset-class="item.assetClass" />
             <div>
               <div class="watch-symbol">{{ item.symbol }}</div>
-              <div class="watch-volume">24H 量 {{ item.volume24h }}</div>
+              <div class="watch-volume">24H 成交额 {{ formatCompactVolume(item.turnover24h) }}</div>
             </div>
           </div>
           <div class="watch-price-block">
@@ -176,7 +176,7 @@ import { useOrderStore } from '../stores/orders';
 // 持仓状态管理
 import { usePositionStore } from '../stores/positions';
 // 数值格式化与涨跌颜色工具函数
-import { formatPercent, getTrendClass } from '../utils/format';
+import { formatCompactVolume, formatPercent, getTrendClass } from '../utils/format';
 // 交易对格式转换
 import { exchangeFromSymbol, isSymbolForExchange, toExchangeSymbol, type ExchangeId } from '../utils/symbol';
 // 国际化

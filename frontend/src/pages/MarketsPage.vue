@@ -64,6 +64,13 @@
                 <i :class="{ active: sortKey === 'volume' && sortDirection === 'desc' }">▼</i>
               </span>
             </th>
+            <th class="sortable" @click="toggleSort('turnover')">
+              {{ $t('trade.turnover24h') }}
+              <span class="sort-arrows">
+                <i :class="{ active: sortKey === 'turnover' && sortDirection === 'asc' }">▲</i>
+                <i :class="{ active: sortKey === 'turnover' && sortDirection === 'desc' }">▼</i>
+              </span>
+            </th>
             <th class="sortable" :title="$t('market.marketValueHint')" @click="toggleSort('marketValue')">
               {{ $t('market.marketValue') }}
               <span class="sort-arrows">
@@ -89,7 +96,8 @@
             <td :class="getTrendClass(item.priceChangePercent24h)">
               {{ formatPercent(item.priceChangePercent24h) }}
             </td>
-            <td>{{ formatCompactVolume(item.volume24h) }}</td>
+            <td>{{ formatCompactNumber(item.volume24h) }}</td>
+            <td>{{ formatCompactVolume(item.turnover24h) }}</td>
             <td>{{ formatCompactVolume(marketValue(item)) }}</td>
             <td>
               <RouterLink
@@ -115,7 +123,7 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import CoinIcon from '../components/common/CoinIcon.vue';
 import { useMarketStore } from '../stores/market';
-import { formatCompactVolume, formatPercent, getTrendClass } from '../utils/format';
+import { formatCompactNumber, formatCompactVolume, formatPercent, getTrendClass } from '../utils/format';
 import { $t } from '../utils/i18n';
 
 const marketStore = useMarketStore();
@@ -123,7 +131,7 @@ const route = useRoute();
 
 const keyword = ref('');
 const category = ref<'all' | 'crypto' | 'stock' | 'main' | 'favorite'>('all');
-type SortKey = 'lastPrice' | 'priceChange' | 'volume' | 'marketValue';
+type SortKey = 'lastPrice' | 'priceChange' | 'volume' | 'turnover' | 'marketValue';
 const sortKey = ref<SortKey>('priceChange');
 const sortDirection = ref<'asc' | 'desc'>('desc');
 const selectedExchange = ref(marketStore.exchange);
@@ -180,6 +188,8 @@ const rows = computed(() => {
       difference = Number(left.lastPrice || 0) - Number(right.lastPrice || 0);
     } else if (sortKey.value === 'volume') {
       difference = Number(left.volume24h || 0) - Number(right.volume24h || 0);
+    } else if (sortKey.value === 'turnover') {
+      difference = Number(left.turnover24h || 0) - Number(right.turnover24h || 0);
     } else if (sortKey.value === 'marketValue') {
       difference = marketValue(left) - marketValue(right);
     } else {
@@ -247,7 +257,7 @@ onMounted(() => {
   font-weight: 700;
 }
 
-/* 可排序表头：最新价 / 涨跌幅 / 成交量 / 市值 */
+/* 可排序表头：最新价 / 涨跌幅 / 成交量 / 成交额 / 市值 */
 .table th.sortable {
   cursor: pointer;
   user-select: none;

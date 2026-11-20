@@ -161,6 +161,8 @@ export class DexService {
           high24h,
           low24h,
           volume24h: Number(p.volumeUSD).toFixed(2),
+          // Uniswap 的 volumeUSD 已经是美元成交额，直接复用
+          turnover24h: Number(p.volumeUSD).toFixed(2),
           priceChangePercent24h: changePct,
         });
       } catch (err) {

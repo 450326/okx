@@ -377,6 +377,9 @@ export class ExchangeWsService {
       const open24h = d.open24h || last;
       const change = Number(last) - Number(open24h);
       const changePct = Number(open24h) ? ((change / Number(open24h)) * 100).toFixed(2) : '0.00';
+      // 合约 volCcy24h 是基础币数量，需要乘最新价；现货 volCcy24h 已是计价币成交额。
+      const derivative = /-(SWAP|FUTURES)$/i.test(String(d.instId || ''));
+      const turnover = derivative ? Number(d.volCcy24h) * Number(last) : Number(d.volCcy24h);
       return {
         symbol: d.instId,
         lastPrice: d.last,
@@ -387,6 +390,7 @@ export class ExchangeWsService {
         high24h: d.high24h,
         low24h: d.low24h,
         volume24h: d.vol24h,
+        turnover24h: Number.isFinite(turnover) ? turnover.toFixed(2) : '0',
         priceChangePercent24h: changePct,
       };
     }
@@ -448,6 +452,8 @@ export class ExchangeWsService {
         high24h: msg.h,
         low24h: msg.l,
         volume24h: msg.v,
+        // Binance 24hrTicker 的 q 字段是计价币成交额
+        turnover24h: String(Number(msg.q) || 0),
         priceChangePercent24h: changePct,
       };
     }

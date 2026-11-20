@@ -99,15 +99,35 @@ export function formatSignedCurrency(value?: string | number, digits = 2): strin
   return `${prefix}${store.symbol}${formatted}`;
 }
 
+// 纯数量紧凑显示（不带计价货币符号）：成交量可能是张数或基础币，不能当金额展示
+export function formatCompactNumber(value?: string | number): string {
+  const amount = Number(value || 0);
+  const abs = Math.abs(amount);
+
+  if (abs >= 1_000_000_000_000) return `${(amount / 1_000_000_000_000).toFixed(2)}T`;
+  if (abs >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(amount / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(amount / 1_000).toFixed(2)}K`;
+  return amount.toFixed(2);
+}
+
+// 数量/金额紧凑显示：K/M/B/T，跟随顶部计价货币换算（成交额、市值共用）
 export function formatCompactVolume(value?: string | number): string {
   const store = useCurrencyStore();
   const amount = store.convert(value);
+  const abs = Math.abs(amount);
 
-  if (amount >= 1000000) {
-    return `${store.symbol}${(amount / 1000000).toFixed(2)}M`;
+  if (abs >= 1_000_000_000_000) {
+    return `${store.symbol}${(amount / 1_000_000_000_000).toFixed(2)}T`;
   }
-  if (amount >= 1000) {
-    return `${store.symbol}${(amount / 1000).toFixed(2)}K`;
+  if (abs >= 1_000_000_000) {
+    return `${store.symbol}${(amount / 1_000_000_000).toFixed(2)}B`;
+  }
+  if (abs >= 1_000_000) {
+    return `${store.symbol}${(amount / 1_000_000).toFixed(2)}M`;
+  }
+  if (abs >= 1_000) {
+    return `${store.symbol}${(amount / 1_000).toFixed(2)}K`;
   }
   return `${store.symbol}${amount.toFixed(2)}`;
 }
