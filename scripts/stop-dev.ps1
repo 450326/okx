@@ -3,8 +3,37 @@
 $root = Split-Path -Parent $PSScriptRoot
 $pidsFile = Join-Path $root '.dev-pids.json'
 
+function Test-Port([int]$port) {
+  try {
+    $client = New-Object System.Net.Sockets.TcpClient
+    $async = $client.BeginConnect('127.0.0.1', $port, $null, $null)
+    $ok = $async.AsyncWaitHandle.WaitOne(300)
+    if ($ok -and $client.Connected) {
+      $client.Close()
+      return $true
+    }
+    $client.Close()
+    return $false
+  } catch {
+    return $false
+  }
+}
+
+function Wait-PortsFree([int]$timeoutSeconds = 10) {
+  $start = Get-Date
+  while (((Get-Date) - $start).TotalSeconds -lt $timeoutSeconds) {
+    if (-not (Test-Port 3000) -and -not (Test-Port 5173)) { return $true }
+    Start-Sleep -Milliseconds 300
+  }
+  return $false
+}
+
+function Stop-Tree([int]$processId) {
+  & taskkill.exe /PID $processId /T /F 2>$null | Out-Null
+}
+
 Write-Host ""
-Write-Host "==> 停止 OKX Trading 开发服务" -ForegroundColor Cyan
+Write-Host "==> 停止 OKX Trading 开发服务（pnpm）" -ForegroundColor Cyan
 
 $stopped = $false
 
@@ -13,7 +42,7 @@ if (Test-Path $pidsFile) {
     $pids = Get-Content -LiteralPath $pidsFile -Raw | ConvertFrom-Json
     foreach ($id in @($pids.backend, $pids.frontend)) {
       if ($id) {
-        & taskkill.exe /PID $id /T /F 2>$null | Out-Null
+        Stop-Tree ([int]$id)
         $stopped = $true
       }
     }
@@ -23,15 +52,18 @@ if (Test-Path $pidsFile) {
   Remove-Item -LiteralPath $pidsFile -Force
 }
 
-# 兜底：如果 PID 文件丢失，按端口清理
-foreach ($port in 3000, 5173) {
-  $connections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-  foreach ($connection in $connections) {
-    if ($connection.OwningProcess) {
-      & taskkill.exe /PID $connection.OwningProcess /T /F 2>$null | Out-Null
-      $stopped = $true
+# 等待进程树退出；端口仍占用时按端口兜底
+if (-not (Wait-PortsFree 8)) {
+  foreach ($port in 3000, 5173) {
+    $connections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+    foreach ($connection in $connections) {
+      if ($connection.OwningProcess) {
+        Stop-Tree ([int]$connection.OwningProcess)
+        $stopped = $true
+      }
     }
   }
+  Wait-PortsFree 5 | Out-Null
 }
 
 if ($stopped) {

@@ -124,10 +124,10 @@ start-dev.bat
 
 脚本会：
 
-1. 使用 DSH 自带 Node（不依赖系统 Node/npm）
+1. 定位 Node 与 pnpm（优先 DSH 内置运行时，其次系统 PATH）
 2. 检查 `3000`、`5173` 端口
-3. 检查本地 `node_modules`（不会联网下载依赖或其他工具）
-4. 构建后端并在新窗口启动后端和前端
+3. 依赖缺失或 `pnpm-lock.yaml` 有更新时执行 `pnpm install --frozen-lockfile`
+4. 用 pnpm 构建后端，并在新窗口运行 `pnpm start:prod`（后端）和 `pnpm dev`（前端）
 5. 等待端口就绪后打开浏览器
 
 启动后：
@@ -141,20 +141,32 @@ start-dev.bat
 stop-dev.bat
 ```
 
-会按启动时保存的 PID 结束前后端进程树，并清理 `.dev-pids.json`；如果 PID 文件丢失，会按端口兜底清理。
+会按启动时保存的 PID 结束前后端进程树（pnpm 及其子 Node 进程一并结束），并清理 `.dev-pids.json`；如果 PID 文件丢失，会按端口兜底清理。
 
 ### 依赖说明
 
-启动脚本不会联网安装 Node、npm 依赖或其他工具，也不会自动执行 `npm install`。
-
-仓库需要保留以下目录：
+前后端都用 **pnpm** 管理依赖，锁文件是各自目录下的 `pnpm-lock.yaml`：
 
 ```text
-backend/node_modules
-frontend/node_modules
+backend/pnpm-lock.yaml
+frontend/pnpm-lock.yaml
 ```
 
-如果缺少依赖，`start-dev.bat` 会直接提示并退出，而不会下载任何内容。
+首次启动会自动安装依赖，之后只在 `node_modules` 缺失或锁文件更新时重新安装。也可以手动执行：
+
+```bash
+# 根目录
+pnpm install:all
+```
+
+根目录脚本：
+
+```bash
+pnpm build          # 构建前后端
+pnpm dev:backend    # 后端 watch 模式
+pnpm dev:frontend   # 前端 Vite
+pnpm start:backend  # 后端生产模式（dist）
+```
 
 ### 桌面安装包（无需用户安装 Node）
 
@@ -208,17 +220,17 @@ Electron 主进程优先启动这个内置运行时，而不是 `spawn('node')`�
 
 不要在 `backend/.env` 里保存生产密钥后再打包：该文件只用于本地开发。如果旧版本安装包曾经携带固定密钥，请视为已泄露并轮换对应的交易所 API Key。
 
-### 手动启动（需要系统 Node/npm）
+### 手动启动（需要系统 Node + pnpm）
 
 ```bash
-# 后端
-cd backend
-npm run start:dev
+# 后端（watch 模式）
+pnpm --dir backend run start:dev
 
 # 前端（新终端）
-cd frontend
-npm run dev
+pnpm --dir frontend run dev
 ```
+
+或者用根目录脚本：`pnpm dev:backend` / `pnpm dev:frontend`。
 
 ## 数据与接口
 
