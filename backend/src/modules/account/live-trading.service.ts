@@ -2,11 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { AccountStore, StoredAccount } from './account-store';
 import { OkxApiService } from './okx-api.service';
-import { OkxInstrumentService } from './okx-instrument.service';
+import { OkxInstrumentService, OkxInstrument } from './okx-instrument.service';
 import { LiveOrderRecord, LiveOrderStore } from './live-order.store';
 import { SimulationOrderInput } from '../simulation/simulation.types';
 import { RequestContextService } from '../auth/request-context.service';
 import { ERROR_CODES } from '../../common/error-codes';
+import { BusinessError } from '../../common/business-error';
 
 export const LIVE_ORDER_ERROR = {
   ID_CONFLICT: ERROR_CODES.CLIENT_ORDER_ID_CONFLICT,
@@ -17,14 +18,13 @@ export const LIVE_ORDER_ERROR = {
   EXCHANGE_UNAVAILABLE: ERROR_CODES.EXCHANGE_UNAVAILABLE,
 } as const;
 
-export class LiveOrderError extends Error {
+export class LiveOrderError extends BusinessError {
   constructor(
     message: string,
-    readonly code: number,
+    code: number,
     readonly clientOrderId?: string,
   ) {
-    super(message);
-    this.name = 'LiveOrderError';
+    super(code, message, { clientOrderId: clientOrderId ?? null });
   }
 }
 
@@ -34,6 +34,11 @@ const SLIPPAGE_RATE = 0.0002;
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** 品种参数比对：交易所返回值可能带极小的表示差异，用相对误差判断 */
+function sameNumber(a: number, b: number): boolean {
+  return Math.abs(a - b) <= 1e-12 * Math.max(1, Math.abs(a), Math.abs(b));
 }
 
 @Injectable()
@@ -49,9 +54,23 @@ export class LiveTradingService {
   ) {}
 
   async preview(input: SimulationOrderInput): Promise<Record<string, unknown>> {
+    const { payload } = await this.buildPreview(input);
+    return payload;
+  }
+
+  /** 试算并保留本次使用的品种快照，place() 用它和下单前的实时参数做二次比对 */
+  private async buildPreview(
+    input: SimulationOrderInput,
+  ): Promise<{ payload: Record<string, unknown>; instrument: OkxInstrument }> {
     const account = this.requireAccount();
     const symbol = this.parseSymbol(input.symbol);
     const instrument = await this.instruments.get(symbol);
+    if (instrument.state !== 'live') {
+      throw new LiveOrderError(
+        `${symbol} 当前状态为 ${instrument.state}，暂不可下单`,
+        LIVE_ORDER_ERROR.INVALID,
+      );
+    }
     const ticker = await this.okxApi.getTicker(symbol);
     const quote = ticker?.data?.[0];
     const last = num(quote?.last);
@@ -64,7 +83,8 @@ export class LiveTradingService {
     const orderType = input.orderType === 'limit' ? 'limit' : 'market';
     const marginMode: 'cross' | 'isolated' =
       input.marginMode === 'cross' ? 'cross' : 'isolated';
-    const leverage = Math.max(1, Math.round(Number(input.leverage) || 10));    if (leverage > instrument.maxLeverage) {
+    const leverage = Math.max(1, Math.round(Number(input.leverage) || 10));
+    if (leverage > instrument.maxLeverage) {
       throw new LiveOrderError(`杠杆超过 ${symbol} 最大限制 ${instrument.maxLeverage}x`, LIVE_ORDER_ERROR.INVALID);
     }
 
@@ -118,21 +138,24 @@ export class LiveTradingService {
           })();
 
     return {
-      symbol,
-      side,
-      action,
-      orderType,
-      leverage,
-      marginMode: effectiveMarginMode,
-      qty: String(qty),
-      markPrice: String(last),
-      price: String(price),
-      estimatedNotional: String(notional),
-      estimatedMargin: String(margin),
-      estimatedFee: String(fee),
-      estimatedLiquidationPrice: String(this.liquidationPrice(side, price, leverage)),
-      maxQty: String(maxQty),
-      availableBalance: String(balance),
+      payload: {
+        symbol,
+        side,
+        action,
+        orderType,
+        leverage,
+        marginMode: effectiveMarginMode,
+        qty: String(qty),
+        markPrice: String(last),
+        price: String(price),
+        estimatedNotional: String(notional),
+        estimatedMargin: String(margin),
+        estimatedFee: String(fee),
+        estimatedLiquidationPrice: String(this.liquidationPrice(side, price, leverage)),
+        maxQty: String(maxQty),
+        availableBalance: String(balance),
+      },
+      instrument,
     };
   }
 
@@ -157,16 +180,35 @@ export class LiveTradingService {
       return this.resultOf(existing);
     }
 
-    const preview = await this.preview(input);
-    const instrument = await this.instruments.get(symbol);
+    const { payload: preview, instrument: previewInstrument } = await this.buildPreview(input);
+    // 二次品种校验：试算到真正下单之间，交易所侧的合约参数可能已经变化
+    // （ctVal/lotSz/minSz/tickSz 调整、暂停交易、最大杠杆下调）。
+    // 这里强制回源一次，任何一项不一致都要求重新试算，避免按用户没看到的参数下单。
+    const instrument = await this.instruments.get(symbol, { fresh: true });
+    this.assertInstrumentUnchanged(symbol, previewInstrument, instrument);
+
     const qty = Number(preview.qty);
     const contracts = this.instruments.qtyToContracts(qty, instrument);
+    if (!(contracts > 0) || contracts < instrument.minSz) {
+      throw new LiveOrderError(
+        `数量低于 ${symbol} 最小下单量 ${instrument.minSz * instrument.ctVal}`,
+        LIVE_ORDER_ERROR.INVALID,
+        clientOrderId,
+      );
+    }
     const side = input.side === 'short' ? 'short' : 'long';
     const action = input.action === 'close' ? 'close' : 'open';
     const orderType = input.orderType === 'limit' ? 'limit' : 'market';
     const marginMode: 'cross' | 'isolated' =
       preview.marginMode === 'cross' ? 'cross' : 'isolated';
     const leverage = Number(preview.leverage) || 10;
+    if (leverage > instrument.maxLeverage) {
+      throw new LiveOrderError(
+        `杠杆超过 ${symbol} 最大限制 ${instrument.maxLeverage}x`,
+        LIVE_ORDER_ERROR.INVALID,
+        clientOrderId,
+      );
+    }
     const orderSide =
       action === 'open'
         ? side === 'long'
@@ -349,6 +391,32 @@ export class LiveTradingService {
       this.orders.save(record);
     }
     return this.resultOf(record);
+  }
+
+  /**
+   * 下单前比对「试算时的品种快照」与「下单前实时拉取的品种参数」。
+   * 任何一项不一致都拒绝发单，让用户重新试算，而不是按没看到的参数成交。
+   */
+  private assertInstrumentUnchanged(
+    symbol: string,
+    snapshot: OkxInstrument,
+    current: OkxInstrument,
+  ): void {
+    if (current.state !== 'live') {
+      throw new LiveOrderError(
+        `${symbol} 当前状态为 ${current.state}，暂不可下单`,
+        LIVE_ORDER_ERROR.INVALID,
+      );
+    }
+    const changed = (['ctVal', 'lotSz', 'minSz', 'tickSz'] as const).filter(
+      (field) => !sameNumber(snapshot[field], current[field]),
+    );
+    if (changed.length) {
+      throw new LiveOrderError(
+        `${symbol} 的 ${changed.join(' / ')} 在试算后发生变化，请重新试算后再下单`,
+        LIVE_ORDER_ERROR.INVALID,
+      );
+    }
   }
 
   private resultOf(record: LiveOrderRecord): Record<string, unknown> {

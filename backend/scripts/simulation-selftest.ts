@@ -7,7 +7,7 @@
 import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { addMoney } from '../src/common/money';
+import { addMoney, toUnits } from '../src/common/money';
 import { SimulationEngine } from '../src/modules/simulation/simulation-engine';
 import {
   MarketSnapshot,
@@ -826,6 +826,24 @@ test('权益恒等式与已实现盈亏分项始终成立', () => {
 
   openLong(engine);
   assertAccountIdentity(engine.snapshot({ 'BTC-USDT': market(66000, 'BTC-USDT') }));
+});
+
+test('金额换算：科学计数法先移位再量化，不丢高位有效数字', () => {
+  assert.equal(toUnits('1e-8'), 1n);
+  assert.equal(toUnits('1.5e-8'), 2n);
+  assert.equal(toUnits('9.99e-9'), 1n);
+  // 旧实现先截到 8 位小数再乘 10^21，会少算 4e20 个最小单位
+  assert.equal(toUnits(1.234567894e21), 123456789400000000000000000000n);
+  assert.equal(toUnits('1.234567894e+21'), 123456789400000000000000000000n);
+});
+
+test('金额换算：四舍五入到最小单位且正负对称', () => {
+  assert.equal(toUnits('2.5e-8'), 3n);
+  assert.equal(toUnits('-1.5e-8'), -2n);
+  assert.equal(toUnits('123456789.123456789'), 12345678912345679n);
+  assert.equal(toUnits(0.1 + 0.2), 30000000n);
+  assert.equal(toUnits('8000'), 800000000000n);
+  assert.equal(toUnits(null), 0n);
 });
 
 console.log(`\n全部通过：${passed} 项`);

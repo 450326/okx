@@ -31,3 +31,78 @@
 - 修复 EquityChart.vue、DepthPanel.vue、TradePage.vue 中的 TypeScript 错误
 - 添加build-installer.bat实现一键Windows.exe生成
 - 更新 .gitignore 以获取桌面构建的工件
+
+2026.11.21
+按代码审查意见修复 5 个问题 + 3 个 P2 项（改动清单见下）：
+
+1. Node 运行时依赖未声明（node:sqlite）
+- 新增 backend/src/common/node-runtime.ts：版本判定 22.13+ / 23.4+ / 24+，node:sqlite 不可用时输出可读提示并以 1 退出
+- main.ts 改先断言运行时、再动态 import AppModule（静态 import 会绕过检查）
+- simulation.repository.ts / auth.store.ts / guest-cleanup.service.ts 的裸 require('node:sqlite') 改走 requireNodeSqlite()
+- 根与 backend 的 package.json 增加 engines：^22.13.0 || ^23.4.0 || >=24.0.0
+- desktop/scripts/prepare-runtime.js 改为直接探测 node:sqlite，不再只比版本号
+- README 环境要求从「>= 22.5」更正为 22.13+（22.5–22.12 需 --experimental-sqlite）
+
+2. 金额换算精度
+- backend/src/common/money.ts 重写 toUnits：先按指数移动小数点再量化到 1e-8，四舍五入且正负对称
+- 修复 1.234567894e21 这类正指数输入丢高位有效数字（少 4e20 个最小单位）的问题；兜底分支同样改为对称舍入
+- backend/scripts/simulation-selftest.ts 增加 2 项金额换算用例（35 → 37 项）
+
+3. 实盘订单落 JSON
+- backend/src/modules/account/live-order.store.ts 改为 SQLite（与模拟账本同一 backend/data/app.db，WAL + busy_timeout）
+- 新表 live_orders，主键 (user_id, client_order_id)，修复不同用户复用同一 clientOrderId 时互相覆盖
+- save 改为 upsert 且不覆盖 created_at；保留 1000 条上限；旧 data/live-orders.json 启动时导入并归档为 .migrated-<时间戳>
+- README 实盘章节同步
+
+4. CORS 全开
+- backend/src/main.ts 增加 CORS 白名单：CORS_ORIGINS 优先，开发环境默认放行 5173/4173，生产默认不放行任何跨域来源
+- 未命中来源直接 403（code 4030），不再使用 Access-Control-Allow-Origin: *
+- enableCors 只回显白名单，credentials: false
+- 同时修复 app.listen 不读 PORT 的问题，并支持 HOST（桌面端只监听 127.0.0.1）
+- backend/.env.example 补充 CORS_ORIGINS / HOST 说明
+- README 新增「跨域与来源校验」
+
+5. 构建仍在跑 Prisma
+- scripts/build-installer.ps1 删除 prisma generate / prisma db push 步骤
+- backend/package.json 删除 prisma:generate / prisma:migrate 脚本、@prisma/client 与 prisma 依赖（pnpm install 减少 33 个包）
+- 删除 backend/pnpm-workspace.yaml（它只为跳过 Prisma 引擎下载而存在）
+- desktop/package.json 打包后端时不再包含 prisma/**
+- backend/prisma/schema.prisma 头部标注为「文档镜像」，不参与构建与运行
+- README / DOCS-CHECKLIST / .env.example 同步说明
+
+P2-1 前端浮点直乘与拍脑袋容差
+- 新增 frontend/src/utils/money.ts（BigInt 最小单位换算，与后端同规则）
+- SpotOrderForm.vue：金额、余额、持仓全部按最小单位整数比较，去掉 +0.000001 / +0.00000001 容差
+- maxQty 纳入 taker 5bps 手续费与 2bps 滑点；「100%」额外留 0.5% 价格波动缓冲（实测原逻辑点 100% 必报余额不足）
+- 提交的 qty 由最小单位反推规范小数串
+
+P2-2 实盘 preview / place 无二次品种校验
+- live-trading.service.ts 拆出 buildPreview()，保留试算时使用的品种快照
+- place() 下单前用 fresh 回源品种信息，assertInstrumentUnchanged() 校验 state 与 ctVal/lotSz/minSz/tickSz，变化即 4115 拒绝
+- 增加杠杆上限与最小下单量复核
+- OkxInstrument 增加 state 字段；取不到品种信息时兜底为 'unknown'，不冒充可交易
+
+P2-3 全局 4 个 APP_FILTER
+- 新增 backend/src/common/business-error.ts 与 api-exception.filter.ts，app.module.ts 收敛为 1 个 APP_FILTER
+- 删除 simulation / capability / live-order / http 四个独立异常过滤器
+- 新增错误码 INTERNAL_ERROR = 5000；未知异常统一 500，HttpException 保留状态码
+- README「错误码与响应约定」补充异常出口说明
+
+桌面端托盘（本轮一并完成）
+- desktop/main.js 重写后端生命周期：stopped/starting/running/paused/error 状态机，托盘图标按状态变色（绿/灰/红）
+- 托盘菜单：显示主窗口 / 暂停或启动后端 / 重启后端 / 打开后端日志 / 退出；关闭窗口收起到托盘；单实例锁
+- 后端日志写入 <userData>/logs/backend.log
+- preload.js 暴露 window.desktopBackend；前端新增 desktop-backend store、BackendGate 覆盖层、DesktopBackendChip 状态胶囊（浏览器端不渲染）
+- 新增 desktop/assets 托盘图标，desktop/package.json 打包 assets/**
+- i18n 补充中英日韩文案
+
+验证
+- 后端 tsc 0 错误、前端 vite build 通过
+- test:simulation 37/37；docs:check 一致
+- CORS 白名单按开发模式与桌面模式分别实测
+- 401 / 404 / 业务码实测；统一异常过滤器 8 个分支单测通过
+- 浏览器实测现货下单：100% 可提交且下单成功，101% 与亚最小单位置灰
+- mock Electron 驱动托盘：启动/暂停/重启/收起/退出 7 项通过
+
+仓库约定
+- 新增 AGENTS.md：约定以后每次改动都在本文件追加记录（UTF-8 无 BOM + CRLF，只追加不改写）

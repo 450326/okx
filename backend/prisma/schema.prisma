@@ -7,8 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 运行时模拟账本由 simulation.repository.ts 使用 node:sqlite 直接读写，
-// 这里保留同构的模型定义，便于后续切换到 Prisma/迁移工具。
+// ⚠️ 文档镜像，不是运行时依赖：后端不使用 @prisma/client，也不执行 prisma generate / db push。
+// 真实表结构以 runtime 里的 SQL 为准：
+//   - simulation.repository.ts / auth.store.ts / live-order.store.ts 中的 CREATE TABLE
+// 本文件只作为表结构参考，与运行时保持同构，方便以后真要迁到 Prisma 时有对照。
 // 金额字段在 SQLite 中使用 1e-8 最小单位的整数（BigInt），
 // 运行时由 simulation.repository.ts 通过 common/money.ts 转换。
 

@@ -10,6 +10,8 @@
       </div>
     </header>
     <RouterView />
+    <!-- 桌面壳：后端被暂停/启动失败时盖住界面并提供启动按钮；浏览器里不渲染 -->
+    <BackendGate />
   </div>
 </template>
 
@@ -18,6 +20,7 @@ import { computed } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import LocaleSwitcher from './components/common/LocaleSwitcher.vue';
 import CurrencySwitcher from './components/common/CurrencySwitcher.vue';
+import BackendGate from './components/system/BackendGate.vue';
 
 const route = useRoute();
 const showGlobalHeader = computed(() => route.name !== 'login');

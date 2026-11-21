@@ -2,6 +2,9 @@
   "name": "okx-futures-backend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^22.13.0 || ^23.4.0 || >=24.0.0"
+  },
   "scripts": {
     "start": "nest start",
     "start:prod": "node dist/main.js",
@@ -11,9 +14,7 @@
     "posttest:simulation": "node scripts/verify-docs.mjs --write",
     "docs:sync": "node scripts/verify-docs.mjs --write",
     "docs:check": "node scripts/verify-docs.mjs --check",
-    "migrate:simulation": "ts-node --transpile-only scripts/migrate-simulation-to-sqlite.ts",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "migrate:simulation": "ts-node --transpile-only scripts/migrate-simulation-to-sqlite.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
@@ -23,7 +24,6 @@
     "@nestjs/platform-express": "^11.0.11",
     "@nestjs/platform-socket.io": "^11.1.27",
     "@nestjs/websockets": "^11.0.11",
-    "@prisma/client": "^6.4.1",
     "axios": "^1.18.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -39,7 +39,6 @@
     "@nestjs/schematics": "^11.0.1",
     "@nestjs/testing": "^11.0.11",
     "@types/node": "^22.13.11",
-    "prisma": "^6.4.1",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3"

@@ -35,13 +35,8 @@ import { LedgerModule } from './modules/ledger/ledger.module';
 import { SimulationModule } from './modules/simulation/simulation.module';
 // 引入 WebSocket 模块
 import { WsModule } from './modules/ws/ws.module';
-// 引入模拟盘业务异常过滤器
-import { SimulationExceptionFilter } from './modules/simulation/simulation-exception.filter';
-// 引入能力矩阵异常过滤器
-import { CapabilityExceptionFilter } from './modules/account/capability-exception.filter';
-// 引入实盘下单异常过滤器
-import { LiveOrderExceptionFilter } from './modules/account/live-order-exception.filter';
-import { HttpExceptionFilter } from './common/http-exception.filter';
+// 全局唯一异常出口：业务异常 / HttpException / 未知异常都在这里映射
+import { ApiExceptionFilter } from './common/api-exception.filter';
 
 // 应用根模块，汇总所有子模块
 @Module({
@@ -67,11 +62,9 @@ import { HttpExceptionFilter } from './common/http-exception.filter';
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
-    // 模拟盘业务错误统一返回 { code, message, data }，避免 Nest 默认 400 结构丢失业务码。
-    { provide: APP_FILTER, useClass: SimulationExceptionFilter },
-    { provide: APP_FILTER, useClass: CapabilityExceptionFilter },
-    { provide: APP_FILTER, useClass: LiveOrderExceptionFilter },
-    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    // 单一入口：BusinessError 返回 { code, message, data }，HttpException 保留状态码，
+    // 其余异常统一 500 + INTERNAL_ERROR，避免新增错误类型时漏注册过滤器而丢业务码。
+    { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })
 export class AppModule {}

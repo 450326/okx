@@ -4,6 +4,7 @@ import { AccountStore } from './account-store';
 import { AccountModeStore, AccountTradingState } from './account-mode.store';
 
 import { ERROR_CODES } from '../../common/error-codes';
+import { BusinessError } from '../../common/business-error';
 
 export const CAPABILITY_ERROR = {
   DISABLED: ERROR_CODES.CAPABILITY_DISABLED,
@@ -43,15 +44,14 @@ export interface CapabilityMatrix {
   capabilities: Record<CapabilityKey, CapabilityState>;
 }
 
-export class CapabilityError extends Error {
+export class CapabilityError extends BusinessError {
   constructor(
     message: string,
-    readonly code: number,
+    code: number,
     readonly capability: CapabilityKey,
     readonly state: AccountTradingState,
   ) {
-    super(message);
-    this.name = 'CapabilityError';
+    super(code, message, { capability, state });
   }
 }
 

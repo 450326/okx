@@ -79,10 +79,10 @@
 |---|---|
 | 前端 | Vue 3、Vite、Pinia、Vue Router、lightweight-charts、Socket.IO |
 | 后端 | NestJS 11、TypeScript、Axios、ws、Socket.IO |
-| 数据 | SQLite（`node:sqlite`）+ 金额最小单位；`prisma/schema.prisma` 保留同构模型 |
+| 数据 | SQLite（`node:sqlite`）+ 金额最小单位；`prisma/schema.prisma` 仅为表结构参考，不参与构建与运行 |
 | 桌面 | Electron、electron-builder、electron-updater |
 | 移动端 | Capacitor Android |
-| 测试 | `ts-node` 纯引擎自测（35 项，含预测盘交易） |
+| 测试 | `ts-node` 纯引擎自测（37 项，含预测盘交易） |
 
 ## 目录结构
 
@@ -113,6 +113,8 @@
 ```
 
 ## 快速启动（Windows）
+
+环境要求：Node **22.13+**（后端使用内置 `node:sqlite`；23.x 需 23.4+，22.5–22.12 需额外加 `--experimental-sqlite`）+ pnpm，已在 `backend/package.json` 的 `engines` 中声明。
 
 ### 一键启动
 
@@ -175,7 +177,7 @@ pnpm start:backend  # 后端生产模式（dist）
 构建机要求：
 
 ```text
-Node >= 22.5（后端使用 node:sqlite）+ pnpm
+Node 22.13+ / 23.4+ / 24+（后端使用 node:sqlite）+ pnpm
 ```
 
 构建步骤：
@@ -184,7 +186,7 @@ Node >= 22.5（后端使用 node:sqlite）+ pnpm
 desktop\build-installer.bat
 ```
 
-`build-installer.bat` 只是入口，实际执行 `scripts\build-installer.ps1`：自动定位 Node/pnpm，依次安装前后端与 desktop 依赖（`pnpm install --ignore-scripts`）、构建前端、生成 Prisma 客户端、构建后端、准备内置 Node 运行时，最后运行 `electron-builder`。
+`build-installer.bat` 只是入口，实际执行 `scripts\build-installer.ps1`：自动定位 Node/pnpm，依次安装前后端与 desktop 依赖（`pnpm install --ignore-scripts`）、构建前端、构建后端、准备内置 Node 运行时，最后运行 `electron-builder`。构建过程不依赖 Prisma：后端用的是 `node:sqlite`，建表在启动时由各 repository 的 `CREATE TABLE IF NOT EXISTS` 完成。
 
 发布新版本（自动 bump 版本并上传 GitHub Releases，需要 `GH_TOKEN`）：
 
@@ -218,7 +220,7 @@ Electron 主进程优先启动这个内置运行时，而不是 `spawn('node')`�
 
 #### 安装包与密钥（.env 不会被分发）
 
-安装包**不包含** `backend/.env`：`extraResources` 只打包 `dist/`、`prisma/`、`node_modules/` 和 `package.json`，`prepare-runtime.js` 还会在构建前检查配置，一旦有人把 `.env` 加回 filter 就直接失败。
+安装包**不包含** `backend/.env`：`extraResources` 只打包 `dist/`、`node_modules/` 和 `package.json`，`prepare-runtime.js` 还会在构建前检查配置，一旦有人把 `.env` 加回 filter 就直接失败。
 
 桌面端首次启动时为每台机器生成独立密钥，保存在用户数据目录：
 
@@ -229,6 +231,16 @@ Electron 主进程优先启动这个内置运行时，而不是 `spawn('node')`�
 后端进程会收到由它注入的 `ACCOUNT_ENCRYPTION_KEY`（64 位 hex）和 `AUTH_JWT_SECRET`；也可以用同名环境变量覆盖，便于统一管理。升级安装包时该文件保留，因此已加密的交易所 API Key 不会失效。
 
 不要在 `backend/.env` 里保存生产密钥后再打包：该文件只用于本地开发。如果旧版本安装包曾经携带固定密钥，请视为已泄露并轮换对应的交易所 API Key。
+
+#### 托盘与后端启停
+
+主进程常驻系统托盘，后端生命周期由它管理，而不是跟着窗口走：
+
+- 托盘图标颜色即状态：绿色=后端运行中，灰色=已暂停，红色=启动失败；悬停提示同步显示状态
+- 托盘菜单：显示主窗口 / 暂停后端（或启动后端）/ 重启后端 / 打开后端日志 / 退出
+- 关闭窗口只收起到托盘，后端继续运行；真正退出走托盘菜单「退出」
+- 界面右上角有同状态胶囊（`后端运行中`），点一下即可暂停或启动；后端不可用时全屏覆盖层提供「启动后端」按钮并显示失败原因，不会静默失败
+- 后端日志写入 `<userData>/logs/backend.log`，托盘菜单可直接打开
 
 ### 手动启动（需要系统 Node + pnpm）
 
@@ -407,6 +419,14 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 - 游客账号：`POST /api/v1/auth/guest`，拥有独立的模拟账户和订单/持仓/流水
 - 游客账号 7 天后自动清理（启动时 + 每小时扫描，同时删除模拟账户/模式文件）
 - 模拟账户、交易模式、API 账户均按 `userId` 隔离；跨用户按资源 ID 操作返回 403
+
+### 跨域与来源校验
+
+- `CORS_ORIGINS`（逗号分隔）是唯一白名单来源；未配置时只有非生产环境放行本地前端（`http://localhost:5173` / `http://127.0.0.1:5173`，以及 4173 预览端口），生产环境默认不放行任何跨域来源
+- 未命中白名单的请求直接返回 `403`（`code=4030`），而不是只让浏览器忽略响应头——避免跨站请求「读不到响应但副作用已经发生」
+- 无 `Origin` 的请求（curl、服务端调用、同源）始终放行；不再使用 `Access-Control-Allow-Origin: *`
+- 桌面端以 `file://` 加载页面，其 `Origin` 是字符串 `null`，由主进程通过 `CORS_ORIGINS=null` 显式放行；同时桌面端后端只监听 `127.0.0.1`，不对局域网暴露
+- 响应不带 cookie 凭据（`credentials: false`）：接口认证依赖 `Authorization` 头，token 不会被浏览器自动携带
 - 注销会自增 `token_version` 并撤销全部 refresh token，已签发 access token 立即失效
 - 登录限流：同 IP + 邮箱 10 分钟内失败 5 次，锁定 15 分钟（返回 429）
 - 邮箱验证：`POST /auth/register` 发验证 token；`POST /auth/verify-email`
@@ -461,7 +481,7 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 - 平仓使用 OKX 持仓返回的 `mgnMode`，避免与账户实际模式不一致
 - 杠杆设置失败时直接拒绝下单，不按错误的本地保证金估算继续提交
 - 前端为每个订单生成 `clientOrderId`，网络异常重试时复用
-- 服务端将 `clientOrderId` 映射持久化到 `backend/data/live-orders.json`
+- 服务端将 `clientOrderId` 映射持久化到 `backend/data/app.db` 的 `live_orders` 表（与模拟账本同一 SQLite，WAL），主键 `(user_id, client_order_id)`；旧的 `data/live-orders.json` 会在首次启动时导入并归档为 `.migrated-<timestamp>`
 - 相同 `clientOrderId` + 相同参数重复提交只返回第一次结果，不重复下单
 - 相同 `clientOrderId` + 不同参数返回 `4111`
 - 下单结果未知时标记 `unknown`，不会自动重复提交
@@ -519,7 +539,7 @@ pnpm --dir backend run migrate:simulation
 - 钱包余额由流水金额的 BigInt 汇总反写，浮点尾差不会进入下一笔交易
 - SQLite `sim_*` 表的金额列存整数最小单位，`sim_meta.money_units=1` 标记已完成迁移
 - 旧库启动时自动执行一次十进制金额到最小单位的转换
-- Prisma `Simulation*` 金额字段使用 `BigInt`
+- `prisma/schema.prisma`（仅文档镜像）中 `Simulation*` 金额字段标注为 `BigInt`
 - 自动化测试增加连续 200 笔现货交易后的流水重算断言
 
 ### 品种元数据与下单校验
@@ -557,7 +577,17 @@ pnpm --dir backend run migrate:simulation
 | `41xx` | 交易、下单、实盘订单 |
 | `42xx` | 风控、能力矩阵、实盘数据权限 |
 | `43xx` | 模式与权限 |
-| `5xxx` | 上游行情/交易所 |
+| `5xxx` | 服务端内部错误、上游行情/交易所 |
+
+所有异常走同一个全局出口 `ApiExceptionFilter`：
+
+| 异常 | 响应 |
+|---|---|
+| 业务异常（`BusinessError` 子类：模拟盘 / 能力矩阵 / 实盘下单） | HTTP 200 + 对应业务码，`data` 里带补充字段（如 `capability`、`clientOrderId`） |
+| `HttpException`（守卫、404、限流） | 保留原 HTTP 状态码 + 映射后的业务码，额外带 `statusCode` |
+| 未知异常 | HTTP 500 + `5000`（`INTERNAL_ERROR`），服务端记录堆栈 |
+
+新增业务异常只要继承 `BusinessError`，不需要再注册过滤器。
 
 失败响应统一为：
 
@@ -628,7 +658,7 @@ pnpm --dir backend run migrate:simulation
 里程碑验收请同时执行 [DOCS-CHECKLIST.md](DOCS-CHECKLIST.md) 中的一致性检查。
 
 ```bash
-# 模拟盘账务自测（35 项，含预测盘、现货交易和权益恒等式）
+# 模拟盘账务自测（37 项，含预测盘、现货交易和权益恒等式）
 pnpm --dir backend run test:simulation
 pnpm --dir backend run docs:check
 
@@ -644,7 +674,7 @@ pnpm --dir frontend run build
 ## 当前限制
 
 - 当前是**单演示账户**，没有 JWT 登录、用户隔离和多用户并发控制
-- 运行时使用 SQLite，Prisma schema 与运行时表结构保持同构
+- 运行时使用 SQLite（`node:sqlite`）；`prisma/schema.prisma` 只是结构参考，不参与构建与运行
 - 实盘 API 已接入查询、下单、撤单和订单同步，实际能力取决于账户权限
 - 股票代币只有 OKX 提供；Binance/Coinbase 当前没有
 - 预测市场支持模拟买卖，但不接入真实下单（需要钱包与 CLOB 签名）

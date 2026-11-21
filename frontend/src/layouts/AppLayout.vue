@@ -31,6 +31,7 @@
         </div>
 
         <div class="topbar-actions">
+          <DesktopBackendChip />
           <button
             class="notification-bell"
             type="button"
@@ -133,6 +134,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import ConfirmModal from '../components/common/ConfirmModal.vue';
+import DesktopBackendChip from '../components/system/DesktopBackendChip.vue';
 import { useAssetStore } from '../stores/assets';
 import { useAuthStore } from '../stores/auth';
 import { useExchangeStore } from '../stores/exchange';

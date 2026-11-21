@@ -149,6 +149,7 @@ export class LiveAccountService {
     try {
       return await this.instruments.get(instId);
     } catch {
+      // 仅用于展示持仓/委托时的数量换算；拿不到真实品种信息时不冒充 live
       return {
         instId,
         ctVal: 1,
@@ -158,6 +159,7 @@ export class LiveAccountService {
         tickSz: 0.01,
         ctType: 'linear',
         maxLeverage: 1,
+        state: 'unknown',
       };
     }
   }

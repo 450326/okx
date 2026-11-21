@@ -25,6 +25,7 @@
       "preload.js",
       "splash.html",
       "update.html",
+      "assets/**",
       "package.json"
     ],
     "extraResources": [
@@ -43,7 +44,6 @@
         "to": "backend",
         "filter": [
           "dist/**",
-          "prisma/**",
           "node_modules/**",
           "package.json"
         ]

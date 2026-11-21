@@ -60,14 +60,6 @@ if ((Invoke-Pnpm $pnpmEnv @('--dir', $backendDir, 'install', '--ignore-scripts')
   Fail "后端依赖安装失败"
 }
 
-Write-Step "生成 Prisma 客户端并初始化数据库"
-if ((Invoke-Pnpm $pnpmEnv @('--dir', $backendDir, 'exec', 'prisma', 'generate')) -ne 0) {
-  Fail "Prisma 客户端生成失败"
-}
-if ((Invoke-Pnpm $pnpmEnv @('--dir', $backendDir, 'exec', 'prisma', 'db', 'push')) -ne 0) {
-  Fail "数据库初始化失败"
-}
-
 Write-Step "构建后端（pnpm）"
 if ((Invoke-Pnpm $pnpmEnv @('--dir', $backendDir, 'run', 'build')) -ne 0) {
   Fail "后端构建失败"

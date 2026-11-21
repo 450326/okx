@@ -12,6 +12,7 @@ import {
   SimSpotOrder,
 } from './simulation.types';
 import { fromUnits, toUnits } from '../../common/money';
+import { requireNodeSqlite } from '../../common/node-runtime';
 
 export interface RiskEventRecord {
   id: string;
@@ -30,7 +31,8 @@ export interface RiskEventRecord {
   createdAt: string;
 }
 
-const { DatabaseSync } = require('node:sqlite');
+// 旧版 Node 上给出可读提示，而不是裸的 "Cannot find module 'node:sqlite'"
+const { DatabaseSync } = requireNodeSqlite();
 
 interface UserAccountRow {
   user_id: string;

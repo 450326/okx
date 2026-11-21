@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -6,9 +6,20 @@ const net = require('net');
 const fs = require('fs');
 const crypto = require('crypto');
 
+const BACKEND_PORT = 3000;
+const MAX_LOG_LINES = 500;
+
 let mainWindow = null;
-let backendProcess = null;
 let updateWindow = null;
+let tray = null;
+let quitting = false;
+let trayHintShown = false;
+
+/** 'stopped' | 'starting' | 'running' | 'paused' | 'error' */
+let backendState = 'stopped';
+let backendMessage = '';
+let backendProcess = null;
+const backendLog = [];
 
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
@@ -20,7 +31,7 @@ function getResourceBase() {
   return path.join(__dirname, '..');
 }
 
-function waitForPort(port, timeoutMs = 20000) {
+function waitForPort(port, timeoutMs = 25000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     function check() {
@@ -30,7 +41,7 @@ function waitForPort(port, timeoutMs = 20000) {
       sock.on('error', () => {
         sock.destroy();
         if (Date.now() - start > timeoutMs) {
-          reject(new Error(`Port ${port} not ready after ${timeoutMs}ms`));
+          reject(new Error(`后端端口 ${port} 在 ${timeoutMs}ms 内未就绪`));
         } else {
           setTimeout(check, 300);
         }
@@ -43,12 +54,13 @@ function waitForPort(port, timeoutMs = 20000) {
 
 function getBackendNode() {
   const runtimeName = process.platform === 'win32' ? 'node.exe' : 'node';
-  const packagedNode = path.join(process.resourcesPath, 'node', runtimeName);
+  const resourcesPath = process.resourcesPath || '';
+  const packagedNode = resourcesPath ? path.join(resourcesPath, 'node', runtimeName) : '';
   const localNode = path.join(__dirname, 'runtime', runtimeName);
   if (app.isPackaged) {
-    if (!fs.existsSync(packagedNode)) {
+    if (!packagedNode || !fs.existsSync(packagedNode)) {
       throw new Error(
-        `安装包缺少内置 Node 运行时：${packagedNode}。请重新构建安装包，不能依赖用户系统 Node。`,
+        `安装包缺少内置 Node 运行时：${packagedNode || '(resources/node)'}。请重新构建安装包，不能依赖用户系统 Node。`,
       );
     }
     return packagedNode;
@@ -92,45 +104,246 @@ function loadOrCreateSecrets() {
   return secrets;
 }
 
-function startBackend() {
-  return new Promise((resolve, reject) => {
-    const backendDir = path.join(getResourceBase(), 'backend');
-    const serverScript = path.join(backendDir, 'dist', 'main.js');
-    let nodeBinary;
+function backendStatus() {
+  return { state: backendState, message: backendMessage, port: BACKEND_PORT };
+}
+
+function appendBackendLog(chunk) {
+  const text = String(chunk);
+  backendLog.push(text);
+  if (backendLog.length > MAX_LOG_LINES) backendLog.splice(0, backendLog.length - MAX_LOG_LINES);
+  try {
+    const logDir = path.join(app.getPath('userData'), 'logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(path.join(logDir, 'backend.log'), text);
+  } catch {
+    // 日志写失败不影响主流程
+  }
+}
+
+function broadcastBackendStatus() {
+  const payload = backendStatus();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
     try {
-      nodeBinary = getBackendNode();
-    } catch (error) {
-      reject(error);
-      return;
+      win.webContents.send('backend:status', payload);
+    } catch {
+      // 窗口正在销毁，忽略
     }
-    const secrets = loadOrCreateSecrets();
-    const env = {
-      ...process.env,
-      PORT: '3000',
-      NODE_ENV: 'production',
-      ACCOUNT_ENCRYPTION_KEY: process.env.ACCOUNT_ENCRYPTION_KEY || secrets.accountEncryptionKey,
-      AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET || secrets.authJwtSecret,
+  }
+}
+
+function setBackendState(state, message = '') {
+  backendState = state;
+  backendMessage = message;
+  updateTray();
+  broadcastBackendStatus();
+}
+
+function backendStateLabel(state) {
+  switch (state) {
+    case 'running':
+      return '后端运行中';
+    case 'starting':
+      return '后端启动中…';
+    case 'paused':
+      return '后端已暂停';
+    case 'error':
+      return '后端启动失败';
+    default:
+      return '后端已停止';
+  }
+}
+
+function trayIcon(state) {
+  const name = state === 'running' ? 'tray-running.png' : state === 'error' ? 'tray-error.png' : 'tray-paused.png';
+  const image = nativeImage.createFromPath(path.join(__dirname, 'assets', name));
+  if (image.isEmpty()) return nativeImage.createEmpty();
+  return image.resize({ width: 16, height: 16 });
+}
+
+function updateTray() {
+  if (!tray || tray.isDestroyed()) return;
+  const label = backendStateLabel(backendState);
+  const running = backendState === 'running';
+  const starting = backendState === 'starting';
+
+  const menu = Menu.buildFromTemplate([
+    { label: `OKX Trading · ${label}`, enabled: false },
+    { type: 'separator' },
+    { label: '显示主窗口', click: () => showMainWindow() },
+    {
+      label: running ? '暂停后端' : '启动后端',
+      enabled: !starting,
+      click: () => {
+        if (backendState === 'running') {
+          pauseBackend().catch(() => {});
+        } else {
+          startBackend().catch(() => {});
+        }
+      },
+    },
+    {
+      label: '重启后端',
+      enabled: !starting,
+      click: () => restartBackend().catch(() => {}),
+    },
+    { type: 'separator' },
+    { label: '打开后端日志', click: () => openBackendLog() },
+    { type: 'separator' },
+    { label: '退出', click: () => quitApp() },
+  ]);
+
+  tray.setContextMenu(menu);
+  tray.setImage(trayIcon(backendState));
+  tray.setToolTip(`OKX Trading · ${label}`);
+}
+
+function openBackendLog() {
+  const logDir = path.join(app.getPath('userData'), 'logs');
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+    const logFile = path.join(logDir, 'backend.log');
+    if (!fs.existsSync(logFile)) fs.writeFileSync(logFile, '（暂无日志）\n', 'utf-8');
+    shell.openPath(logFile);
+  } catch (error) {
+    console.error('打开日志失败', error);
+  }
+}
+
+async function stopBackendProcess() {
+  const child = backendProcess;
+  backendProcess = null;
+  if (!child) return;
+  await new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
     };
-
-    backendProcess = spawn(nodeBinary, [serverScript], {
-      env,
-      cwd: backendDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-
-    const output = [];
-    backendProcess.stdout.on('data', (d) => { output.push(d.toString()); });
-    backendProcess.stderr.on('data', (d) => { output.push(d.toString()); });
-    backendProcess.on('error', (err) => {
-      reject(new Error(`Backend start error: ${err.message}\n${output.join('')}`));
-    });
-    backendProcess.on('exit', (code) => {
-      reject(new Error(`Backend exited code=${code}\n${output.join('')}`));
-    });
-
-    waitForPort(3000).then(resolve).catch(reject);
+    child.once('exit', finish);
+    try {
+      child.kill();
+    } catch {
+      finish();
+    }
+    setTimeout(() => {
+      try {
+        if (child.exitCode === null) child.kill('SIGKILL');
+      } catch {
+        // 进程可能已退出
+      }
+      finish();
+    }, 3000);
   });
+}
+
+async function startBackend() {
+  if (backendProcess) return backendStatus();
+  if (backendState === 'starting') return backendStatus();
+
+  setBackendState('starting');
+  const backendDir = path.join(getResourceBase(), 'backend');
+  const serverScript = path.join(backendDir, 'dist', 'main.js');
+
+  let nodeBinary;
+  try {
+    nodeBinary = getBackendNode();
+  } catch (error) {
+    setBackendState('error', error.message);
+    throw error;
+  }
+
+  const secrets = loadOrCreateSecrets();
+  const env = {
+    ...process.env,
+    PORT: String(BACKEND_PORT),
+    // 桌面端只监听本机，避免同一局域网内的页面直接访问 API
+    HOST: '127.0.0.1',
+    NODE_ENV: 'production',
+    // file:// 页面的 Origin 是字符串 "null"，这里显式加入白名单
+    CORS_ORIGINS: process.env.CORS_ORIGINS || 'null',
+    ACCOUNT_ENCRYPTION_KEY: process.env.ACCOUNT_ENCRYPTION_KEY || secrets.accountEncryptionKey,
+    AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET || secrets.authJwtSecret,
+  };
+
+  const child = spawn(nodeBinary, [serverScript], {
+    env,
+    cwd: backendDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  backendProcess = child;
+  child.stdout.on('data', appendBackendLog);
+  child.stderr.on('data', appendBackendLog);
+  child.on('error', (error) => appendBackendLog(`\n[spawn error] ${error.message}\n`));
+  child.on('exit', (code, signal) => {
+    if (backendProcess !== child) return; // 主动暂停/重启
+    backendProcess = null;
+    setBackendState('error', `后端进程退出（code=${code}，signal=${signal || '-'}），可查看后端日志`);
+  });
+
+  try {
+    await waitForPort(BACKEND_PORT);
+  } catch (error) {
+    await stopBackendProcess();
+    setBackendState('error', error.message);
+    throw error;
+  }
+
+  if (backendProcess === child) setBackendState('running');
+  return backendStatus();
+}
+
+async function pauseBackend() {
+  await stopBackendProcess();
+  setBackendState('paused');
+  return backendStatus();
+}
+
+async function restartBackend() {
+  await stopBackendProcess();
+  // startBackend 自己会把状态切到 starting
+  return startBackend();
+}
+
+async function quitApp() {
+  quitting = true;
+  await pauseBackend().catch(() => {});
+  if (tray && !tray.isDestroyed()) tray.destroy();
+  tray = null;
+  app.quit();
+}
+
+function showMainWindow() {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function toggleMainWindow() {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+    mainWindow.hide();
+  } else {
+    showMainWindow();
+  }
+}
+
+function createTray() {
+  if (tray && !tray.isDestroyed()) return;
+  tray = new Tray(trayIcon(backendState));
+  tray.on('click', () => toggleMainWindow());
+  tray.on('double-click', () => showMainWindow());
+  updateTray();
 }
 
 function loadMainApp() {
@@ -209,6 +422,21 @@ autoUpdater.on('error', (err) => {
 
 autoUpdater.on('update-not-available', () => {});
 
+// 托盘 / 应用内控制共用同一套后端状态
+ipcMain.handle('backend:status', () => backendStatus());
+ipcMain.handle('backend:start', async () => {
+  await startBackend().catch(() => {});
+  return backendStatus();
+});
+ipcMain.handle('backend:pause', async () => {
+  await pauseBackend().catch(() => {});
+  return backendStatus();
+});
+ipcMain.handle('backend:restart', async () => {
+  await restartBackend().catch(() => {});
+  return backendStatus();
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400, height: 900,
@@ -228,33 +456,60 @@ function createWindow() {
 
   autoUpdater.checkForUpdates().catch(() => {});
 
+  // 后端失败也进入主界面：前端会用「后端已暂停 / 启动失败」覆盖层提供重试按钮
   startBackend()
-    .then(() => {
+    .catch(() => {})
+    .finally(() => {
       if (!updateWindow) loadMainApp();
-    })
-    .catch((err) => {
-      mainWindow.loadURL(`data:text/html,
-        <html><body style="background:#0f1116;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;flex-direction:column;padding:40px;text-align:center">
-          <h2 style="color:#ff4757">Startup Failed</h2>
-          <p style="color:#ccc;font-size:14px;max-width:500px;word-break:break-all">${err.message.replace(/\n/g, '<br>')}</p>
-        </body></html>
-      `);
     });
+
+  // 关闭窗口只收起到托盘，后端继续运行；真正退出走托盘菜单
+  mainWindow.on('close', (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    mainWindow.hide();
+    if (!trayHintShown) {
+      trayHintShown = true;
+      try {
+        tray.displayBalloon?.({
+          title: 'OKX Trading',
+          content: '已最小化到托盘，后端继续运行。右键托盘图标可暂停或启动后端。',
+        });
+      } catch {
+        // 部分环境不支持气泡提示
+      }
+    }
+  });
 
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-app.whenReady().then(createWindow);
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-});
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => showMainWindow());
 
-app.on('window-all-closed', () => {
-  if (backendProcess) { backendProcess.kill(); backendProcess = null; }
-  if (process.platform !== 'darwin') app.quit();
-});
+  app.whenReady().then(() => {
+    createTray();
+    createWindow();
+  });
 
-app.on('before-quit', () => {
-  if (backendProcess) { backendProcess.kill(); backendProcess = null; }
-});
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    else showMainWindow();
+  });
+
+  // 托盘常驻：关闭全部窗口不退出应用
+  app.on('window-all-closed', () => {});
+
+  app.on('before-quit', () => {
+    quitting = true;
+    const child = backendProcess;
+    backendProcess = null;
+    if (child) {
+      try { child.kill(); } catch {}
+    }
+  });
+}

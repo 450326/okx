@@ -85,6 +85,7 @@ import { computed, ref, watch } from 'vue';
 import { useSpotStore } from '../../stores/spot';
 import type { SpotHoldingRecord, TickerItem } from '../../api/types';
 import { formatCurrency, formatPrice } from '../../utils/format';
+import { fromUnits, MONEY_UNIT, mulUnits, toUnits } from '../../utils/money';
 import { $t } from '../../utils/i18n';
 
 const props = defineProps<{
@@ -134,20 +135,38 @@ const priceDigits = computed(() => {
   return value >= 1000 ? 2 : value >= 1 ? 4 : value >= 0.01 ? 6 : 8;
 });
 
-const estimated = computed(() => (Number(qty.value) || 0) * price.value);
+// 与后端一致：taker 手续费 5bps；市价买入按 ask 上浮 2bps 滑点成交
+const TAKER_FEE_BPS = 5n;
+const SLIPPAGE_BPS = 2n;
+const MAX_QTY_SAFETY_BPS = 50n;
+
+const priceUnits = computed(() => toUnits(price.value));
+const qtyUnits = computed(() => toUnits(qty.value));
+const availableUnits = computed(() => toUnits(props.available));
+const holdingUnits = computed(() => toUnits(props.holding?.qty ?? 0));
+
+// 预计金额按盘口价展示；能不能下单按「含滑点的成交价 + 手续费」判断，和后端扣款一致
+const estimated = computed(() => fromUnits(mulUnits(qtyUnits.value, priceUnits.value)));
+const slippedPriceUnits = computed(() => (priceUnits.value * (10000n + SLIPPAGE_BPS)) / 10000n);
+const payableUnits = computed(() => {
+  const notional = mulUnits(qtyUnits.value, slippedPriceUnits.value);
+  return notional + (notional * TAKER_FEE_BPS) / 10000n;
+});
 
 const maxQty = computed(() => {
-  if (price.value <= 0) return 0;
-  if (side.value === 'sell') return Number(props.holding?.qty || 0);
-  // 预留 0.05% taker 手续费
-  return props.available / (price.value * 1.0005);
+  if (side.value === 'sell') return fromUnits(holdingUnits.value);
+  if (slippedPriceUnits.value <= 0n) return 0;
+  // 「100%」留 0.5% 价格波动缓冲：市价单按提交瞬间的盘口成交，
+  // 从渲染到点击之间盘口一旦上移，按数学最大值下单必然被后端以余额不足拒绝。
+  const budgetUnits =
+    (availableUnits.value * (10000n - MAX_QTY_SAFETY_BPS)) / (10000n + TAKER_FEE_BPS);
+  return fromUnits((budgetUnits * MONEY_UNIT) / slippedPriceUnits.value);
 });
 
 const canSubmit = computed(() => {
-  const amount = Number(qty.value);
-  if (!props.symbol || amount <= 0 || price.value <= 0) return false;
-  if (side.value === 'sell') return amount <= Number(props.holding?.qty || 0) + 0.00000001;
-  return estimated.value <= props.available + 0.000001;
+  if (!props.symbol || qtyUnits.value <= 0n || priceUnits.value <= 0n) return false;
+  if (side.value === 'sell') return qtyUnits.value <= holdingUnits.value;
+  return payableUnits.value <= availableUnits.value;
 });
 
 function formatQty(value: string | number): string {
@@ -162,8 +181,9 @@ function setPercent(percent: number) {
 
 async function submit() {
   message.value = '';
-  const amount = Number(qty.value);
-  if (!Number.isFinite(amount) || amount <= 0) {
+  // 用最小单位判断数量和提交，避免 "0.1 + 0.2" 这类浮点值传到后端
+  const amountUnits = qtyUnits.value;
+  if (amountUnits <= 0n) {
     message.value = $t('spot.invalidQty');
     messageType.value = 'error';
     return;
@@ -172,7 +192,7 @@ async function submit() {
   const result = await spotStore.placeOrder({
     symbol: props.symbol,
     side: side.value,
-    qty: String(amount),
+    qty: fromUnits(amountUnits).toFixed(8).replace(/\.?0+$/, ''),
   });
 
   if (!result) {

@@ -8,6 +8,7 @@
  */
 
 import { ERROR_CODES } from '../../common/error-codes';
+import { BusinessError } from '../../common/business-error';
 
 export type SimSide = 'long' | 'short';
 export type SimAction = 'open' | 'close';
@@ -486,12 +487,8 @@ export const SIM_ERROR = {
   MARKET_UNAVAILABLE: ERROR_CODES.MARKET_UNAVAILABLE,
 } as const;
 
-export class SimulationError extends Error {
-  constructor(
-    public readonly code: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'SimulationError';
+export class SimulationError extends BusinessError {
+  constructor(code: number, message: string) {
+    super(code, message);
   }
 }

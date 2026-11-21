@@ -2,8 +2,10 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import * as fs from 'fs';
 import * as path from 'path';
 import { AuthStore } from './auth.store';
+import { requireNodeSqlite } from '../../common/node-runtime';
 
-const { DatabaseSync } = require('node:sqlite');
+// 旧版 Node 上给出可读提示，而不是裸的 "Cannot find module 'node:sqlite'"
+const { DatabaseSync } = requireNodeSqlite();
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const DB_FILE = path.resolve(__dirname, '../../../data/app.db');
 

@@ -1,7 +1,7 @@
 /**
  * 把构建机的 Node 运行时复制到桌面安装包的 extraResources。
  *
- * 后端使用 node:sqlite（Node >= 22.5），因此不能依赖用户机器安装 Node，
+ * 后端使用 node:sqlite（Node 22.13+ / 23.4+ / 24+，早期版本需加 --experimental-sqlite），因此不能依赖用户机器安装 Node，
  * 也不能使用 Electron 自带的 Node 20 运行时。该脚本必须在 electron-builder 之前执行。
  */
 const fs = require('fs');
@@ -57,18 +57,21 @@ function assertNoEnvInPackage() {
 
 assertNoEnvInPackage();
 
-const MIN_NODE = [22, 5, 0];
-const current = process.versions.node.split('.').map(Number);
-const isSupported =
-  current[0] > MIN_NODE[0] ||
-  (current[0] === MIN_NODE[0] &&
-    (current[1] > MIN_NODE[1] ||
-      (current[1] === MIN_NODE[1] && current[2] >= MIN_NODE[2])));
+/**
+ * 直接探测 node:sqlite 是否可用，而不是只比版本号：
+ * 22.5–22.12 需要 --experimental-sqlite，23.0–23.3 也需要，版本比较容易漏判。
+ */
+let sqliteAvailable = false;
+try {
+  sqliteAvailable = typeof require('node:sqlite').DatabaseSync === 'function';
+} catch {
+  sqliteAvailable = false;
+}
 
-if (!isSupported) {
+if (!sqliteAvailable) {
   console.error(
-    `[prepare-runtime] 需要 Node >= ${MIN_NODE.join('.')}（当前 ${process.versions.node}）。` +
-      '后端依赖 node:sqlite，请使用 Node 22.5+ 构建。',
+    `[prepare-runtime] 当前 Node ${process.versions.node} 无法加载 node:sqlite。` +
+      '后端依赖该内置模块，请使用 Node 22.13+ / 23.4+ / 24+ 构建。',
   );
   process.exit(1);
 }

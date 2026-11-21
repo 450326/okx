@@ -35,6 +35,9 @@ export const ERROR_CODES = {
   INVALID_MODE_TRANSITION: 4303,
   MODE_API_REQUIRED: 4304,
 
+  // 5xxx 服务端内部
+  INTERNAL_ERROR: 5000,
+
   // 5xxx 上游
   MARKET_UNAVAILABLE: 5001,
   UPSTREAM_ERROR: 5002,
@@ -167,6 +170,10 @@ export const ERROR_CATALOG: Record<number, ErrorMeta> = {
   [ERROR_CODES.UPSTREAM_ERROR]: {
     reason: 'upstream_error',
     suggestedAction: '检查上游 API 配置和网络后重试',
+  },
+  [ERROR_CODES.INTERNAL_ERROR]: {
+    reason: 'internal_error',
+    suggestedAction: '稍后重试或联系管理员',
   },
 };
 

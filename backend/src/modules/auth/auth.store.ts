@@ -2,8 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { requireNodeSqlite } from '../../common/node-runtime';
 
-const { DatabaseSync } = require('node:sqlite');
+// 旧版 Node 上给出可读提示，而不是裸的 "Cannot find module 'node:sqlite'"
+const { DatabaseSync } = requireNodeSqlite();
 
 export interface AuthUser {
   id: string;

@@ -30,7 +30,7 @@ pnpm --dir backend run docs:check
 
 ## 4. 数据库结构
 
-- [ ] 运行时 SQLite 表与 `prisma/schema.prisma` 同步
+- [ ] 运行时 SQLite 表与 `prisma/schema.prisma` 同步（该文件仅为文档镜像，不参与构建）
 - [ ] 金额字段标注最小单位或精度
 - [ ] 新增表包含在迁移/建表逻辑中
 - [ ] 清理脚本覆盖用户数据、账本、风控和资金费表

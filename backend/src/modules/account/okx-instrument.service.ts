@@ -10,6 +10,8 @@ export interface OkxInstrument {
   tickSz: number;
   ctType: string;
   maxLeverage: number;
+  /** OKX 品种状态：live / suspend / preopen / test 等 */
+  state: string;
 }
 
 const OKX_BASE = 'https://www.okx.com';
@@ -19,10 +21,13 @@ export class OkxInstrumentService {
   private readonly logger = new Logger(OkxInstrumentService.name);
   private readonly cache = new Map<string, { at: number; value: OkxInstrument }>();
 
-  async get(instId: string): Promise<OkxInstrument> {
+  /**
+   * @param options.fresh 跳过 10 分钟缓存强制回源，下单前做二次校验时使用
+   */
+  async get(instId: string, options: { fresh?: boolean } = {}): Promise<OkxInstrument> {
     const key = String(instId || '').toUpperCase();
     const cached = this.cache.get(key);
-    if (cached && Date.now() - cached.at < 10 * 60_000) return cached.value;
+    if (!options.fresh && cached && Date.now() - cached.at < 10 * 60_000) return cached.value;
 
     try {
       const res = await axios.get<{ code: string; data: any[] }>(`${OKX_BASE}/api/v5/public/instruments`, {
@@ -43,6 +48,7 @@ export class OkxInstrumentService {
         tickSz: Number(item.tickSz) || 0.01,
         ctType: String(item.ctType || 'linear'),
         maxLeverage: Number(item.lever) || 1,
+        state: String(item.state || 'live'),
       };
       this.cache.set(key, { at: Date.now(), value });
       return value;
