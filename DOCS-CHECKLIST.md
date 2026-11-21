@@ -5,9 +5,8 @@
 ## 1. 自测项数
 
 ```bash
-cd backend
-npm run test:simulation
-npm run docs:check
+pnpm --dir backend run test:simulation
+pnpm --dir backend run docs:check
 ```
 
 - 自测脚本会生成 `backend/.simulation-selftest.json`
@@ -39,13 +38,11 @@ npm run docs:check
 ## 5. 构建与测试
 
 ```bash
-cd backend
-npm run build
-npm run test:simulation
+pnpm --dir backend run build
+pnpm --dir backend run test:simulation
 
-cd ../frontend
-npx vue-tsc --noEmit
-npm run build
+pnpm --dir frontend exec vue-tsc --noEmit
+pnpm --dir frontend run build
 ```
 
 - [ ] 后端构建无 TypeScript 错误

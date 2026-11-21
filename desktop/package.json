@@ -8,11 +8,11 @@
   "scripts": {
     "start": "electron .",
     "prepare-runtime": "node scripts/prepare-runtime.js",
-    "pack": "node scripts/prepare-runtime.js && electron-builder --dir",
-    "dist": "node scripts/prepare-runtime.js && electron-builder",
-    "dist:win": "node scripts/prepare-runtime.js && electron-builder --win",
+    "pack": "node scripts/prepare-runtime.js && pnpm exec electron-builder --dir",
+    "dist": "node scripts/prepare-runtime.js && pnpm exec electron-builder",
+    "dist:win": "node scripts/prepare-runtime.js && pnpm exec electron-builder --win",
     "version:bump": "node -e \"const p=require('./package.json');const m=p.version.split('.').map(Number);m[2]++;p.version=m.join('.');require('fs').writeFileSync('./package.json',JSON.stringify(p,null,2)+'\\n');console.log('Version bumped to '+p.version);\"",
-    "publish": "npm run version:bump && cd ../frontend && npm run build && cd ../backend && npm run build && cd ../desktop && node scripts/prepare-runtime.js && npx electron-builder --win --x64 -p always"
+    "publish": "pnpm run version:bump && pnpm --dir ../frontend run build && pnpm --dir ../backend run build && node scripts/prepare-runtime.js && pnpm exec electron-builder --win --x64 -p always"
   },
   "build": {
     "appId": "com.okx.trading.desktop",

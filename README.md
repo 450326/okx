@@ -175,7 +175,7 @@ pnpm start:backend  # 后端生产模式（dist）
 构建机要求：
 
 ```text
-Node >= 22.5（后端使用 node:sqlite）
+Node >= 22.5（后端使用 node:sqlite）+ pnpm
 ```
 
 构建步骤：
@@ -183,6 +183,16 @@ Node >= 22.5（后端使用 node:sqlite）
 ```bat
 desktop\build-installer.bat
 ```
+
+`build-installer.bat` 只是入口，实际执行 `scripts\build-installer.ps1`：自动定位 Node/pnpm，依次安装前后端与 desktop 依赖（`pnpm install --ignore-scripts`）、构建前端、生成 Prisma 客户端、构建后端、准备内置 Node 运行时，最后运行 `electron-builder`。
+
+发布新版本（自动 bump 版本并上传 GitHub Releases，需要 `GH_TOKEN`）：
+
+```bat
+desktop\publish.bat
+```
+
+实际执行 `scripts\publish-desktop.ps1`，未设置 `GH_TOKEN` 时只做本地构建。
 
 `electron-builder` 前会执行：
 
@@ -476,8 +486,7 @@ PUT /api/v1/account/mode { "mode": "simulation" | "live" | "live_readonly" | "li
 也可显式执行：
 
 ```bash
-cd backend
-npm run migrate:simulation
+pnpm --dir backend run migrate:simulation
 ```
 
 账本以流水为准：`GET /api/v1/account/ledger-reconcile` 返回 `ledgerSum`、`walletBalance` 和 `diff`，用于重算校验；`POST /api/v1/account/ledger-rebuild` 可按流水重建钱包余额。
@@ -620,18 +629,16 @@ npm run migrate:simulation
 
 ```bash
 # 模拟盘账务自测（35 项，含预测盘、现货交易和权益恒等式）
-cd backend
-npm run test:simulation
-npm run docs:check
+pnpm --dir backend run test:simulation
+pnpm --dir backend run docs:check
 
 # 后端类型检查 + 构建
-npx tsc --noEmit
-npm run build
+pnpm --dir backend exec tsc --noEmit
+pnpm --dir backend run build
 
 # 前端类型检查 + 构建
-cd ../frontend
-npx vue-tsc --noEmit
-npm run build
+pnpm --dir frontend exec vue-tsc --noEmit
+pnpm --dir frontend run build
 ```
 
 ## 当前限制

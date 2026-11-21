@@ -1,0 +1,4 @@
+# pnpm 11 的构建脚本白名单：显式允许前端依赖的安装脚本，避免 install 时反复生成待确认占位配置
+allowBuilds:
+  esbuild: true
+  vue-demi: true

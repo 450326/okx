@@ -4,7 +4,7 @@ REM  OKX Trading - Android APK 构建脚本 (Windows)
 REM  前置要求:
 REM     1. JDK 17+ installed (JAVA_HOME 环境变量)
 REM     2. Android Studio + SDK (ANDROID_HOME 环境变量)
-REM     3. Node.js 18+
+REM     3. Node.js 18+ 与 pnpm
 REM ===================================================
 echo ========================================
 echo  OKX Trading - Android APK Builder
@@ -12,7 +12,7 @@ echo ========================================
 echo.
 echo [1/4] Building frontend...
 cd /d "%~dp0"
-call npm run build
+call pnpm --dir frontend run build
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Frontend build failed!
     exit /b 1
@@ -20,7 +20,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo [OK] Frontend build complete.
 echo.
 echo [2/4] Syncing Capacitor...
-call npx cap sync android
+call pnpm --dir frontend exec cap sync android
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Capacitor sync failed!
     exit /b 1
@@ -28,14 +28,14 @@ if %ERRORLEVEL% NEQ 0 (
 echo [OK] Capacitor sync complete.
 echo.
 echo [3/4] Building Android APK (Release)...
-cd android
+cd frontend\android
 call .\gradlew assembleRelease
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Android build failed!
-    cd ..
+    cd ..\..
     exit /b 1
 )
-cd ..
+cd ..\..
 echo [OK] Android build complete.
 echo.
 echo ========================================

@@ -5,9 +5,11 @@
   "packageManager": "pnpm@11.28.5",
   "scripts": {
     "install:all": "pnpm --dir backend install --ignore-scripts && pnpm --dir frontend install --ignore-scripts",
+    "install:desktop": "pnpm --dir desktop install --ignore-scripts",
     "build": "pnpm --dir backend run build && pnpm --dir frontend run build",
     "dev:backend": "pnpm --dir backend run start:dev",
     "dev:frontend": "pnpm --dir frontend run dev",
-    "start:backend": "pnpm --dir backend run start:prod"
+    "start:backend": "pnpm --dir backend run start:prod",
+    "build:desktop": "pnpm --dir desktop run dist:win"
   }
 }

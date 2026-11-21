@@ -7,13 +7,13 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "cap:sync": "npx cap sync",
-    "cap:copy": "npx cap copy",
-    "cap:android:open": "npx cap open android",
-    "cap:android:build": "npm run build && npx cap sync && npx cap build android",
-    "cap:android:apk": "npm run build && npx cap sync && cd android && .\\gradlew assembleRelease",
-    "cap:electron:init": "npx cap add @capacitor-community/electron",
-    "cap:electron:build": "npm run build && npx cap sync && npx cap open @capacitor-community/electron"
+    "cap:sync": "pnpm exec cap sync",
+    "cap:copy": "pnpm exec cap copy",
+    "cap:android:open": "pnpm exec cap open android",
+    "cap:android:build": "pnpm run build && pnpm exec cap sync && pnpm exec cap build android",
+    "cap:android:apk": "pnpm run build && pnpm exec cap sync && cd android && .\\gradlew assembleRelease",
+    "cap:electron:init": "pnpm exec cap add @capacitor-community/electron",
+    "cap:electron:build": "pnpm run build && pnpm exec cap sync && pnpm exec cap open @capacitor-community/electron"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

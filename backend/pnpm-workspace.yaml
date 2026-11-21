@@ -1,0 +1,5 @@
+# 后端运行时使用 node:sqlite，不需要 Prisma 的安装脚本（引擎下载），显式跳过
+allowBuilds:
+  '@prisma/client': false
+  '@prisma/engines': false
+  prisma: false

@@ -4,7 +4,7 @@
 #  前置要求:
 #     1. JDK 17+
 #     2. Android Studio + SDK
-#     3. Node.js 18+
+#     3. Node.js 18+ 与 pnpm
 # ===================================================
 set -e
 
@@ -14,19 +14,19 @@ echo "========================================"
 
 echo ""
 echo "[1/4] Building frontend..."
-npm run build
+pnpm --dir frontend run build
 echo "[OK] Frontend build complete."
 
 echo ""
 echo "[2/4] Syncing Capacitor..."
-npx cap sync android
+pnpm --dir frontend exec cap sync android
 echo "[OK] Capacitor sync complete."
 
 echo ""
 echo "[3/4] Building Android APK (Release)..."
-cd android
+cd frontend/android
 ./gradlew assembleRelease
-cd ..
+cd ../..
 echo "[OK] Android build complete."
 
 echo ""
