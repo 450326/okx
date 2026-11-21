@@ -75,7 +75,12 @@ export const useNotificationStore = defineStore('notifications', () => {
     socket = io(`${getServerBaseUrl()}/notifications`, {
       transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      // 通知另有 10s REST 轮询兜底，Socket 只做有限次数的退避重连
+      reconnectionAttempts: 6,
+      reconnectionDelay: 3000,
+      reconnectionDelayMax: 60000,
+      randomizationFactor: 0.3,
+      timeout: 10000,
       auth: { token: localStorage.getItem('accessToken') || '' },
     });
     socket.on('notification', (notification: AppNotification) => {

@@ -120,9 +120,12 @@ export const useMarketStore = defineStore('market', () => {
     socket = io(`${getServerBaseUrl()}/market`, {
       transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      // 有限重连 + 退避，避免后端不可达时无限重连；行情另有 3s REST 轮询兜底
+      reconnectionAttempts: 8,
       reconnectionDelay: 2000,
-      reconnectionDelayMax: 10000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.3,
+      timeout: 10000,
       auth: { token: localStorage.getItem('accessToken') || '' },
     });
 
